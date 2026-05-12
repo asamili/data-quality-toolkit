@@ -1,0 +1,176 @@
+# ===============================
+# Python Artifacts
+# ===============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.cover
+
+# ===============================
+# Version Control
+# ===============================
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# ===============================
+# IDEs & Editors
+# ===============================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-*
+.spyderproject
+.spyproject
+.ropeproject
+
+# ===============================
+# Virtual Environments
+# ===============================
+.env
+.venv/
+env/
+venv/
+ENV/
+.python-version
+
+# ===============================
+# Build & Distribution
+# ===============================
+build/
+dist/
+*.egg-info/
+wheels/
+pip-wheel-metadata/
+
+# ===============================
+# Testing (not needed in prod)
+# ===============================
+tests/
+test/
+testing/
+*_test.py
+test_*.py
+conftest.py
+pytest.ini
+.pytest_cache/
+tox.ini
+.tox/
+.hypothesis/
+coverage.xml
+*.cover
+
+# ===============================
+# Documentation
+# ===============================
+docs/
+doc/
+*.md
+!README.md  # Keep minimal README if needed
+*.rst
+*.txt
+!requirements*.txt
+!constraints.txt
+
+# ===============================
+# Development Files
+# ===============================
+Makefile
+.pre-commit-config.yaml
+.editorconfig
+.flake8
+.pylintrc
+mypy.ini
+setup.cfg
+CONTRIBUTING.md
+CHANGELOG.md
+AUTHORS
+TODO
+NOTES
+
+# ===============================
+# Data & Logs
+# ===============================
+*.csv
+*.parquet
+*.xlsx
+*.db
+*.sqlite
+*.log
+logs/
+data/
+examples/
+export/
+output/
+results/
+
+# ===============================
+# OS Files
+# ===============================
+.DS_Store
+Thumbs.db
+*.lnk
+desktop.ini
+
+# ===============================
+# Docker-specific
+# ===============================
+Dockerfile*
+docker-compose*.yml
+docker-compose*.yaml
+.dockerignore
+docker/
+
+# ===============================
+# CI/CD
+# ===============================
+.travis.yml
+.gitlab-ci.yml
+.circleci/
+azure-pipelines.yml
+Jenkinsfile
+bitbucket-pipelines.yml
+
+# ===============================
+# Secrets (critical!)
+# ===============================
+.env
+.env.*
+secrets.*
+*.pem
+*.key
+*.crt
+credentials.json
+token.json
+
+# ===============================
+# Temporary Files
+# ===============================
+*.tmp
+*.temp
+*.bak
+*.backup
+tmp/
+temp/
+cache/
+
+# ===============================
+# Keep for Docker build
+# ===============================
+!src/
+!pyproject.toml
+!constraints.txt

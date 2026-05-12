@@ -1,0 +1,89 @@
+# docker/compose.yaml
+name: data-quality-toolkit
+
+services:
+  # Main DQT service
+  dqt:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: dqt:latest
+    container_name: dqt-main
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - MAX_ROWS_IN_MEMORY=${MAX_ROWS_IN_MEMORY:-1000000}
+      - SAMPLE_SIZE=${SAMPLE_SIZE:-10000}
+      - EXPORT_BASE_DIR=/data/output
+    volumes:
+      - ./data:/data
+      - ../data/examples:/data/examples:ro
+      - ../dist:/data/output
+    networks:
+      - dqt-network
+    restart: unless-stopped
+    command: ["export", "/data/examples/sample.csv"]
+
+  # CLI service for one-off commands
+  dqt-cli:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cli
+    image: dqt-cli:latest
+    container_name: dqt-cli
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-text}
+      - EXPORT_BASE_DIR=/data/output
+    volumes:
+      - ./data:/data
+      - ./dist:/data/output
+      - ../data/examples:/data/examples:ro
+      - ../dist:/data/output
+    networks:
+      - dqt-network
+    profiles:
+      - cli
+    stdin_open: true
+    tty: true
+    entrypoint: ["dqt"]
+
+  # Development service with hot reload
+  dqt-dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: builder
+    image: dqt-dev:latest
+    container_name: dqt-dev
+    environment:
+      - LOG_LEVEL=DEBUG
+      - LOG_FORMAT=text
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../src:/app/src:ro
+      - ../tests:/app/tests:ro
+      - ./data:/data
+      - ./dist:/data/output
+    networks:
+      - dqt-network
+    profiles:
+      - dev
+    command: ["sleep", "infinity"]  # Keep container running for exec
+
+  # Future: API service (Phase 6)
+  # dqt-api:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile.api
+  #   profiles:
+  #     - api
+
+networks:
+  dqt-network:
+    driver: bridge
+
+volumes:
+  dqt-data:
+    driver: local

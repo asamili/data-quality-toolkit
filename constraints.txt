@@ -1,0 +1,4 @@
+# Optional: pin transitive dependencies for reproducible builds.
+# Example:
+# pandas==2.2.2
+# fastapi==0.110.0

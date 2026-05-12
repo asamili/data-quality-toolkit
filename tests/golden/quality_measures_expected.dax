@@ -1,0 +1,23 @@
+MEASURE 'Quality'[Completeness %] = ( AVERAGE ( 'fact_quality_metrics'[completeness] ) ) * 100
+    FORMAT_STRING = "0.00%"
+
+MEASURE 'Quality'[Avg Distinct Count] = AVERAGE ( 'fact_quality_metrics'[distinct_count] )
+    FORMAT_STRING = "#,##0"
+
+MEASURE 'Quality'[Null Rate] = ( AVERAGE ( 'fact_quality_metrics'[null_pct] ) ) * 100
+    FORMAT_STRING = "0.00%"
+
+MEASURE 'Quality'[Quality Score] = ( [Completeness %] * 0.5 ) + ( ( 100 - [Null Rate] ) * 0.5 )
+    FORMAT_STRING = "0.0"
+
+MEASURE 'Quality'[Dataset Count] = COUNTROWS ( 'dim_dataset' )
+    FORMAT_STRING = "#,##0"
+
+MEASURE 'Quality'[Column Count] = COUNTROWS ( 'dim_column' )
+    FORMAT_STRING = "#,##0"
+
+MEASURE 'Quality'[Total Rows Profiled] = SUM ( 'fact_profile_runs'[rows] )
+    FORMAT_STRING = "#,##0"
+
+MEASURE 'Quality'[Avg Memory (MB)] = AVERAGE ( 'fact_profile_runs'[memory_mb] )
+    FORMAT_STRING = "#,##0.00"

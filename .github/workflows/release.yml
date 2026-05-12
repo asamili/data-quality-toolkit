@@ -1,0 +1,182 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version without "v" prefix (e.g. 1.0.1-internal)'
+        required: true
+permissions:
+  contents: write
+  packages: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_internal: ${{ steps.tag_type.outputs.is_internal }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${VERSION}"
+
+      - name: Detect internal tag
+        id: tag_type
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [[ "$VERSION" == *-internal* ]]; then
+            echo "is_internal=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_internal=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9\.]+)?$ ]]
+
+      - name: Check CHANGELOG entry
+        if: steps.tag_type.outputs.is_internal == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          grep -q "\[$VERSION\]" CHANGELOG.md
+
+      - name: Verify pyproject.toml version
+        if: steps.tag_type.outputs.is_internal == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          grep -q "version = \"$VERSION\"" pyproject.toml
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,test]"
+
+      - name: Lint & Typecheck
+        run: |
+          ruff check .
+          black --check .
+          isort --check-only .
+          mypy
+
+      - name: Tests (with coverage gate)
+        run: pytest -v
+
+  build:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+    needs: [validate, test]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Clean previous builds
+        run: rm -rf dist build *.egg-info **/*.egg-info
+
+      - name: Build sdist & wheel
+        run: python -m build
+
+      - name: Quick CLI smoke (built dist)
+        run: |
+          pip install dist/*.whl
+          echo "id,age,score" > test.csv
+          echo "1,25,95.5" >> test.csv
+          echo "2,30,87.2" >> test.csv
+          echo "3,,76.8" >> test.csv
+          dqt export test.csv
+          test -f dist/star/dim_dataset.csv
+
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum *.whl *.tar.gz > checksums.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/checksums.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate, build]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: ./artifacts
+
+      - name: Extract release notes
+        id: release_notes
+        shell: bash
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          awk "/## \\[$VERSION\\]/{flag=1;next}/## \\[/{flag=0}flag" CHANGELOG.md > release_notes.md || true
+          if [ ! -s release_notes.md ]; then echo "No release notes section found"; fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.validate.outputs.version }}
+          name: Release v${{ needs.validate.outputs.version }}
+          body_path: release_notes.md
+          files: |
+            artifacts/*.whl
+            artifacts/*.tar.gz
+            artifacts/checksums.txt
+          draft: false
+          prerelease: ${{ contains(needs.validate.outputs.version, '-') }}

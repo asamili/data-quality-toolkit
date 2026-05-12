@@ -1,0 +1,171 @@
+order_id,customer_segment,region,product_category,order_date,ship_date,order_status,quantity,unit_price,discount_pct,amount,currency,sales_channel,notes
+ORD-0001,Retail,North,Electronics,2024-01-03,2024-01-06,Delivered,2,149.99,0.05,284.98,USD,Online,
+ORD-0002,Wholesale,South,Office Supplies,2024-01-04,2024-01-09,Delivered,10,12.50,0.10,112.50,USD,Direct,Bulk order
+ORD-0003,Retail,East,Furniture,2024-01-05,2024-01-12,Delivered,1,399.00,,399.00,USD,Online,Standard order
+ORD-0004,Government,West,Electronics,2024-01-06,2024-01-10,Delivered,5,299.99,0.15,1274.96,USD,Direct,Standard procurement
+ORD-0005,Retail,North,Clothing,2024-01-07,2024-01-11,Delivered,3,45.00,0.00,135.00,USD,Online,
+ORD-0006,Wholesale,East,Food,2024-01-08,2024-01-14,Delivered,50,4.20,0.08,193.20,USD,Direct,
+ORD-0007,Retail,South,Electronics,2024-01-09,2024-01-13,Returned,1,89.99,,89.99,USD,Online,Customer changed mind
+ORD-0008,Corporate,West,Office Supplies,2024-01-10,2024-01-15,Delivered,20,8.75,0.12,154.00,USD,Direct,Priority handling
+ORD-0009,Retail,North,Furniture,2024-01-11,2024-01-18,Delivered,1,549.00,0.05,521.55,USD,Online,New account
+ORD-0010,Wholesale,South,Clothing,2024-01-12,2024-01-17,Delivered,30,22.00,0.10,594.00,USD,Direct,
+ORD-0011,Retail,East,Food,2024-01-13,2024-01-16,Delivered,4,9.99,0.00,39.96,USD,Online,
+ORD-0012,Government,North,Electronics,2024-01-14,2024-01-18,Processing,8,199.99,0.15,1359.93,USD,Direct,Awaiting approval
+ORD-0013,Retail,West,Office Supplies,2024-01-15,2024-01-19,Delivered,6,14.25,,85.50,USD,Online,Repeat customer
+ORD-0014,Corporate,South,Furniture,2024-01-16,2024-01-23,Delivered,2,875.00,0.10,1575.00,USD,Direct,Conference room
+ORD-0015,Retail,East,Electronics,2024-01-17,2024-01-21,Delivered,1,649.99,0.00,649.99,USD,Online,
+ORD-0016,Wholesale,West,Food,2024-01-18,2024-01-24,Delivered,100,2.80,0.05,266.00,USD,Direct,Volume order
+ORD-0017,Retail,North,Clothing,2024-01-19,2024-01-23,Cancelled,2,38.00,,76.00,USD,Online,Out of stock
+ORD-0018,Government,East,Office Supplies,2024-01-20,2024-01-25,Delivered,15,11.00,0.12,145.20,USD,Direct,Standard procurement
+ORD-0019,Retail,South,Electronics,2024-01-21,2024-01-25,Delivered,1,129.99,0.00,129.99,USD,Online,
+ORD-0020,Corporate,North,Furniture,2024-01-22,2024-01-29,Delivered,4,320.00,0.08,1177.60,USD,Direct,Rush order
+ORD-0021,Retail,West,Food,2024-01-23,2024-01-27,Delivered,6,7.50,,45.00,USD,Online,
+ORD-0022,Wholesale,South,Electronics,2024-01-24,2024-01-29,Delivered,12,74.99,0.10,809.89,USD,Direct,Seasonal promotion
+ORD-0023,Retail,East,Clothing,2024-01-25,2024-01-29,Delivered,2,55.00,0.05,104.50,USD,Online,
+ORD-0024,Government,West,Office Supplies,2024-01-26,2024-01-31,Delivered,25,6.40,0.12,140.80,USD,Direct,Annual supply
+ORD-0025,Retail,North,Furniture,2024-01-27,2024-02-03,Processing,1,1200.00,,1200.00,USD,Online,
+ORD-0026,Corporate,East,Electronics,2024-01-28,2024-02-01,Delivered,3,449.99,0.08,1241.97,USD,Direct,Express delivery
+ORD-0027,Retail,South,Food,2024-01-29,2024-02-02,Delivered,8,5.25,0.00,42.00,USD,Online,
+ORD-0028,Wholesale,West,Clothing,2024-01-30,2024-02-05,Delivered,40,18.50,0.10,666.00,USD,Direct,Bulk order
+ORD-0029,Retail,North,Office Supplies,2024-01-31,2024-02-04,Returned,3,22.00,,66.00,USD,Online,Wrong item
+ORD-0030,Government,South,Electronics,2024-02-01,2024-02-06,Delivered,6,249.99,0.15,1274.95,USD,Direct,Quarterly restock
+ORD-0031,Retail,East,Furniture,2024-02-02,2024-02-09,Delivered,1,299.00,0.05,284.05,USD,Online,Standard delivery
+ORD-0032,Corporate,West,Food,2024-02-03,2024-02-08,Delivered,20,3.99,0.08,73.42,USD,Direct,
+ORD-0033,Retail,North,Clothing,2024-02-04,2024-02-08,Delivered,1,72.00,,72.00,USD,Online,Clearance item
+ORD-0034,Wholesale,East,Electronics,2024-02-05,2024-02-10,Delivered,8,119.99,0.10,863.93,USD,Direct,Contract pricing applied
+ORD-0035,Retail,South,Office Supplies,2024-02-06,2024-02-10,Delivered,5,18.00,0.00,90.00,USD,Online,
+ORD-0036,Government,West,Furniture,2024-02-07,2024-02-14,Processing,3,650.00,0.12,1716.00,USD,Direct,Pending delivery
+ORD-0037,Retail,North,Food,2024-02-08,2024-02-12,Delivered,10,4.50,,45.00,USD,Online,
+ORD-0038,Corporate,South,Electronics,2024-02-09,2024-02-13,Delivered,2,599.99,0.10,1079.98,USD,Direct,Pre-approved discount
+ORD-0039,Retail,East,Clothing,2024-02-10,2024-02-14,Delivered,3,42.00,0.05,119.70,USD,Online,
+ORD-0040,Wholesale,West,Office Supplies,2024-02-11,2024-02-16,Delivered,60,5.80,0.10,313.20,USD,Direct,Bulk
+ORD-0041,Retail,North,Furniture,2024-02-12,2024-02-19,Delivered,1,449.00,,449.00,USD,Online,
+ORD-0042,Government,East,Electronics,2024-02-13,2024-02-17,Delivered,10,179.99,0.15,1529.92,USD,Direct,Annual supply contract
+ORD-0043,Retail,South,Food,2024-02-14,2024-02-18,Delivered,5,6.75,0.00,33.75,USD,Online,
+ORD-0044,Corporate,West,Clothing,2024-02-15,2024-02-20,Delivered,8,65.00,0.08,478.40,USD,Direct,First order
+ORD-0045,Retail,North,Office Supplies,2024-02-16,2024-02-20,Cancelled,2,28.00,,56.00,USD,Online,Duplicate order
+ORD-0046,Wholesale,South,Furniture,2024-02-17,2024-02-24,Delivered,5,380.00,0.10,1710.00,USD,Direct,Split shipment
+ORD-0047,Retail,East,Electronics,2024-02-18,2024-02-22,Delivered,1,199.99,0.05,189.99,USD,Online,
+ORD-0048,Government,North,Food,2024-02-19,2024-02-23,Delivered,200,1.95,0.15,331.50,USD,Direct,Cafeteria stock
+ORD-0049,Retail,West,Clothing,2024-02-20,2024-02-24,Delivered,2,49.00,,98.00,USD,Online,
+ORD-0050,Corporate,South,Electronics,2024-02-21,2024-02-25,Delivered,4,329.99,0.08,1214.36,USD,Direct,New customer
+ORD-0051,Retail,East,Office Supplies,2024-02-22,2024-02-26,Delivered,7,16.50,0.00,115.50,USD,Online,
+ORD-0052,Wholesale,West,Clothing,2024-02-23,2024-02-29,Delivered,25,27.00,0.10,607.50,USD,Direct,Quarterly order
+ORD-0053,Retail,North,Furniture,2024-02-24,2024-03-02,Processing,1,699.00,,699.00,USD,Online,
+ORD-0054,Government,South,Electronics,2024-02-25,2024-03-01,Delivered,7,159.99,0.15,951.94,USD,Direct,Standard procurement
+ORD-0055,Retail,East,Food,2024-02-26,2024-03-01,Delivered,3,8.25,0.00,24.75,USD,Online,
+ORD-0056,Corporate,West,Office Supplies,2024-02-27,2024-03-03,Delivered,30,7.20,0.10,194.40,USD,Direct,Volume discount
+ORD-0057,Retail,South,Clothing,2024-02-28,2024-03-04,Returned,1,88.00,,88.00,USD,Online,Size issue
+ORD-0058,Wholesale,North,Electronics,2024-02-29,2024-03-05,Delivered,15,89.99,0.10,1214.87,USD,Direct,Wholesale restock
+ORD-0059,Retail,East,Furniture,2024-03-01,2024-03-08,Delivered,1,525.00,0.05,498.75,USD,Online,
+ORD-0060,Government,West,Food,2024-03-02,2024-03-07,Delivered,150,2.10,0.12,277.20,USD,Direct,Cafeteria restock
+ORD-0061,Retail,North,Electronics,2024-03-03,2024-03-07,Delivered,2,179.99,,359.98,USD,Online,
+ORD-0062,Corporate,South,Clothing,2024-03-04,2024-03-09,Delivered,6,58.00,0.08,320.16,USD,Direct,Seasonal order
+ORD-0063,Retail,East,Office Supplies,2024-03-05,2024-03-09,Delivered,4,21.00,0.00,84.00,USD,Online,
+ORD-0064,Wholesale,West,Furniture,2024-03-06,2024-03-13,Delivered,3,420.00,0.10,1134.00,USD,Direct,Large furniture order
+ORD-0065,Retail,North,Food,2024-03-07,2024-03-11,Delivered,6,5.50,,33.00,USD,Online,
+ORD-0066,Government,East,Electronics,2024-03-08,2024-03-13,Delivered,12,139.99,0.15,1427.90,USD,Direct,Standard procurement
+ORD-0067,Retail,South,Clothing,2024-03-09,2024-03-13,Cancelled,3,35.00,0.00,105.00,USD,Online,Payment failed
+ORD-0068,Corporate,North,Office Supplies,2024-03-10,2024-03-15,Delivered,18,9.50,0.10,153.90,USD,Direct,Annual reorder
+ORD-0069,Retail,West,Furniture,2024-03-11,2024-03-18,Delivered,1,780.00,,780.00,USD,Online,
+ORD-0070,Wholesale,South,Food,2024-03-12,2024-03-18,Delivered,80,3.25,0.08,239.20,USD,Direct,Bulk food supply
+ORD-0071,Retail,East,Electronics,2024-03-13,2024-03-17,Delivered,1,249.99,0.05,237.49,USD,Online,
+ORD-0072,Government,West,Clothing,2024-03-14,2024-03-19,Delivered,20,40.00,0.12,704.00,USD,Direct,Uniform order
+ORD-0073,Retail,North,Office Supplies,2024-03-15,2024-03-19,Delivered,5,13.75,,68.75,USD,Online,
+ORD-0074,Corporate,East,Electronics,2024-03-16,2024-03-21,Delivered,3,499.99,0.08,1379.97,USD,Direct,Priority order
+ORD-0075,Retail,South,Food,2024-03-17,2024-03-21,Delivered,7,7.00,0.00,49.00,USD,Online,
+ORD-0076,Wholesale,West,Furniture,2024-03-18,2024-03-25,Processing,4,310.00,0.10,1116.00,USD,Direct,Warehouse delivery
+ORD-0077,Retail,North,Clothing,2024-03-19,2024-03-23,Delivered,2,66.00,,132.00,USD,Online,
+ORD-0078,Government,South,Electronics,2024-03-20,2024-03-25,Delivered,9,219.99,0.15,1682.92,USD,Direct,Equipment procurement
+ORD-0079,Retail,East,Office Supplies,2024-03-21,2024-03-25,Delivered,8,10.00,0.00,80.00,USD,Online,
+ORD-0080,Corporate,West,Food,2024-03-22,2024-03-27,Delivered,35,2.75,0.08,88.55,USD,Direct,Catering supply
+ORD-0081,Retail,North,Furniture,2024-03-23,2024-03-30,Delivered,1,620.00,,620.00,USD,Online,
+ORD-0082,Wholesale,East,Electronics,2024-03-24,2024-03-29,Delivered,10,109.99,0.10,989.91,USD,Direct,Tech refresh order
+ORD-0083,Retail,South,Clothing,2024-03-25,2024-03-29,Delivered,3,52.00,0.05,148.20,USD,Online,
+ORD-0084,Government,North,Office Supplies,2024-03-26,2024-03-31,Delivered,40,4.90,0.12,172.48,USD,Direct,Annual supply
+ORD-0085,Retail,West,Electronics,2024-03-27,2024-03-31,Returned,1,349.99,,349.99,USD,Online,Defective unit
+ORD-0086,Corporate,South,Furniture,2024-03-28,2024-04-04,Delivered,2,940.00,0.08,1729.60,USD,Direct,Executive furniture
+ORD-0087,Retail,East,Food,2024-03-29,2024-04-02,Delivered,9,4.00,0.00,36.00,USD,Online,
+ORD-0088,Wholesale,West,Clothing,2024-03-30,2024-04-05,Delivered,35,24.00,0.10,756.00,USD,Direct,Seasonal restock
+ORD-0089,Retail,North,Electronics,2024-03-31,2024-04-04,Delivered,1,399.99,,399.99,USD,Online,
+ORD-0090,Government,East,Food,2024-04-01,2024-04-06,Delivered,120,1.80,0.15,183.60,USD,Direct,Monthly supply
+ORD-0091,Retail,South,Office Supplies,2024-04-02,2024-04-06,Delivered,6,17.00,0.00,102.00,USD,Online,
+ORD-0092,Corporate,North,Electronics,2024-04-03,2024-04-08,Delivered,4,279.99,0.10,1007.96,USD,Direct,Upgrade order
+ORD-0093,Retail,West,Furniture,2024-04-04,2024-04-11,Cancelled,1,490.00,,490.00,USD,Online,Changed mind
+ORD-0094,Wholesale,South,Clothing,2024-04-05,2024-04-11,Delivered,45,19.50,0.08,807.30,USD,Direct,Seasonal promotion
+ORD-0095,Retail,East,Food,2024-04-06,2024-04-10,Delivered,4,6.25,0.00,25.00,USD,Online,
+ORD-0096,Government,West,Electronics,2024-04-07,2024-04-12,Delivered,6,189.99,0.15,968.95,USD,Direct,Standard procurement
+ORD-0097,Retail,North,Clothing,2024-04-08,2024-04-12,Delivered,2,44.00,,88.00,USD,Online,
+ORD-0098,Corporate,East,Office Supplies,2024-04-09,2024-04-14,Delivered,22,8.00,0.10,158.40,USD,Direct,Annual reorder
+ORD-0099,Retail,South,Furniture,2024-04-10,2024-04-17,Delivered,1,560.00,0.05,532.00,USD,Online,
+ORD-0100,Wholesale,West,Electronics,2024-04-11,2024-04-16,Delivered,14,79.99,0.10,1007.87,USD,Direct,Dealer restock
+ORD-0101,Retail,North,Food,2024-04-12,2024-04-16,Delivered,5,5.80,,29.00,USD,Online,
+ORD-0102,Government,South,Office Supplies,2024-04-13,2024-04-18,Delivered,30,6.00,0.12,158.40,USD,Direct,Annual supply
+ORD-0103,Retail,East,Clothing,2024-04-14,2024-04-18,Delivered,3,47.00,0.00,141.00,USD,Online,
+ORD-0104,Corporate,West,Furniture,2024-04-15,2024-04-22,Processing,2,1050.00,0.08,1932.00,USD,Direct,Office renovation
+ORD-0105,Retail,North,Electronics,2024-04-16,2024-04-20,Delivered,1,219.99,,219.99,USD,Online,
+ORD-0106,Wholesale,East,Food,2024-04-17,2024-04-23,Delivered,90,2.50,0.08,207.00,USD,Direct,Wholesale distribution
+ORD-0107,Retail,South,Office Supplies,2024-04-18,2024-04-22,Returned,4,15.00,0.00,60.00,USD,Online,Incorrect product
+ORD-0108,Government,North,Clothing,2024-04-19,2024-04-24,Delivered,15,36.00,0.12,475.20,USD,Direct,Uniform procurement
+ORD-0109,Retail,West,Furniture,2024-04-20,2024-04-27,Delivered,1,840.00,,840.00,USD,Online,
+ORD-0110,Corporate,South,Electronics,2024-04-21,2024-04-26,Delivered,5,369.99,0.10,1664.96,USD,Direct,Tech refresh
+ORD-0111,Retail,East,Food,2024-04-22,2024-04-26,Delivered,6,7.80,0.00,46.80,USD,Online,
+ORD-0112,Wholesale,West,Clothing,2024-04-23,2024-04-29,Delivered,28,31.00,0.10,781.20,USD,Direct,Seasonal order
+ORD-0113,Retail,North,Electronics,2024-04-24,2024-04-28,Delivered,2,169.99,,339.98,USD,Online,
+ORD-0114,Government,East,Furniture,2024-04-25,2024-05-02,Delivered,4,475.00,0.15,1615.00,USD,Direct,Office furniture
+ORD-0115,Retail,South,Food,2024-04-26,2024-04-30,Delivered,8,4.75,0.00,38.00,USD,Online,
+ORD-0116,Corporate,North,Office Supplies,2024-04-27,2024-05-02,Delivered,16,11.25,0.10,162.00,USD,Direct,Quarterly office supplies
+ORD-0117,Retail,West,Clothing,2024-04-28,2024-05-02,Cancelled,2,59.00,,118.00,USD,Online,Item discontinued
+ORD-0118,Wholesale,South,Electronics,2024-04-29,2024-05-04,Delivered,11,94.99,0.10,940.40,USD,Direct,Dealer restock
+ORD-0119,Retail,East,Furniture,2024-04-30,2024-05-07,Delivered,1,370.00,0.05,351.50,USD,Online,
+ORD-0120,Government,West,Food,2024-05-01,2024-05-06,Delivered,180,1.60,0.15,244.80,USD,Direct,Monthly food supply
+ORD-0121,Retail,North,Electronics,2024-05-02,2024-05-06,Delivered,1,299.99,,299.99,USD,Online,
+ORD-0122,Corporate,East,Clothing,2024-05-03,2024-05-08,Delivered,7,54.00,0.08,347.76,USD,Direct,Corporate uniform order
+ORD-0123,Retail,South,Office Supplies,2024-05-04,2024-05-08,Delivered,5,19.50,0.00,97.50,USD,Online,
+ORD-0124,Wholesale,West,Furniture,2024-05-05,2024-05-12,Processing,6,290.00,0.10,1566.00,USD,Direct,Large furniture order
+ORD-0125,Retail,East,Food,2024-05-06,2024-05-10,Delivered,4,8.50,,34.00,USD,Online,
+ORD-0126,Government,North,Electronics,2024-05-07,2024-05-12,Delivered,8,224.99,0.15,1529.93,USD,Direct,Annual electronics procurement
+ORD-0127,Retail,South,Clothing,2024-05-08,2024-05-12,Delivered,3,41.00,0.05,116.85,USD,Online,
+ORD-0128,Corporate,West,Office Supplies,2024-05-09,2024-05-14,Delivered,24,7.50,0.10,162.00,USD,Direct,Annual supply contract
+ORD-0129,Retail,North,Furniture,2024-05-10,2024-05-17,Delivered,1,430.00,,430.00,USD,Online,
+ORD-0130,Wholesale,East,Electronics,2024-05-11,2024-05-16,Delivered,9,134.99,0.10,1093.42,USD,Direct,Wholesale electronics
+ORD-0131,Retail,South,Food,2024-05-12,2024-05-16,Delivered,5,6.00,0.00,30.00,USD,Online,
+ORD-0132,Government,West,Clothing,2024-05-13,2024-05-18,Delivered,18,43.00,0.12,681.12,USD,Direct,Seasonal apparel
+ORD-0133,Retail,East,Electronics,2024-05-14,2024-05-18,Returned,1,419.99,,419.99,USD,Online,Screen damage in transit
+ORD-0134,Corporate,North,Furniture,2024-05-15,2024-05-22,Delivered,3,560.00,0.08,1545.60,USD,Direct,Executive seating
+ORD-0135,Retail,West,Food,2024-05-16,2024-05-20,Delivered,7,5.25,0.00,36.75,USD,Online,
+ORD-0136,Wholesale,South,Office Supplies,2024-05-17,2024-05-23,Delivered,70,4.50,0.10,283.50,USD,Direct,Bulk restock
+ORD-0137,Retail,North,Clothing,2024-05-18,2024-05-22,Delivered,2,62.00,,124.00,USD,Online,Seasonal clothing
+ORD-0138,Government,East,Electronics,2024-05-19,2024-05-24,Delivered,10,174.99,0.15,1487.42,USD,Direct,Annual electronics contract
+ORD-0139,Retail,South,Furniture,2024-05-20,2024-05-27,Processing,1,980.00,0.05,931.00,USD,Online,Custom order
+ORD-0140,Corporate,West,Food,2024-05-21,2024-05-26,Delivered,40,3.10,0.08,114.08,USD,Direct,Catering restock
+ORD-0141,Retail,East,Office Supplies,2024-05-22,2024-05-26,Delivered,6,12.00,,72.00,USD,Online,
+ORD-0142,Wholesale,North,Electronics,2024-05-23,2024-05-28,Delivered,13,99.99,0.10,1169.88,USD,Direct,Tech refresh
+ORD-0143,Retail,South,Clothing,2024-05-24,2024-05-28,Delivered,4,38.00,0.05,144.40,USD,Online,Seasonal promo
+ORD-0144,Government,West,Furniture,2024-05-25,2024-06-01,Delivered,5,390.00,0.12,1716.00,USD,Direct,Office furniture contract
+ORD-0145,Retail,North,Food,2024-05-26,2024-05-30,Delivered,3,9.00,,27.00,USD,Online,
+ORD-0146,Corporate,East,Electronics,2024-05-27,2024-06-01,Delivered,2,549.99,0.10,989.98,USD,Direct,Tech upgrade
+ORD-0147,Retail,South,Office Supplies,2024-05-28,2024-06-01,Delivered,7,14.00,0.00,98.00,USD,Online,Standard delivery
+ORD-0148,Wholesale,West,Clothing,2024-05-29,2024-06-04,Processing,30,26.00,0.10,702.00,USD,Direct,Seasonal clothing order
+ORD-0149,Retail,East,Furniture,2024-05-30,2024-06-06,Delivered,1,665.00,,665.00,USD,Online,
+ORD-0150,Government,North,Food,2024-05-31,2024-06-05,Delivered,90,2.20,0.15,168.30,USD,Direct,Monthly procurement
+ORD-0151,Retail,West,Electronics,2024-06-01,2024-06-05,Delivered,1,389.99,0.05,370.49,USD,Online,Standard order
+ORD-0152,Corporate,South,Clothing,2024-06-02,2024-06-07,Delivered,5,70.00,0.08,322.00,USD,Direct,Corporate uniform
+ORD-0153,Retail,North,Office Supplies,2024-06-03,2024-06-07,Delivered,4,23.00,,92.00,USD,Online,Office supplies restock
+ORD-0154,Wholesale,East,Furniture,2024-06-04,2024-06-11,Delivered,4,460.00,0.10,1656.00,USD,Direct,Large furniture delivery
+ORD-0155,Retail,South,Food,2024-06-05,2024-06-09,Delivered,6,6.80,0.00,40.80,USD,Online,Standard food order
+ORD-0156,Government,West,Electronics,2024-06-06,2024-06-11,Delivered,7,209.99,0.15,1249.44,USD,Direct,Annual procurement
+ORD-0157,Retail,East,Clothing,2024-06-07,2024-06-11,Cancelled,1,77.00,,77.00,USD,Online,Out of stock
+ORD-0158,Corporate,North,Food,2024-06-08,2024-06-13,Delivered,50,2.90,0.08,133.40,USD,Direct,Catering supply
+ORD-0159,Retail,West,Furniture,2024-06-09,2024-06-16,Delivered,1,510.00,0.05,484.50,USD,Online,Standard delivery
+ORD-0160,Wholesale,South,Office Supplies,2024-06-10,2024-06-16,Delivered,55,5.20,0.10,257.40,USD,Direct,Warehouse restock
+ORD-0161,Retail,North,Electronics,2024-06-11,2024-06-15,Delivered,2,159.99,,319.98,USD,Online,
+ORD-0162,Government,East,Clothing,2024-06-12,2024-06-17,Delivered,22,37.00,0.12,716.32,USD,Direct,Annual uniform order
+ORD-0163,Retail,South,Food,2024-06-13,2024-06-17,Delivered,5,7.20,0.00,36.00,USD,Online,Standard delivery
+ORD-0164,Corporate,West,Electronics,2024-06-14,2024-06-19,Delivered,3,459.99,0.10,1241.97,USD,Direct,Tech upgrade
+ORD-0165,Retail,East,Office Supplies,2024-06-15,2024-06-19,Delivered,6,16.00,,96.00,USD,Online,
+ORD-0166,Wholesale,North,Furniture,2024-06-16,2024-06-23,Delivered,5,340.00,0.10,1530.00,USD,Direct,Wholesale furniture
+ORD-0167,Retail,South,Clothing,2024-06-17,2024-06-21,Delivered,3,50.00,0.05,142.50,USD,Online,Seasonal sale
+ORD-0168,Government,West,Food,2024-06-18,2024-06-23,Processing,160,1.75,0.15,238.00,USD,Direct,Monthly food stock
+ORD-0169,Retail,North,Electronics,2024-06-19,2024-06-23,Delivered,1,279.99,,279.99,USD,Online,Standard delivery
+ORD-0170,Corporate,East,Office Supplies,2024-06-20,2024-06-25,Delivered,20,9.00,0.10,162.00,USD,Direct,Annual supply

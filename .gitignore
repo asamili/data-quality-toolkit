@@ -1,0 +1,312 @@
+# ===============================
+# Python
+# ===============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyo
+*.pyd
+*.pkl
+.Python
+*.egg-info/
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ===============================
+# Testing & Coverage
+# ===============================
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+nosetests.xml
+junit.xml
+test-results/
+pytest_cache/
+
+# ===============================
+# Type Checking
+# ===============================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# ===============================
+# Build & Distribution
+# ===============================
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+
+# ===============================
+# Virtual Environments
+# ===============================
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+.pyenv
+.asdf
+
+# ===============================
+# IDEs & Editors
+# ===============================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*.swn
+*~
+.*.swp
+.*.swo
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# ===============================
+# OS Files
+# ===============================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ===============================
+# Data and Generated Artifacts
+# ===============================
+# Ignore all data files by default
+*.csv
+*.parquet
+*.xlsx
+*.xls
+*.xlsm
+*.h5
+*.hdf5
+*.feather
+*.db
+*.sqlite
+*.sqlite3
+*.json
+
+# But keep example files
+!examples/*.csv
+!examples/**/*.csv
+!examples/*.json
+!tests/fixtures/*.csv
+!tests/fixtures/*.json
+
+# Runtime/generated line-delimited JSON artifacts (e.g. quality_history.jsonl, telemetry.jsonl)
+*.jsonl
+
+# Ignore output directories
+/dist/
+/export/
+/output/
+/results/
+/artifacts/
+powerbi_package/
+
+# But keep dist structure files
+!dist/.gitkeep
+!dist/star/.gitkeep
+!dist/powerbi_package/.gitkeep
+
+# ===============================
+# Logs & Temporary Files
+# ===============================
+logs/
+*.log
+*.log.*
+*.pid
+*.seed
+*.pid.lock
+
+# ===============================
+# Jupyter Notebooks
+# ===============================
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+*.ipynb_checkpoints
+
+# Keep example notebooks
+!examples/*.ipynb
+
+# ===============================
+# Documentation
+# ===============================
+docs/_build/
+docs/_static/generated/
+docs/_autosummary/
+site/
+mkdocs_build/
+
+# ===============================
+# Security & Secrets
+# ===============================
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Secrets
+secrets.toml
+secrets.yaml
+secrets.json
+*.pem
+*.key
+*.crt
+*.cer
+*.pfx
+*.p12
+credentials.json
+token.json
+
+# Claude Code machine-local settings (not project config)
+.claude/settings.local.json
+CLAUDE.local.md
+
+# ===============================
+# CI/CD & Testing
+# ===============================
+.github/workflows/local/
+.gitlab/local/
+.circleci/local/
+
+# ===============================
+# Project Specific (DQT)
+# ===============================
+# Generated artifacts
+column_registry.json
+unified_registry.json
+telemetry.jsonl
+relationships.json
+
+# But keep schema definitions
+!schemas/*.json
+!config/*.json
+
+# Local development
+/data/
+!/data/.gitkeep
+scratch/
+sandbox/
+local/
+
+# Local/runtime/generated workspaces
+demo_output/
+tools/_results/
+samples/
+.tmp/
+.dqt/
+.share_pack/
+n8n/
+
+# Performance profiling
+*.prof
+*.stats
+*.pstats
+
+# ===============================
+# Docker
+# ===============================
+docker/data/
+docker/dist/
+!docker/data/.gitkeep
+!docker/dist/.gitkeep
+
+# ===============================
+# Keep These (Important!)
+# ===============================
+!.gitkeep
+!.github/
+!requirements*.txt
+!constraints.txt
+!Makefile
+!pyproject.toml
+!README.md
+!LICENSE
+!SECURITY.md
+!CONTRIBUTING.md
+!CHANGELOG.md
+!.pre-commit-config.yaml
+!.editorconfig
+/examples/demo/Uber_Data.csv

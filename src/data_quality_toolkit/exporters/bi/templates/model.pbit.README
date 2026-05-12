@@ -1,0 +1,24 @@
+Power BI Template Requirements
+==============================
+
+Place your Power BI template file here as: model.pbit
+
+The template must:
+1. Use a Text parameter named "BaseFolder"
+2. Reference tables using relative paths:
+   - (BaseFolder)\star\dim_dataset.csv
+   - (BaseFolder)\star\dim_column.csv
+   - (BaseFolder)\star\fact_profile_runs.csv
+   - (BaseFolder)\star\fact_quality_metrics.csv
+   - (BaseFolder)\time\dim_time.csv
+
+3. Mark dim_time as a Date Table
+4. Set up relationships as defined in relationships.json
+
+To create the template:
+1. Open Power BI Desktop
+2. Create parameter: BaseFolder (Text) = "./dist"
+3. Import CSVs using the parameter in paths
+4. Set up relationships
+5. Mark dim_time as date table
+6. Save as template (.pbit)

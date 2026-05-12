@@ -1,0 +1,18 @@
+# docker/docker-compose.override.yml
+# Local development overrides (not committed to git)
+
+services:
+  dqt:
+    build:
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    environment:
+      - LOG_LEVEL=DEBUG
+      - LOG_FORMAT=text
+    volumes:
+      - ../src:/app/src:ro  # Mount source for hot reload
+      - /path/to/local/data:/data/local
+
+  dqt-cli:
+    environment:
+      - LOG_FORMAT=text  # Easier to read in terminal

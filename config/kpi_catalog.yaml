@@ -1,0 +1,84 @@
+# config/kpi_catalog.yaml
+version: "1.0.0"
+description: "Standard data quality KPIs"
+
+kpis:
+  - id: completeness_pct
+    title: "Completeness %"
+    expression: "AVERAGE('fact_quality_metrics'[completeness])"
+    grain: global
+    unit: percent
+    scale: 100
+    depends_on: []
+    description: "Average completeness across all columns"
+    format_string: "0.00%"
+
+  - id: distinct_avg
+    title: "Avg Distinct Count"
+    expression: "AVERAGE('fact_quality_metrics'[distinct_count])"
+    grain: global
+    unit: count
+    scale: 1
+    depends_on: []
+    description: "Average number of distinct values per column"
+    format_string: "#,##0"
+
+  - id: null_rate
+    title: "Null Rate"
+    expression: "AVERAGE('fact_quality_metrics'[null_pct])"
+    grain: global
+    unit: percent
+    scale: 100
+    depends_on: []
+    description: "Average null percentage across columns"
+    format_string: "0.00%"
+
+  - id: quality_score
+    title: "Quality Score"
+    expression: "([Completeness %] * 0.5) + ((100 - [Null Rate]) * 0.5)"
+    grain: global
+    unit: score
+    scale: 1
+    depends_on: ["completeness_pct", "null_rate"]
+    description: "Overall data quality score (0-100)"
+    format_string: "0.0"
+
+  - id: dataset_count
+    title: "Dataset Count"
+    expression: "COUNTROWS('dim_dataset')"
+    grain: global
+    unit: count
+    scale: 1
+    depends_on: []
+    description: "Total number of datasets profiled"
+    format_string: "#,##0"
+
+  - id: column_count
+    title: "Column Count"
+    expression: "COUNTROWS('dim_column')"
+    grain: global
+    unit: count
+    scale: 1
+    depends_on: []
+    description: "Total number of columns profiled"
+    format_string: "#,##0"
+
+  - id: total_rows_profiled
+    title: "Total Rows Profiled"
+    expression: "SUM('fact_profile_runs'[rows])"
+    grain: global
+    unit: count
+    scale: 1
+    depends_on: []
+    description: "Total number of rows profiled across all runs"
+    format_string: "#,##0"
+
+  - id: avg_memory_mb
+    title: "Avg Memory (MB)"
+    expression: "AVERAGE('fact_profile_runs'[memory_mb])"
+    grain: global
+    unit: count
+    scale: 1
+    depends_on: []
+    description: "Average memory usage per profile run"
+    format_string: "#,##0.00"

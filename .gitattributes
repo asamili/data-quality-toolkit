@@ -1,0 +1,9 @@
+# Use LF for code/config
+*.py  text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh  text eol=lf
+
+# Keep CRLF for Windows scripts
+*.ps1 text eol=crlf

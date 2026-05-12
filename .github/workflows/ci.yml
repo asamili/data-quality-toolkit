@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  lint-type-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install project (dev+test extras)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,test]"
+
+      # Lint
+      - name: Ruff (lint only)
+        run: ruff check .
+
+      - name: Black (check only)
+        run: black --check .
+
+      - name: isort (check only)
+        run: isort --check-only .
+
+      # Types
+      - name: MyPy
+        run: mypy
+
+      # Tests (respect pytest.ini: coverage + fail_under)
+      - name: Unit tests (with coverage)
+        run: pytest -v
+
+      # E2E smoke of CLI happy path
+      - name: E2E smoke (dqt export)
+        run: |
+          echo "id,age,score" > test.csv
+          echo "1,25,95.5" >> test.csv
+          echo "2,30,87.2" >> test.csv
+          echo "3,,76.8" >> test.csv
+          dqt export test.csv
+          test -f dist/star/dim_dataset.csv
+
+      # Optional: pre-commit as repo policy
+      - name: Pre-commit (repo policy)
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files

@@ -1,0 +1,44 @@
+{
+  "tables": {
+    "dim_dataset": { "primary_key": ["dataset_id"] },
+    "dim_column": {
+      "primary_key": ["column_id"],
+      "foreign_keys": [["dataset_id", "dim_dataset", "dataset_id"]]
+    },
+    "fact_profile_runs": {
+      "foreign_keys": [["dataset_id", "dim_dataset", "dataset_id"]]
+    },
+    "fact_quality_metrics": {
+      "foreign_keys": [["column_id", "dim_column", "column_id"]]
+    },
+    "dim_time": { "primary_key": ["time_id"] }
+  },
+  "relationships": [
+    {
+      "from": ["dim_column", "dataset_id"],
+      "to": ["dim_dataset", "dataset_id"],
+      "type": "many-to-one",
+      "crossFilter": "single"
+    },
+    {
+      "from": ["fact_profile_runs", "dataset_id"],
+      "to": ["dim_dataset", "dataset_id"],
+      "type": "many-to-one",
+      "crossFilter": "single"
+    },
+    {
+      "from": ["fact_quality_metrics", "column_id"],
+      "to": ["dim_column", "column_id"],
+      "type": "many-to-one",
+      "crossFilter": "single"
+    }
+    {% if include_time_rel %}
+    ,{
+      "from": ["fact_profile_runs", "time_id"],
+      "to": ["dim_time", "time_id"],
+      "type": "many-to-one",
+      "crossFilter": "single"
+    }
+    {% endif %}
+  ]
+}
