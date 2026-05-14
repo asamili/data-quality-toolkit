@@ -93,15 +93,27 @@ quality_report.json
 
 ### `quality_report.json`
 
-The top-level run summary. The report uses a nested structure with these top-level sections:
+The top-level run summary. Written to `star/quality_report.json` in the output directory. The file is a flat JSON document:
 
 ```json
 {
-  "meta":         { "run_id": "...", "dataset_id": "sha1:...", "ts": "..." },
-  "profile":      { "rows": 170, "cols": 14, ... },
-  "assessment":   { "score": 0.9571, "issues": [ { "type": "missing", "column": "discount_pct", "severity": "high", "category": "Completeness" }, { "..." } ] },
-  "star":         { ... },
-  "export_paths": { ... }
+  "run_id": "...",
+  "dataset_id": "sha1:...",
+  "ts": "2026-05-14T...",
+  "score": 0.9571,
+  "rows": 170,
+  "cols": 14,
+  "issues_total": 3,
+  "issues_by_severity": { "high": 2, "medium": 1 },
+  "issues_by_category": { "Completeness": 3 },
+  "artifacts": {
+    "dim_dataset": "dist/demo/star/dim_dataset.csv",
+    "dim_column": "dist/demo/star/dim_column.csv",
+    "fact_profile_runs": "dist/demo/star/fact_profile_runs.csv",
+    "fact_quality_metrics": "dist/demo/star/fact_quality_metrics.csv",
+    "fact_issues": "dist/demo/star/fact_issues.csv"
+  },
+  "duration_secs": 0.073
 }
 ```
 
