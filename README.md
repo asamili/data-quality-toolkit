@@ -151,11 +151,40 @@ If `dqt` is not on your PATH, invoke the CLI directly via the interpreter:
 <path-to-python> -m data_quality_toolkit.cli.main compare examples/demo/sample_orders.csv --outdir dist/demo
 ```
 
+## Python API
+
+Install the package and import directly — no subprocess required.
+
+```python
+from data_quality_toolkit import profile_csv, assess_csv, export_csv, compare_runs
+
+# Profile a CSV file (no disk writes)
+prof = profile_csv("examples/demo/sample_orders.csv")
+print(prof["profile"]["rows"], prof["profile"]["cols"])
+
+# Assess quality (no disk writes)
+asmt = assess_csv("examples/demo/sample_orders.csv")
+print(f"Score: {asmt['assessment']['score']:.2%}  Issues: {len(asmt['assessment']['issues'])}")
+
+# Export star-schema artifacts
+run1 = export_csv("examples/demo/sample_orders.csv", output_dir="dist/api-demo")
+run2 = export_csv("examples/demo/sample_orders.csv", output_dir="dist/api-demo")
+
+# Compare the last two runs
+cmp = compare_runs("examples/demo/sample_orders.csv", output_dir="dist/api-demo")
+print(f"Score delta: {cmp['score_delta']:+.4f}")
+```
+
+All four functions accept `str` or `pathlib.Path`. All options are keyword-only after `path`. All return `dict[str, Any]`.
+
+See [`examples/01_quickstart.ipynb`](examples/01_quickstart.ipynb) for a runnable notebook.
+
 ## 📁 Project Structure
 
 ```
 data-quality-toolkit/
 ├── src/data_quality_toolkit/   # Core library
+│   ├── api.py                 # Public Python API (profile_csv, assess_csv, export_csv, compare_runs)
 │   ├── loaders/               # CSV loading and validation
 │   ├── profiling/             # Column-level profiling
 │   ├── assessment/            # Quality issue detection
@@ -210,7 +239,7 @@ make test
 
 ## ⚠️ Known Limitations
 
-- **CLI-only:** no REST API or web UI in this release
+- **No REST API or web UI:** not available in this release. A Python API (`profile_csv`, `assess_csv`, `export_csv`, `compare_runs`) is available for programmatic use — see [Python API](#python-api) below.
 - **CSV input only:** other file formats are not supported
 - **No config file:** all options are passed as CLI flags (`--null-threshold`, `--outdir`)
 - **No streaming / chunking:** large files are loaded fully into memory via pandas
