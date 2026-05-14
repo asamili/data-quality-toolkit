@@ -8,6 +8,28 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ---
 
+## [1.3.0] - 2026-05-14
+
+### Added
+
+- Public Python API (`from data_quality_toolkit import ...`):
+  - `profile_csv(path, *, sep, encoding, na_values, sample_size)` — profile a CSV file; no disk writes
+  - `assess_csv(path, *, null_threshold, sep, encoding, na_values, sample_size)` — profile and assess; no disk writes
+  - `export_csv(path, *, output_dir, null_threshold, sep, encoding, na_values, sample_size)` — full pipeline; writes star-schema artifacts
+  - `compare_runs(path, *, output_dir)` — compare the last two export runs for the same dataset
+- All four functions accept `str | Path`, use keyword-only arguments after `path`, and return `dict[str, Any]`
+- Python API usage added to README and quickstart notebook (`examples/01_quickstart.ipynb`)
+- Unit tests for all four public API functions (`tests/unit/api/test_public_api.py` — 10 tests)
+- Integration test for full pipeline via public API (`tests/integration/test_api_e2e.py` — 1 test)
+
+### Validation
+
+- 420/420 tests passed (public snapshot full regression)
+- Pre-commit all hooks passed
+- GitHub CI run 25873401562 — success
+
+---
+
 ## [1.2.0] - 2026-05-01
 
 ### Added
