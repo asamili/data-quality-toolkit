@@ -85,7 +85,7 @@ The next productization steps are expected to focus on:
 
 ```bash
 # Clone the repository
-git clone <repo-url>
+git clone https://github.com/asamili/data-quality-toolkit
 cd data-quality-toolkit
 
 # Create virtual environment
