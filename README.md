@@ -105,9 +105,9 @@ Use the full interpreter path — works immediately after `pip install -e .` wit
 
 ```powershell
 # Export the bundled demo dataset — produces quality artifacts under dist/demo/
-<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/Uber_Data.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
 ```
-Open `dist/demo/star/quality_report.json` to confirm the run succeeded (score, issue counts, artifact paths).
+Open `dist/demo/star/quality_report.json` to confirm the run succeeded (score, issue counts, artifact paths). The bundled `sample_orders.csv` is a 170-row synthetic orders dataset; a successful first run produces a quality score around 0.96 with 3 intentional issues flagged.
 
 ### Demo
 
@@ -147,8 +147,8 @@ dqt compare data/orders.csv --outdir dist/
 If `dqt` is not on your PATH, invoke the CLI directly via the interpreter:
 
 ```bash
-<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/Uber_Data.csv --outdir dist/demo
-<path-to-python> -m data_quality_toolkit.cli.main compare examples/demo/Uber_Data.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.cli.main compare examples/demo/sample_orders.csv --outdir dist/demo
 ```
 
 ## 📁 Project Structure
