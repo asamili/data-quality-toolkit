@@ -35,7 +35,8 @@ def test_cmd_dashboard_calls_subprocess_with_app_file(monkeypatch: object) -> No
 
     monkeypatch.setattr(cli.subprocess, "run", fake_run)  # type: ignore[attr-defined]
 
-    rc = cli.cmd_dashboard(argparse.Namespace())
+    with patch.dict(sys.modules, {"streamlit": MagicMock()}):
+        rc = cli.cmd_dashboard(argparse.Namespace())
 
     assert rc == 0
     assert captured_args[0] == sys.executable
@@ -50,5 +51,6 @@ def test_cmd_dashboard_propagates_exit_code(monkeypatch: object) -> None:
     fake_result.returncode = 42
     monkeypatch.setattr(cli.subprocess, "run", lambda *_a, **_k: fake_result)  # type: ignore[attr-defined]
 
-    rc = cli.cmd_dashboard(argparse.Namespace())
+    with patch.dict(sys.modules, {"streamlit": MagicMock()}):
+        rc = cli.cmd_dashboard(argparse.Namespace())
     assert rc == 42
