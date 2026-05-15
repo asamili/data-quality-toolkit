@@ -80,8 +80,9 @@ def test_pipeline_e2e_smoke(tmp_path: Path):
         pytest.skip(f"Performance warning: {elapsed:.2f}s > 30s target")
 
 
-def test_pipeline_relationships(tmp_path: Path):
+def test_pipeline_relationships(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """relationships.json is emitted alongside star CSVs and well-formed."""
+    monkeypatch.setenv("DQT_DB_PATH", str(tmp_path / "dqt.db"))
     csv_path = _generate_test_csv(tmp_path / "test_small.csv", rows=1_000)
     result = run_export_star(str(csv_path), output_dir=str(tmp_path))
 
@@ -90,3 +91,14 @@ def test_pipeline_relationships(tmp_path: Path):
 
     data = json.loads(rel_path.read_text(encoding="utf-8"))
     assert "relationships" in data and len(data["relationships"]) == 3
+
+    # SQLite DB created and run persisted
+    import sqlite3 as _sqlite3
+
+    db_path = tmp_path / "dqt.db"
+    assert db_path.exists()
+    con = _sqlite3.connect(str(db_path))
+    try:
+        assert con.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 1
+    finally:
+        con.close()

@@ -1,15 +1,20 @@
 # src/data_quality_toolkit/workflow/compare.py
 """Minimal run-to-run comparison helper.
 
-Reads quality_history.jsonl and compares the latest two runs for a dataset_id.
+Reads run history from SQLite (primary) or quality_history.jsonl (fallback)
+and compares the latest two runs for a dataset_id.
 History file is appended-to by run_export_star; one JSON record per line.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
+
+from data_quality_toolkit.storage.connection import StorageError
+from data_quality_toolkit.storage.reader import read_run_history
 
 
 def _load_history(history_path: Path) -> list[dict[str, Any]]:
@@ -48,18 +53,51 @@ def _dict_delta(a: Any, b: Any) -> dict[str, int] | None:
     return {k: int(b.get(k, 0)) - int(a.get(k, 0)) for k in keys}
 
 
+def _find_db_path(history_path: Path) -> Path | None:
+    """Resolve candidate SQLite DB path without importing settings.
+
+    Checks DQT_DB_PATH env var first; then infers {outdir}/dqt.db from
+    history_path = {outdir}/star/quality_history.jsonl. Returns None if no
+    existing DB is found.
+    """
+    override = os.environ.get("DQT_DB_PATH")
+    if override:
+        p = Path(override)
+        return p if p.exists() else None
+    candidate = history_path.parent.parent / "dqt.db"
+    return candidate if candidate.exists() else None
+
+
+def _runs_from_sqlite(history_path: Path, dataset_id: str) -> list[dict[str, Any]]:
+    """Try SQLite; return [] on absent DB or any read failure."""
+    db_path = _find_db_path(history_path)
+    if db_path is None:
+        return []
+    try:
+        return read_run_history(db_path, dataset_id)
+    except StorageError:
+        return []
+
+
 def compare_last_two_runs(
     dataset_id: str,
     history_path: Path,
 ) -> dict[str, Any]:
     """
-    Compare the latest two runs for *dataset_id* from *history_path*.
+    Compare the latest two runs for *dataset_id*.
+
+    SQLite is the primary source when a usable DB with >=2 matching runs is
+    found via DQT_DB_PATH or inferred from *history_path*. Falls back to
+    *history_path* (JSONL) when the DB is absent, unreadable, or has fewer
+    than 2 matching runs.
 
     Returns a comparison dict on success, or an error dict when fewer than 2
     runs exist for this dataset.
     """
-    all_records = _load_history(history_path)
-    runs = [r for r in all_records if r.get("dataset_id") == dataset_id]
+    runs = _runs_from_sqlite(history_path, dataset_id)
+    if len(runs) < 2:
+        all_records = _load_history(history_path)
+        runs = [r for r in all_records if r.get("dataset_id") == dataset_id]
 
     if len(runs) < 2:
         return {
@@ -75,7 +113,7 @@ def compare_last_two_runs(
             "runs_found": len(runs),
         }
 
-    # Append order: last two = most recent pair
+    # Last two by insertion/ts order = most recent pair
     prev = runs[-2]
     curr = runs[-1]
 

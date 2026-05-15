@@ -23,6 +23,9 @@ from data_quality_toolkit.profiling.profiling_orchestrator import run_profiling
 from data_quality_toolkit.shared.constants import DEFAULT_NULL_THRESHOLD
 from data_quality_toolkit.shared.models import ProfileResult
 from data_quality_toolkit.shared.settings import load_settings
+from data_quality_toolkit.storage.connection import _get_db_path, connect
+from data_quality_toolkit.storage.schema import ensure_db
+from data_quality_toolkit.storage.writer import persist_export_run
 from data_quality_toolkit.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -225,6 +228,43 @@ def run_export_star(
     with history_path.open("a", encoding="utf-8") as _hf:
         _hf.write(json.dumps(history_record, default=str) + "\n")
     paths["quality_history"] = str(history_path)
+
+    # Persist run to SQLite (additive — failure must not fail export)
+    try:
+        _db_path = _get_db_path(settings)
+        ensure_db(_db_path)
+        _con = connect(_db_path)
+        try:
+            # ensure_db may have imported the current run from quality_history.jsonl
+            # (when runs table was empty); remove that partial record so persist_export_run
+            # can insert it with full data (rows, cols, memory_mb, null_threshold).
+            _con.execute("DELETE FROM runs WHERE run_id = ?", (prof["run_id"],))
+            _con.commit()
+            persist_export_run(
+                _con,
+                run_id=prof["run_id"],
+                dataset_id=prof["dataset_id"],
+                source_path=meta["source_path"],
+                ts=prof["ts"],
+                score=float(assessment["score"]),
+                rows=prof["rows"],
+                cols=prof["cols"],
+                memory_mb=float(prof["memory_mb"]),
+                null_threshold=float(null_threshold),
+                issues_total=len(all_issues),
+                issues_by_severity=_count_by(all_issues, "severity"),
+                issues_by_category=_count_by(all_issues, "category"),
+                duration_secs=duration_secs,
+                columns=cast(list[dict[str, Any]], prof["columns"]),
+                quality_metrics=cast(dict[str, pd.DataFrame], tables)[
+                    "fact_quality_metrics"
+                ].to_dict(orient="records"),
+                issues=all_issues,
+            )
+        finally:
+            _con.close()
+    except Exception as exc:
+        logger.warning("SQLite persistence failed: %s", exc)
 
     logger.info(
         "quality_report.json written: score=%.4f issues=%d",

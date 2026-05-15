@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from data_quality_toolkit.storage.connection import connect
+from data_quality_toolkit.storage.schema import ensure_db
 from data_quality_toolkit.workflow.compare import (
     _dict_delta,
     _load_history,
@@ -251,3 +253,151 @@ def test_compare_mixed_old_new_records_produce_none_delta(tmp_path: Path) -> Non
     assert "error" not in result
     assert result["issues_by_severity_delta"] is None
     assert result["issues_by_category_delta"] is None
+
+
+# ---------------------------------------------------------------------------
+# SQLite-first path
+# ---------------------------------------------------------------------------
+
+
+def _make_db(tmp_path: Path, runs: list[dict]) -> Path:
+    """Create a DB in tmp_path and INSERT the given run dicts."""
+    db = tmp_path / "dqt.db"
+    ensure_db(db)
+    con = connect(db)
+    try:
+        for r in runs:
+            con.execute(
+                "INSERT OR IGNORE INTO datasets(dataset_id, source_path) VALUES (?, ?)",
+                (r["dataset_id"], "/f.csv"),
+            )
+            con.execute(
+                "INSERT INTO runs(run_id, dataset_id, ts, score, rows, cols, memory_mb,"
+                " null_threshold, issues_total, issues_by_severity, issues_by_category,"
+                " duration_secs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    r["run_id"],
+                    r["dataset_id"],
+                    r["ts"],
+                    r.get("score", 0.9),
+                    100,
+                    2,
+                    1.0,
+                    0.1,
+                    r.get("issues_total", 0),
+                    json.dumps(r.get("issues_by_severity", {})),
+                    json.dumps(r.get("issues_by_category", {})),
+                    r.get("duration_secs", 1.0),
+                ),
+            )
+        con.commit()
+    finally:
+        con.close()
+    return db
+
+
+def test_compare_uses_sqlite_when_db_has_two_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = _make_db(
+        tmp_path,
+        [
+            {
+                "run_id": "db-r1",
+                "dataset_id": "sha1:abc",
+                "ts": "2026-01-01T00:00:00Z",
+                "score": 0.80,
+                "issues_total": 5,
+                "duration_secs": 1.2,
+            },
+            {
+                "run_id": "db-r2",
+                "dataset_id": "sha1:abc",
+                "ts": "2026-01-02T00:00:00Z",
+                "score": 0.90,
+                "issues_total": 2,
+                "duration_secs": 1.0,
+            },
+        ],
+    )
+    monkeypatch.setenv("DQT_DB_PATH", str(db))
+    result = compare_last_two_runs("sha1:abc", tmp_path / "nonexistent.jsonl")
+    assert "error" not in result
+    assert result["previous_run_id"] == "db-r1"
+    assert result["current_run_id"] == "db-r2"
+    assert result["score_delta"] == pytest.approx(0.10, abs=1e-5)
+
+
+def test_compare_falls_back_to_jsonl_when_db_absent(tmp_path: Path) -> None:
+    p = _write_history(tmp_path, [RUN_A, RUN_B])
+    result = compare_last_two_runs("sha1:abc", p)
+    assert "error" not in result
+    assert result["previous_run_id"] == "run-aaa"
+    assert result["current_run_id"] == "run-bbb"
+
+
+def test_compare_falls_back_to_jsonl_when_db_has_one_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = _make_db(
+        tmp_path,
+        [{"run_id": "db-r1", "dataset_id": "sha1:abc", "ts": "2026-01-01T00:00:00Z"}],
+    )
+    monkeypatch.setenv("DQT_DB_PATH", str(db))
+    p = _write_history(tmp_path, [RUN_A, RUN_B])
+    result = compare_last_two_runs("sha1:abc", p)
+    assert "error" not in result
+    assert result["previous_run_id"] == "run-aaa"
+    assert result["current_run_id"] == "run-bbb"
+
+
+def test_compare_sqlite_output_shape_matches_expected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = _make_db(
+        tmp_path,
+        [
+            {
+                "run_id": "db-r1",
+                "dataset_id": "sha1:abc",
+                "ts": "2026-01-01T00:00:00Z",
+                "score": 0.80,
+                "issues_total": 5,
+                "duration_secs": 1.2,
+            },
+            {
+                "run_id": "db-r2",
+                "dataset_id": "sha1:abc",
+                "ts": "2026-01-02T00:00:00Z",
+                "score": 0.90,
+                "issues_total": 2,
+                "duration_secs": 1.0,
+            },
+        ],
+    )
+    monkeypatch.setenv("DQT_DB_PATH", str(db))
+    result = compare_last_two_runs("sha1:abc", tmp_path / "nope.jsonl")
+    assert "error" not in result
+    expected_keys = {
+        "dataset_id",
+        "current_run_id",
+        "previous_run_id",
+        "current_score",
+        "previous_score",
+        "score_delta",
+        "current_issues_total",
+        "previous_issues_total",
+        "issues_delta",
+        "previous_issues_by_severity",
+        "current_issues_by_severity",
+        "issues_by_severity_delta",
+        "previous_issues_by_category",
+        "current_issues_by_category",
+        "issues_by_category_delta",
+        "current_duration_secs",
+        "previous_duration_secs",
+        "duration_delta",
+        "current_ts",
+        "previous_ts",
+    }
+    assert expected_keys == set(result.keys())

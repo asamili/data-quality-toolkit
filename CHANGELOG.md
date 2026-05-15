@@ -6,6 +6,28 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [Unreleased]
 
+### Added
+- SQLite storage package (`data_quality_toolkit.storage`):
+  - `connection.py` — `connect()`, `StorageError`, `_get_db_path()` resolver
+  - `schema.py` — `ensure_db()` initialises schema and imports existing JSONL history on first use
+  - `importer.py` — `import_jsonl_history()` seeds `runs` table from `quality_history.jsonl`
+  - `writer.py` — `persist_export_run()` writes datasets, columns, runs, quality_metrics, issues atomically
+  - `reader.py` — `read_run_history()` returns run records ordered by `ts ASC`
+  - Schema tables: `datasets`, `columns`, `runs`, `quality_metrics`, `issues`, `schema_meta`
+  - No external DB dependency; stdlib `sqlite3` only; Postgres deferred
+- `export-star` now persists each run to SQLite additively (failure is non-fatal; CSV/JSONL output unaffected)
+- `compare` now uses SQLite as primary run-history source with `quality_history.jsonl` fallback
+  - DB path resolved via `DQT_DB_PATH` env var or inferred from `{outdir}/dqt.db`
+  - Falls back to JSONL when DB absent, unreadable, or has fewer than 2 matching runs
+  - Output shape unchanged — all existing callers and CLI unaffected
+
+### Fixed
+- `quality_metrics` writer now correctly stores `null_pct`, `distinct_count`, and `completeness` per column; previously these values were silently discarded due to a metric-name/column-id field swap
+
+### Compatibility
+- CSV, JSONL, and `quality_report.json` outputs preserved alongside SQLite; no breaking changes
+- `compare` JSONL fallback ensures backward compatibility with existing export directories that predate SQLite
+
 ---
 
 ## [1.3.0] - 2026-05-14
