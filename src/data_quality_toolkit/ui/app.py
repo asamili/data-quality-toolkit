@@ -50,3 +50,7 @@ def main() -> None:
         return
 
     st.dataframe(records)
+
+
+if __name__ == "__main__":
+    main()
