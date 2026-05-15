@@ -598,8 +598,11 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
     import data_quality_toolkit.ui.app as _app_mod
 
     app_file = inspect.getfile(_app_mod)
-    result = subprocess.run([sys.executable, "-m", "streamlit", "run", app_file])  # noqa: S603
-    return result.returncode
+    try:
+        result = subprocess.run([sys.executable, "-m", "streamlit", "run", app_file])  # noqa: S603
+        return result.returncode
+    except KeyboardInterrupt:
+        return 130
 
 
 def build_parser() -> argparse.ArgumentParser:

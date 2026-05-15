@@ -54,3 +54,13 @@ def test_cmd_dashboard_propagates_exit_code(monkeypatch: object) -> None:
     with patch.dict(sys.modules, {"streamlit": MagicMock()}):
         rc = cli.cmd_dashboard(argparse.Namespace())
     assert rc == 42
+
+
+def test_cmd_dashboard_keyboard_interrupt_returns_130(monkeypatch: object) -> None:
+    def fake_run(*_a: object, **_k: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)  # type: ignore[attr-defined]
+    with patch.dict(sys.modules, {"streamlit": MagicMock()}):
+        rc = cli.cmd_dashboard(argparse.Namespace())
+    assert rc == 130
