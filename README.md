@@ -85,7 +85,7 @@ The next productization steps are expected to focus on:
 
 ```bash
 # Clone the repository
-git clone https://github.com/asamili/data-quality-toolkit
+git clone <repo-url>
 cd data-quality-toolkit
 
 # Create virtual environment
@@ -105,9 +105,9 @@ Use the full interpreter path — works immediately after `pip install -e .` wit
 
 ```powershell
 # Export the bundled demo dataset — produces quality artifacts under dist/demo/
-<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/Uber_Data.csv --outdir dist/demo
 ```
-Open `dist/demo/star/quality_report.json` to confirm the run succeeded (score, issue counts, artifact paths). The bundled `sample_orders.csv` is a 170-row synthetic orders dataset; a successful first run produces a quality score around 0.96 with 3 intentional issues flagged.
+Open `dist/demo/star/quality_report.json` to confirm the run succeeded (score, issue counts, artifact paths).
 
 ### Demo
 
@@ -137,6 +137,9 @@ dqt export data/orders.csv --outdir dist/
 # Compare the latest two runs for the same dataset
 # Requires at least two prior export runs written to the same --outdir
 dqt compare data/orders.csv --outdir dist/
+
+# Launch the Streamlit dashboard (requires: pip install data-quality-toolkit[ui])
+dqt dashboard
 ```
 
 > **Note on `compare`:** history is stored in `star/quality_history.jsonl` inside your `--outdir`.
@@ -147,50 +150,23 @@ dqt compare data/orders.csv --outdir dist/
 If `dqt` is not on your PATH, invoke the CLI directly via the interpreter:
 
 ```bash
-<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
-<path-to-python> -m data_quality_toolkit.cli.main compare examples/demo/sample_orders.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/Uber_Data.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.cli.main compare examples/demo/Uber_Data.csv --outdir dist/demo
 ```
-
-## Python API
-
-Install the package and import directly — no subprocess required.
-
-```python
-from data_quality_toolkit import profile_csv, assess_csv, export_csv, compare_runs
-
-# Profile a CSV file (no disk writes)
-prof = profile_csv("examples/demo/sample_orders.csv")
-print(prof["profile"]["rows"], prof["profile"]["cols"])
-
-# Assess quality (no disk writes)
-asmt = assess_csv("examples/demo/sample_orders.csv")
-print(f"Score: {asmt['assessment']['score']:.2%}  Issues: {len(asmt['assessment']['issues'])}")
-
-# Export star-schema artifacts
-run1 = export_csv("examples/demo/sample_orders.csv", output_dir="dist/api-demo")
-run2 = export_csv("examples/demo/sample_orders.csv", output_dir="dist/api-demo")
-
-# Compare the last two runs
-cmp = compare_runs("examples/demo/sample_orders.csv", output_dir="dist/api-demo")
-print(f"Score delta: {cmp['score_delta']:+.4f}")
-```
-
-All four functions accept `str` or `pathlib.Path`. All options are keyword-only after `path`. All return `dict[str, Any]`.
-
-See [`examples/01_quickstart.ipynb`](examples/01_quickstart.ipynb) for a runnable notebook.
 
 ## 📁 Project Structure
 
 ```
 data-quality-toolkit/
 ├── src/data_quality_toolkit/   # Core library
-│   ├── api.py                 # Public Python API (profile_csv, assess_csv, export_csv, compare_runs)
 │   ├── loaders/               # CSV loading and validation
 │   ├── profiling/             # Column-level profiling
 │   ├── assessment/            # Quality issue detection
 │   ├── exporters/             # Star-schema CSV + quality_report export
 │   ├── workflow/              # Pipeline orchestration and compare
-│   └── cli/                   # Command-line interface
+│   ├── storage/               # SQLite-backed run history (Phase 3)
+│   ├── cli/                   # Command-line interface
+│   └── ui/                    # Experimental Streamlit dashboard (Phase 4)
 ├── tests/                      # Test suites
 ├── docs/                       # Documentation and demo stories
 ├── examples/                   # Demo packages and sample data
@@ -239,7 +215,7 @@ make test
 
 ## ⚠️ Known Limitations
 
-- **No REST API or web UI:** not available in this release. A Python API (`profile_csv`, `assess_csv`, `export_csv`, `compare_runs`) is available for programmatic use — see [Python API](#python-api) below.
+- **CLI-first:** no REST API in this release; experimental Streamlit dashboard available via `dqt dashboard` (Phase 4) — install with `pip install data-quality-toolkit[ui]`
 - **CSV input only:** other file formats are not supported
 - **No config file:** all options are passed as CLI flags (`--null-threshold`, `--outdir`)
 - **No streaming / chunking:** large files are loaded fully into memory via pandas
@@ -260,4 +236,4 @@ Built with pandas, typer, rich, pydantic, and other open-source libraries.
 
 ---
 
-**Version**: v1.2.0 | **Status**: MVP — CLI-first, CSV-first
+**Version**: v1.4.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history

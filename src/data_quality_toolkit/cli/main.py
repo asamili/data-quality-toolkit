@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import logging
 import os
+import subprocess
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -583,6 +585,23 @@ class _DQTArgumentParser(argparse.ArgumentParser):
         sys.exit(2)
 
 
+def cmd_dashboard(args: argparse.Namespace) -> int:
+    try:
+        import streamlit  # noqa: F401
+    except ImportError:
+        print(
+            "Error: Streamlit is not installed.\n"
+            "  Install it with: pip install data-quality-toolkit[ui]",
+            file=sys.stderr,
+        )
+        return 1
+    import data_quality_toolkit.ui.app as _app_mod
+
+    app_file = inspect.getfile(_app_mod)
+    result = subprocess.run([sys.executable, "-m", "streamlit", "run", app_file])  # noqa: S603
+    return result.returncode
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build argument parser."""
     p = _DQTArgumentParser(prog="dqt", description="Data Quality Toolkit CLI")
@@ -749,6 +768,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp_kpi_val = sub.add_parser("kpi-validate", help="Validate KPI catalog for errors")
     sp_kpi_val.add_argument("--config", default=KPI_DEFAULT_CONFIG, help=KPI_CONFIG_HELP)
     sp_kpi_val.set_defaults(func=cmd_kpi_validate)
+
+    # dashboard (Phase 4)
+    sp_dash = sub.add_parser(
+        "dashboard",
+        help="Launch the Streamlit dashboard (requires: pip install data-quality-toolkit[ui])",
+    )
+    sp_dash.set_defaults(func=cmd_dashboard)
 
     return p
 

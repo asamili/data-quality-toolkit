@@ -4,7 +4,25 @@ All notable changes to the Data Quality Toolkit project are documented in this f
 
 The format is inspired by Keep a Changelog and adapted for this project.
 
-## [Unreleased]
+## [1.5.0] - 2026-05-15
+
+### Added
+- Experimental Streamlit dashboard (Phase 4):
+  - `src/data_quality_toolkit/ui/app.py` — Run History page displaying past export runs from SQLite storage; 4 UI states (instructional / error / empty / dataframe)
+  - `scripts/dashboard.py` — thin launcher; calls `data_quality_toolkit.ui.app.main()`
+- `dqt dashboard` CLI subcommand — launches the Streamlit dashboard via subprocess; guards on missing Streamlit with an actionable error pointing to `pip install data-quality-toolkit[ui]`
+- `[ui]` optional dependency: `pip install data-quality-toolkit[ui]` installs Streamlit (`>=1.30`)
+
+### Changed
+- README Known Limitations updated: Streamlit now installable via `pip install data-quality-toolkit[ui]`; `dqt dashboard` documented in Basic Usage section
+
+### Notes
+- Streamlit is an optional dependency; core CLI commands (`profile`, `assess`, `export`, `compare`) are unaffected
+- Public snapshot synchronized in the v1.5.0 release cycle.
+
+---
+
+## [1.4.0] - 2026-05-15
 
 ### Added
 - SQLite storage package (`data_quality_toolkit.storage`):
@@ -27,28 +45,6 @@ The format is inspired by Keep a Changelog and adapted for this project.
 ### Compatibility
 - CSV, JSONL, and `quality_report.json` outputs preserved alongside SQLite; no breaking changes
 - `compare` JSONL fallback ensures backward compatibility with existing export directories that predate SQLite
-
----
-
-## [1.3.0] - 2026-05-14
-
-### Added
-
-- Public Python API (`from data_quality_toolkit import ...`):
-  - `profile_csv(path, *, sep, encoding, na_values, sample_size)` — profile a CSV file; no disk writes
-  - `assess_csv(path, *, null_threshold, sep, encoding, na_values, sample_size)` — profile and assess; no disk writes
-  - `export_csv(path, *, output_dir, null_threshold, sep, encoding, na_values, sample_size)` — full pipeline; writes star-schema artifacts
-  - `compare_runs(path, *, output_dir)` — compare the last two export runs for the same dataset
-- All four functions accept `str | Path`, use keyword-only arguments after `path`, and return `dict[str, Any]`
-- Python API usage added to README and quickstart notebook (`examples/01_quickstart.ipynb`)
-- Unit tests for all four public API functions (`tests/unit/api/test_public_api.py` — 10 tests)
-- Integration test for full pipeline via public API (`tests/integration/test_api_e2e.py` — 1 test)
-
-### Validation
-
-- 420/420 tests passed (public snapshot full regression)
-- Pre-commit all hooks passed
-- GitHub CI run 25873401562 — success
 
 ---
 
