@@ -217,7 +217,7 @@ make test
 
 - **CLI-first:** no REST API in this release; experimental Streamlit dashboard available via `dqt dashboard` (Phase 4) — install with `pip install data-quality-toolkit[ui]`
 - **CSV input only:** other file formats are not supported
-- **No config file:** all options are passed as CLI flags (`--null-threshold`, `--outdir`)
+- **No config file:** all options are passed as CLI flags (`--null-threshold`, `--fail-under`, `--outdir`)
 - **No streaming / chunking:** large files are loaded fully into memory via pandas
 - **No PII detection or masking**
 

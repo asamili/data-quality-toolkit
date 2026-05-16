@@ -4,6 +4,21 @@ All notable changes to the Data Quality Toolkit project are documented in this f
 
 The format is inspired by Keep a Changelog and adapted for this project.
 
+## [1.6.0] - 2026-05-16
+
+### Added
+- `--fail-under FLOAT` quality gate flag for `assess`, `export-star`, and `export`:
+  - Accepts a float threshold in the range 0.0–1.0 (default: `None`, preserving existing behavior)
+  - Exits with code 2 and a clear stderr message when quality score is below the threshold
+  - Score of 0.0 passes `--fail-under 0.0`; a threshold of 1.0 requires a perfect score
+  - Invalid thresholds outside 0.0–1.0 exit 1 with an error message
+
+### Notes
+- Additive change; omitting `--fail-under` preserves all existing exit code behavior
+- Public snapshot synchronized in the v1.6.0 release cycle
+
+---
+
 ## [1.5.0] - 2026-05-15
 
 ### Added

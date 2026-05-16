@@ -21,6 +21,8 @@ from data_quality_toolkit.utils.logging import setup_logging
 # ----- Constants to de-duplicate literals (Sonar S1192) -----
 CSV_PATH_HELP = "Path to CSV file"
 DEFAULT_DIST = "./dist"
+CROSS_FALLBACK = "[FAIL]"
+FAIL_UNDER_HELP = "Exit 2 if quality score is below this threshold (0.0 to 1.0)"
 # ----- Phase 3 (KPI) constants -----
 KPI_DEFAULT_CONFIG = "config/kpi_catalog.yaml"
 KPI_CONFIG_HELP = "Path to KPI catalog YAML"
@@ -120,6 +122,31 @@ def _extract_null_threshold(args: argparse.Namespace) -> float | None:
     return float(nt)
 
 
+def _extract_fail_under(args: argparse.Namespace) -> float | None:
+    """Validate and return --fail-under if provided; None otherwise."""
+    fu = getattr(args, "fail_under", None)
+    if fu is None:
+        return None
+    if not (0.0 <= fu <= 1.0):
+        raise ValueError(f"--fail-under must be between 0.0 and 1.0, got {fu}")
+    return float(fu)
+
+
+def _check_quality_gate(fu: float | None, out: dict) -> int:
+    """Return 2 with a stderr message if score < fu; 0 otherwise."""
+    if fu is None:
+        return 0
+    score = float((out.get("assessment") or {}).get("score", 1.0))
+    if score < fu:
+        cross = _safe_text("✗", CROSS_FALLBACK)
+        print(
+            f"{cross} Quality gate FAILED: score {score:.2%} is below --fail-under {fu:.2%}",
+            file=sys.stderr,
+        )
+        return 2
+    return 0
+
+
 # ------------------------------------------------------------------------------
 
 
@@ -181,6 +208,7 @@ def cmd_assess(args: argparse.Namespace) -> int:
     """Assess a CSV file."""
     _apply_overrides(args)
     nt = _extract_null_threshold(args)
+    fu = _extract_fail_under(args)
     csv_kw = _csv_kwargs_from_args(args)
     if nt is not None:
         out = run_assessment(args.csv, null_threshold=nt, **csv_kw)
@@ -214,7 +242,7 @@ def cmd_assess(args: argparse.Namespace) -> int:
 
     if not getattr(args, "no_json", False):
         print(_json_dump(out))
-    return 0
+    return _check_quality_gate(fu, out)
 
 
 def _safe_text(s: str, fallback: str) -> str:
@@ -465,7 +493,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     result = compare_last_two_runs(dataset_id, history_path)
 
     if "error" in result:
-        cross = _safe_text("✗", "[FAIL]")
+        cross = _safe_text("✗", CROSS_FALLBACK)
         print(
             f"{cross} Compare: not enough history for '{Path(args.csv).name}'",
             file=sys.stderr,
@@ -516,6 +544,7 @@ def cmd_export_star(args: argparse.Namespace) -> int:
     """Export star schema."""
     _apply_overrides(args)
     nt = _extract_null_threshold(args)
+    fu = _extract_fail_under(args)
     csv_kw = _csv_kwargs_from_args(args)
     if nt is not None:
         out = run_export_star(args.csv, output_dir=args.outdir, null_threshold=nt, **csv_kw)
@@ -558,7 +587,7 @@ def cmd_export_star(args: argparse.Namespace) -> int:
     # Machine-friendly JSON last on STDOUT
     if not getattr(args, "no_json", False):
         print(_json_dump(out))
-    return 0
+    return _check_quality_gate(fu, out)
 
 
 def _add_csv_options(parser: argparse.ArgumentParser) -> None:
@@ -658,6 +687,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FLOAT",
         help="Flag completeness issues above this missing-value fraction (0.0 to 1.0, default: 0.2)",
     )
+    sp_as.add_argument(
+        "--fail-under",
+        dest="fail_under",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help=FAIL_UNDER_HELP,
+    )
     sp_as.set_defaults(func=cmd_assess)
 
     # export-star
@@ -675,6 +712,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FLOAT",
         help="Flag completeness issues above this missing-value fraction (0.0 to 1.0, default: 0.2)",
     )
+    sp_star.add_argument(
+        "--fail-under",
+        dest="fail_under",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help=FAIL_UNDER_HELP,
+    )
     sp_star.set_defaults(func=cmd_export_star)
 
     # alias: export
@@ -691,6 +736,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="FLOAT",
         help="Flag completeness issues above this missing-value fraction (0.0 to 1.0, default: 0.2)",
+    )
+    sp_export.add_argument(
+        "--fail-under",
+        dest="fail_under",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help=FAIL_UNDER_HELP,
     )
     sp_export.set_defaults(func=cmd_export_star)
 
