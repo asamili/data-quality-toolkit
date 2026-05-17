@@ -154,6 +154,34 @@ If `dqt` is not on your PATH, invoke the CLI directly via the interpreter:
 <path-to-python> -m data_quality_toolkit.cli.main compare examples/demo/Uber_Data.csv --outdir dist/demo
 ```
 
+## Pipeline Quality Gate (ETL/ELT)
+
+DQT is a lightweight data-quality toolkit. It can act as a **quality-gate step in CSV-based ETL/ELT pipelines**: after a pipeline extracts or produces a CSV file, run `dqt assess <file> --fail-under <score>` to enforce a minimum quality score. When the dataset falls short, the command exits with code `2`, allowing your pipeline or CI system to halt and alert.
+
+```bash
+# Gate fails (exit 2) when quality score < 0.9
+dqt assess extracted.csv --fail-under 0.9
+
+# Gate passes (exit 0) — score meets or exceeds threshold
+dqt assess extracted.csv --fail-under 0.0
+```
+
+Exit codes are scriptable:
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Dataset meets the quality threshold (or no threshold set) |
+| `1`  | Error (file not found, invalid input, etc.) |
+| `2`  | Dataset scored below `--fail-under` threshold |
+
+This makes DQT usable for **CI-style data quality gates** and **pipeline quality enforcement**.
+
+**DQT is not an ETL/ELT engine.** It does not transform data, load data into targets, connect to warehouses, or orchestrate pipelines. It validates CSV input and emits quality artifacts; transformation, loading, and scheduling remain the responsibility of your pipeline.
+
+See [examples/pipeline_gate/](examples/pipeline_gate/README.md) for a runnable example.
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -217,7 +245,7 @@ make test
 
 - **CLI-first:** no REST API in this release; experimental Streamlit dashboard available via `dqt dashboard` (Phase 4) — install with `pip install data-quality-toolkit[ui]`
 - **CSV input only:** other file formats are not supported
-- **No config file:** all options are passed as CLI flags (`--null-threshold`, `--fail-under`, `--outdir`)
+- **No config file:** all options are passed as CLI flags (`--null-threshold`, `--outdir`)
 - **No streaming / chunking:** large files are loaded fully into memory via pandas
 - **No PII detection or masking**
 

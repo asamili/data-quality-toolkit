@@ -1,0 +1,11 @@
+order_id,product,quantity,price,notes
+1,Widget A,10,9.99,
+2,Widget B,,14.99,
+3,,5,7.99,
+4,Widget C,8,,
+5,Widget A,12,9.99,
+6,Widget B,,14.99,
+7,Widget C,3,7.99,
+8,Widget A,,9.99,
+9,,7,,
+10,Widget B,6,14.99,
