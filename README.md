@@ -105,7 +105,7 @@ Use the full interpreter path — works immediately after `pip install -e .` wit
 
 ```powershell
 # Export the bundled demo dataset — produces quality artifacts under dist/demo/
-<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/Uber_Data.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
 ```
 Open `dist/demo/star/quality_report.json` to confirm the run succeeded (score, issue counts, artifact paths).
 
@@ -150,8 +150,8 @@ dqt dashboard
 If `dqt` is not on your PATH, invoke the CLI directly via the interpreter:
 
 ```bash
-<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/Uber_Data.csv --outdir dist/demo
-<path-to-python> -m data_quality_toolkit.cli.main compare examples/demo/Uber_Data.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.cli.main compare examples/demo/sample_orders.csv --outdir dist/demo
 ```
 
 ## Pipeline Quality Gate (ETL/ELT)
@@ -264,4 +264,4 @@ Built with pandas, typer, rich, pydantic, and other open-source libraries.
 
 ---
 
-**Version**: v1.4.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history
+**Version**: v1.6.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`)
