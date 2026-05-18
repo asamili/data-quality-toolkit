@@ -182,6 +182,29 @@ See [examples/pipeline_gate/](examples/pipeline_gate/README.md) for a runnable e
 
 ---
 
+## Project Configuration (`dqt.yaml`)
+
+DQT runs entirely from CLI flags by default — no configuration file is required. Optionally, you can place a `dqt.yaml` file in your project directory to set default values for common options. When present, it is read automatically as DQT runs from that directory.
+
+Supported keys (all optional):
+
+| Key | CLI equivalent | Purpose |
+|---|---|---|
+| `null_threshold` | `--null-threshold` | Null-rate threshold for column quality checks |
+| `fail_under` | `--fail-under` | Minimum quality score for the pipeline gate |
+| `outdir` | `--outdir` | Default output directory for export artifacts |
+
+```yaml
+# dqt.yaml — every key is optional
+null_threshold: 0.1
+fail_under: 0.9
+outdir: dist/
+```
+
+A config value applies only when the matching CLI flag is omitted; an explicit CLI flag always takes precedence. If `dqt.yaml` is absent, behavior is unchanged — every option still works as a CLI flag. A malformed file or an unknown key is reported as an error.
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -245,7 +268,7 @@ make test
 
 - **CLI-first:** no REST API in this release; experimental Streamlit dashboard available via `dqt dashboard` (Phase 4) — install with `pip install data-quality-toolkit[ui]`
 - **CSV input only:** other file formats are not supported
-- **No config file:** all options are passed as CLI flags (`--null-threshold`, `--outdir`)
+- **Minimal config:** CLI flags drive all behavior; an optional `dqt.yaml` sets defaults for `null_threshold`, `fail_under`, and `outdir` only
 - **No streaming / chunking:** large files are loaded fully into memory via pandas
 - **No PII detection or masking**
 
@@ -264,4 +287,4 @@ Built with pandas, typer, rich, pydantic, and other open-source libraries.
 
 ---
 
-**Version**: v1.6.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`)
+**Version**: v1.7.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`), optional project config (`dqt.yaml`)
