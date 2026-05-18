@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "data-quality-toolkit"
-version = "1.6.0"
+version = "1.7.0"
 description = "CSV-first data quality toolkit for BI and reporting workflows: profile, assess, export, and compare run-to-run quality trends."
 readme = "README.md"
 requires-python = ">=3.12"

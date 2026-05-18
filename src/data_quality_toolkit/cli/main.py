@@ -14,7 +14,9 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
+from data_quality_toolkit.shared.config import load_dqt_config
 from data_quality_toolkit.shared.constants import VERSION
+from data_quality_toolkit.shared.exceptions import ConfigError
 from data_quality_toolkit.shared.settings import load_settings
 from data_quality_toolkit.utils.logging import setup_logging
 
@@ -130,6 +132,19 @@ def _extract_fail_under(args: argparse.Namespace) -> float | None:
     if not (0.0 <= fu <= 1.0):
         raise ValueError(f"--fail-under must be between 0.0 and 1.0, got {fu}")
     return float(fu)
+
+
+def _apply_dqt_config(args: argparse.Namespace) -> None:
+    """Fill unset CLI options from ./dqt.yaml. Explicit CLI args always win."""
+    config = load_dqt_config()
+    for key in ("null_threshold", "fail_under"):
+        if hasattr(args, key) and getattr(args, key) is None and key in config:
+            setattr(args, key, config[key])
+    if hasattr(args, "outdir"):
+        if args.outdir is None and "outdir" in config:
+            args.outdir = config["outdir"]
+        if args.outdir is None:
+            args.outdir = DEFAULT_DIST
 
 
 def _check_quality_gate(fu: float | None, out: dict) -> int:
@@ -701,7 +716,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp_star = sub.add_parser("export-star", help="Export star schema CSVs to a folder")
     sp_star.add_argument("csv", help=CSV_PATH_HELP)
     sp_star.add_argument(
-        "--outdir", default=DEFAULT_DIST, help=f"Output directory (default: {DEFAULT_DIST})"
+        "--outdir", default=None, help=f"Output directory (default: {DEFAULT_DIST})"
     )
     _add_csv_options(sp_star)
     sp_star.add_argument(
@@ -726,7 +741,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp_export = sub.add_parser("export", help="Alias for export-star")
     sp_export.add_argument("csv", help=CSV_PATH_HELP)
     sp_export.add_argument(
-        "--outdir", default=DEFAULT_DIST, help=f"Output directory (default: {DEFAULT_DIST})"
+        "--outdir", default=None, help=f"Output directory (default: {DEFAULT_DIST})"
     )
     _add_csv_options(sp_export)
     sp_export.add_argument(
@@ -815,7 +830,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp_cmp.add_argument("csv", help=CSV_PATH_HELP)
     sp_cmp.add_argument(
         "--outdir",
-        default=DEFAULT_DIST,
+        default=None,
         help=f"Output directory (default: {DEFAULT_DIST}); must match the --outdir used with export-star",
     )
     sp_cmp.set_defaults(func=cmd_compare)
@@ -893,6 +908,15 @@ def _resolve_log_level(args: argparse.Namespace) -> str | None:
     return log_level
 
 
+def _apply_log_level_override(args: argparse.Namespace) -> None:
+    if args.log_level in ("ERROR", "CRITICAL"):
+        for name, logger_obj in logging.root.manager.loggerDict.items():
+            if isinstance(logger_obj, logging.PlaceHolder):
+                continue
+            if not name.startswith("data_quality_toolkit"):
+                logging.getLogger(name).setLevel(logging.ERROR)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main entry point."""
     parser = build_parser()
@@ -900,17 +924,18 @@ def main(argv: list[str] | None = None) -> int:
 
     setup_logging(level=_resolve_log_level(args), fmt=args.log_format)
 
+    try:
+        _apply_dqt_config(args)
+    except ConfigError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 2
+
     path_error = _validate_csv_path(args) or _validate_csv_extension(args)
     if path_error is not None:
         print(f"Error: {path_error}", file=sys.stderr)
         return 2
 
-    if args.log_level in ("ERROR", "CRITICAL"):
-        for name, logger_obj in logging.root.manager.loggerDict.items():
-            if isinstance(logger_obj, logging.PlaceHolder):
-                continue
-            if not name.startswith("data_quality_toolkit"):
-                logging.getLogger(name).setLevel(logging.ERROR)
+    _apply_log_level_override(args)
 
     try:
         handler: Callable[[argparse.Namespace], int] = cast(

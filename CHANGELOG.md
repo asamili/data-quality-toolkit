@@ -4,6 +4,20 @@ All notable changes to the Data Quality Toolkit project are documented in this f
 
 The format is inspired by Keep a Changelog and adapted for this project.
 
+## [1.7.0] - 2026-05-18
+
+### Added
+- Project-level config via `./dqt.yaml` (opt-in):
+  - Supported keys: `null_threshold`, `fail_under`, `outdir`
+  - Fills CLI defaults when the corresponding flag is omitted; explicit CLI args always take precedence
+  - File absent or keys omitted: behavior is byte-for-byte unchanged from prior versions
+  - Malformed YAML, non-mapping root, unknown keys, or wrong-typed values raise an error and exit 2
+
+### Notes
+- Additive change; omitting `./dqt.yaml` preserves all existing CLI behavior
+
+---
+
 ## [1.6.0] - 2026-05-16
 
 ### Added
@@ -12,10 +26,14 @@ The format is inspired by Keep a Changelog and adapted for this project.
   - Exits with code 2 and a clear stderr message when quality score is below the threshold
   - Score of 0.0 passes `--fail-under 0.0`; a threshold of 1.0 requires a perfect score
   - Invalid thresholds outside 0.0–1.0 exit 1 with an error message
+- Pipeline Quality Gate section added to README with exit code table and usage examples
+- Runnable `examples/pipeline_gate/` example package:
+  - `examples/pipeline_gate/README.md`
+  - `examples/pipeline_gate/run_gate.sh`
+  - `examples/pipeline_gate/sample_pipeline_output.csv`
 
 ### Notes
 - Additive change; omitting `--fail-under` preserves all existing exit code behavior
-- Public snapshot synchronized in the v1.6.0 release cycle
 
 ---
 
@@ -33,7 +51,7 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ### Notes
 - Streamlit is an optional dependency; core CLI commands (`profile`, `assess`, `export`, `compare`) are unaffected
-- Public snapshot synchronized in the v1.5.0 release cycle.
+- Public snapshot sync pending; v1.5.0 private-only until a separate sync gate is admitted
 
 ---
 
