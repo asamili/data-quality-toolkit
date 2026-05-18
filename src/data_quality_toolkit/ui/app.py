@@ -20,6 +20,18 @@ def _load_run_history(
         return None, str(exc)
 
 
+def _extract_trend_data(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Extract ts/score pairs from run history records, skipping rows missing either field."""
+    result = []
+    for r in records:
+        ts = r.get("ts")
+        score = r.get("score")
+        if ts is None or score is None:
+            continue
+        result.append({"ts": ts, "score": score})
+    return result
+
+
 def main() -> None:
     try:
         import streamlit as st
@@ -48,6 +60,11 @@ def main() -> None:
     if not records:
         st.warning("No run history found for this dataset.")
         return
+
+    trend = _extract_trend_data(records)
+    if len(trend) >= 2:
+        st.subheader("Score Trend")
+        st.line_chart({"Score": [r["score"] for r in trend]})
 
     st.dataframe(records)
 

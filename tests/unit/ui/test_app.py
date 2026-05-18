@@ -5,10 +5,11 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from data_quality_toolkit.storage.connection import StorageError
-from data_quality_toolkit.ui.app import _load_run_history
+from data_quality_toolkit.ui.app import _extract_trend_data, _load_run_history
 
 
 def test_module_imports_without_streamlit() -> None:
@@ -57,6 +58,56 @@ def test_load_run_history_strips_input_whitespace(tmp_path: Path) -> None:
     records, err = _load_run_history(path_with_spaces, " ds1 ")
     assert records == []
     assert err is None
+
+
+def test_extract_trend_data_normal() -> None:
+    records = [
+        {"ts": "2025-01-01T00:00:00", "score": 0.9, "rows": 100},
+        {"ts": "2025-01-02T00:00:00", "score": 0.85, "rows": 200},
+    ]
+    result = _extract_trend_data(records)
+    assert result == [
+        {"ts": "2025-01-01T00:00:00", "score": 0.9},
+        {"ts": "2025-01-02T00:00:00", "score": 0.85},
+    ]
+
+
+def test_extract_trend_data_skips_missing_score() -> None:
+    records: list[dict[str, Any]] = [
+        {"ts": "2025-01-01T00:00:00", "score": None},
+        {"ts": "2025-01-02T00:00:00", "score": 0.8},
+    ]
+    result = _extract_trend_data(records)
+    assert len(result) == 1
+    assert result[0]["score"] == 0.8
+
+
+def test_extract_trend_data_skips_missing_ts() -> None:
+    records: list[dict[str, Any]] = [
+        {"ts": None, "score": 0.9},
+        {"ts": "2025-01-02T00:00:00", "score": 0.8},
+    ]
+    result = _extract_trend_data(records)
+    assert len(result) == 1
+    assert result[0]["ts"] == "2025-01-02T00:00:00"
+
+
+def test_extract_trend_data_empty_input() -> None:
+    assert _extract_trend_data([]) == []
+
+
+def test_extract_trend_data_preserves_input_order() -> None:
+    records = [
+        {"ts": "2025-01-03T00:00:00", "score": 0.7},
+        {"ts": "2025-01-01T00:00:00", "score": 0.9},
+        {"ts": "2025-01-02T00:00:00", "score": 0.8},
+    ]
+    result = _extract_trend_data(records)
+    assert [r["ts"] for r in result] == [
+        "2025-01-03T00:00:00",
+        "2025-01-01T00:00:00",
+        "2025-01-02T00:00:00",
+    ]
 
 
 def test_app_has_script_entrypoint() -> None:
