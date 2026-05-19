@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 
+from data_quality_toolkit.profiling.profiling_orchestrator import run_profiling
 from data_quality_toolkit.storage.connection import StorageError
 from data_quality_toolkit.storage.reader import read_run_history
 
@@ -52,6 +53,99 @@ def _extract_latest_issues(
     return sev, cat
 
 
+def _load_csv(path_str: str) -> tuple[pd.DataFrame | None, str | None]:
+    """Load a CSV into a DataFrame. Returns (df, None) or (None, error_message)."""
+    p = Path(path_str.strip())
+    if not p.exists():
+        return None, f"File not found: {p}"
+    try:
+        df = pd.read_csv(p)
+    except (OSError, ValueError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
+        return None, str(exc)
+    return df, None
+
+
+def _build_overview_table(profile: Any) -> list[dict[str, Any]]:
+    """Build per-column overview rows from a run_profiling result.
+
+    Each row carries column name, dtype, null count, null percentage, unique
+    count, and numeric min/max where the profiler computed them.
+    """
+    rows = profile.get("rows") or 0
+    table: list[dict[str, Any]] = []
+    for col in profile.get("columns") or []:
+        nulls = col.get("nulls") or 0
+        null_pct = round(nulls / rows * 100, 2) if rows else 0.0
+        table.append(
+            {
+                "column": col.get("name"),
+                "dtype": col.get("dtype"),
+                "nulls": nulls,
+                "null_pct": null_pct,
+                "unique": col.get("unique"),
+                "min": col.get("min"),
+                "max": col.get("max"),
+            }
+        )
+    return table
+
+
+def _numeric_summary(df: pd.DataFrame) -> pd.DataFrame | None:
+    """Return df.describe() for numeric columns, or None if there are none."""
+    numeric = df.select_dtypes(include="number")
+    if numeric.shape[1] == 0:
+        return None
+    return numeric.describe()
+
+
+def _duplicate_row_count(df: pd.DataFrame) -> int:
+    """Count fully-duplicated rows in the DataFrame."""
+    return int(df.duplicated().sum())
+
+
+def _high_cardinality_flags(profile: Any, threshold: float = 0.9) -> list[str]:
+    """Return column names whose unique/rows ratio exceeds *threshold*."""
+    rows = profile.get("rows") or 0
+    if rows <= 0:
+        return []
+    flagged: list[str] = []
+    for col in profile.get("columns") or []:
+        unique = col.get("unique") or 0
+        if unique / rows > threshold:
+            flagged.append(col.get("name"))
+    return flagged
+
+
+def _render_data_overview(st: Any) -> None:
+    """Render the Data Overview section: shape, per-column table, stats, duplicates."""
+    st.header("Data Overview")
+    overview_csv = st.text_input("CSV path for data overview", placeholder="path/to/data.csv")
+    if not overview_csv:
+        st.info("Enter a CSV path to see a data overview.")
+        return
+
+    df, csv_err = _load_csv(overview_csv)
+    if csv_err is not None:
+        st.error(f"CSV error: {csv_err}")
+        return
+    if df is None:
+        return
+
+    profile = run_profiling(df, "dashboard_overview")
+    st.write(f"Shape: {profile['rows']} rows x {profile['cols']} columns")
+    st.write(f"Memory: {profile['memory_mb']:.2f} MB")
+    st.subheader("Columns")
+    st.table(_build_overview_table(profile))
+    numeric = _numeric_summary(df)
+    if numeric is not None:
+        st.subheader("Numeric Summary")
+        st.dataframe(numeric)
+    st.write(f"Duplicate rows: {_duplicate_row_count(df)}")
+    flags = _high_cardinality_flags(profile)
+    if flags:
+        st.warning(f"High-cardinality columns: {', '.join(flags)}")
+
+
 def main() -> None:
     try:
         import streamlit as st
@@ -63,6 +157,8 @@ def main() -> None:
 
     st.title("Data Quality Toolkit Dashboard")
     st.caption("Phase 4 dashboard")
+
+    _render_data_overview(st)
 
     st.header("Run History")
     db_path_str = st.text_input("Database path", placeholder="path/to/dqt.db")

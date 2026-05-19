@@ -13,10 +13,15 @@ import pytest
 
 from data_quality_toolkit.storage.connection import StorageError
 from data_quality_toolkit.ui.app import (
+    _build_overview_table,
     _build_trend_df,
+    _duplicate_row_count,
     _extract_latest_issues,
     _extract_trend_data,
+    _high_cardinality_flags,
+    _load_csv,
     _load_run_history,
+    _numeric_summary,
 )
 
 
@@ -198,3 +203,116 @@ def test_app_has_script_entrypoint() -> None:
         "app.py is missing if __name__ == '__main__': main() — "
         "streamlit run will show a blank page"
     )
+
+
+def test_load_csv_missing_file_returns_error(tmp_path: Path) -> None:
+    df, err = _load_csv(str(tmp_path / "nope.csv"))
+    assert df is None
+    assert err is not None
+    assert "not found" in err.lower()
+
+
+def test_load_csv_valid_file_returns_dataframe(tmp_path: Path) -> None:
+    csv = tmp_path / "data.csv"
+    csv.write_text("a,b\n1,x\n2,y\n", encoding="utf-8")
+    df, err = _load_csv(str(csv))
+    assert err is None
+    assert df is not None
+    assert list(df.columns) == ["a", "b"]
+    assert len(df) == 2
+
+
+def test_load_csv_strips_whitespace(tmp_path: Path) -> None:
+    csv = tmp_path / "data.csv"
+    csv.write_text("a\n1\n", encoding="utf-8")
+    df, err = _load_csv("  " + str(csv) + "  ")
+    assert err is None
+    assert df is not None
+
+
+def test_load_csv_empty_file_returns_error(tmp_path: Path) -> None:
+    csv = tmp_path / "empty.csv"
+    csv.write_text("", encoding="utf-8")
+    df, err = _load_csv(str(csv))
+    assert df is None
+    assert err is not None
+
+
+def test_build_overview_table_includes_all_fields() -> None:
+    profile = {
+        "rows": 10,
+        "cols": 2,
+        "columns": [
+            {"name": "a", "dtype": "int64", "nulls": 2, "unique": 8, "min": 1.0, "max": 9.0},
+            {"name": "b", "dtype": "object", "nulls": 0, "unique": 3},
+        ],
+    }
+    table = _build_overview_table(profile)
+    assert table[0] == {
+        "column": "a",
+        "dtype": "int64",
+        "nulls": 2,
+        "null_pct": 20.0,
+        "unique": 8,
+        "min": 1.0,
+        "max": 9.0,
+    }
+    assert table[1]["null_pct"] == 0.0
+    assert table[1]["min"] is None
+    assert table[1]["max"] is None
+
+
+def test_build_overview_table_zero_rows_null_pct_safe() -> None:
+    profile = {
+        "rows": 0,
+        "columns": [{"name": "a", "dtype": "object", "nulls": 0, "unique": 0}],
+    }
+    table = _build_overview_table(profile)
+    assert table[0]["null_pct"] == 0.0
+
+
+def test_build_overview_table_empty_columns() -> None:
+    assert _build_overview_table({"rows": 5, "columns": []}) == []
+
+
+def test_numeric_summary_returns_describe_for_numeric() -> None:
+    df = pd.DataFrame({"n": [1, 2, 3], "s": ["x", "y", "z"]})
+    summary = _numeric_summary(df)
+    assert summary is not None
+    assert "n" in summary.columns
+    assert "s" not in summary.columns
+
+
+def test_numeric_summary_none_when_no_numeric_columns() -> None:
+    df = pd.DataFrame({"s": ["x", "y"]})
+    assert _numeric_summary(df) is None
+
+
+def test_duplicate_row_count_counts_repeats() -> None:
+    df = pd.DataFrame({"a": [1, 1, 2], "b": ["x", "x", "y"]})
+    assert _duplicate_row_count(df) == 1
+
+
+def test_duplicate_row_count_zero_when_unique() -> None:
+    df = pd.DataFrame({"a": [1, 2, 3]})
+    assert _duplicate_row_count(df) == 0
+
+
+def test_high_cardinality_flags_flags_unique_columns() -> None:
+    profile = {
+        "rows": 10,
+        "columns": [
+            {"name": "id", "unique": 10},
+            {"name": "cat", "unique": 2},
+        ],
+    }
+    assert _high_cardinality_flags(profile) == ["id"]
+
+
+def test_high_cardinality_flags_empty_when_zero_rows() -> None:
+    profile = {"rows": 0, "columns": [{"name": "id", "unique": 0}]}
+    assert _high_cardinality_flags(profile) == []
+
+
+def test_high_cardinality_flags_empty_when_no_columns() -> None:
+    assert _high_cardinality_flags({"rows": 5, "columns": []}) == []
