@@ -145,6 +145,29 @@ dqt dashboard
 > **Note on `compare`:** history is stored in `star/quality_history.jsonl` inside your `--outdir`.
 > If fewer than two runs exist, compare returns `not_enough_runs` — run `export` at least twice first.
 
+### View results in the dashboard
+
+The dashboard does not open a raw CSV directly — it reads a dashboard-readable
+SQLite database plus a `dataset_id`. Produce that database by exporting your
+CSV first:
+
+```bash
+# 1. Export the CSV — writes dist/dqt.db and dist/star/quality_report.json
+dqt export data/orders.csv --outdir dist
+
+# 2. Launch the dashboard (requires: pip install data-quality-toolkit[ui])
+dqt dashboard
+```
+
+In the dashboard, enter:
+- **Database path:** `dist/dqt.db` (Windows: `dist\dqt.db`)
+- **Dataset ID:** the `dataset_id` value from `dist/star/quality_report.json`
+
+`dqt assess` prints a quick quality summary but does not populate the dashboard
+database — use `dqt export` for the dashboard. See
+[examples/dashboard/](examples/dashboard/README.md) for a full walkthrough and
+troubleshooting.
+
 ### Windows-safe invocation
 
 If `dqt` is not on your PATH, invoke the CLI directly via the interpreter:

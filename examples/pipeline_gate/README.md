@@ -61,6 +61,21 @@ dqt export sample_pipeline_output.csv --outdir dist/
 # Produces: dist/star/quality_report.json, dist/star/fact_issues.csv, etc.
 ```
 
+### 4. View results in the dashboard
+
+`dqt export` also writes a dashboard-readable SQLite database at `dist/dqt.db`.
+To view the run visually:
+
+```bash
+dqt dashboard
+```
+
+In the dashboard, enter `dist/dqt.db` as the database path and the `dataset_id`
+from `dist/star/quality_report.json` as the dataset ID.
+
+`dqt assess` does not populate this database — only `dqt export` does. See
+[examples/dashboard/](../dashboard/README.md) for a full walkthrough.
+
 ---
 
 ## Exit codes
