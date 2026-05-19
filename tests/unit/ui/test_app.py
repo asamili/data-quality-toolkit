@@ -8,8 +8,16 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pandas as pd
+import pytest
+
 from data_quality_toolkit.storage.connection import StorageError
-from data_quality_toolkit.ui.app import _extract_trend_data, _load_run_history
+from data_quality_toolkit.ui.app import (
+    _build_trend_df,
+    _extract_latest_issues,
+    _extract_trend_data,
+    _load_run_history,
+)
 
 
 def test_module_imports_without_streamlit() -> None:
@@ -79,7 +87,7 @@ def test_extract_trend_data_skips_missing_score() -> None:
     ]
     result = _extract_trend_data(records)
     assert len(result) == 1
-    assert result[0]["score"] == 0.8
+    assert result[0]["score"] == pytest.approx(0.8)
 
 
 def test_extract_trend_data_skips_missing_ts() -> None:
@@ -108,6 +116,63 @@ def test_extract_trend_data_preserves_input_order() -> None:
         "2025-01-01T00:00:00",
         "2025-01-02T00:00:00",
     ]
+
+
+def test_build_trend_df_returns_dataframe_with_ts_index() -> None:
+    trend = [
+        {"ts": "2025-01-01T00:00:00", "score": 0.9},
+        {"ts": "2025-01-02T00:00:00", "score": 0.8},
+    ]
+    df = _build_trend_df(trend)
+    assert df is not None
+    assert list(df.columns) == ["Score"]
+    assert pd.api.types.is_datetime64_any_dtype(df.index)
+    assert len(df) == 2
+
+
+def test_build_trend_df_drops_unparseable_ts() -> None:
+    trend = [
+        {"ts": "not-a-date", "score": 0.9},
+        {"ts": "2025-01-02T00:00:00", "score": 0.8},
+    ]
+    df = _build_trend_df(trend)
+    assert df is not None
+    assert len(df) == 1
+
+
+def test_build_trend_df_returns_none_when_all_ts_invalid() -> None:
+    trend = [{"ts": "bad", "score": 0.9}, {"ts": "also-bad", "score": 0.8}]
+    assert _build_trend_df(trend) is None
+
+
+def test_build_trend_df_returns_none_on_empty_input() -> None:
+    assert _build_trend_df([]) is None
+
+
+def test_extract_latest_issues_returns_both_dicts() -> None:
+    records = [
+        {"issues_by_severity": {"warning": 1}, "issues_by_category": {"schema": 2}},
+        {"issues_by_severity": {"critical": 3}, "issues_by_category": {"data": 4}},
+    ]
+    sev, cat = _extract_latest_issues(records)
+    assert sev == {"critical": 3}
+    assert cat == {"data": 4}
+
+
+def test_extract_latest_issues_missing_fields_return_empty_dicts() -> None:
+    records = [{"score": 0.9}]
+    sev, cat = _extract_latest_issues(records)
+    assert sev == {}
+    assert cat == {}
+
+
+def test_extract_latest_issues_uses_last_record() -> None:
+    records = [
+        {"issues_by_severity": {"warning": 1}, "issues_by_category": {}},
+        {"issues_by_severity": {"critical": 5}, "issues_by_category": {"data": 2}},
+    ]
+    sev, _ = _extract_latest_issues(records)
+    assert sev == {"critical": 5}
 
 
 def test_app_has_script_entrypoint() -> None:
