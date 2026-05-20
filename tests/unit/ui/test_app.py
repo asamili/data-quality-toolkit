@@ -13,6 +13,9 @@ import pytest
 
 from data_quality_toolkit.storage.connection import StorageError
 from data_quality_toolkit.ui.app import (
+    _bivariate_categorical_categorical,
+    _bivariate_numeric_categorical,
+    _bivariate_numeric_numeric,
     _build_overview_table,
     _build_trend_df,
     _categorical_top_values,
@@ -405,3 +408,93 @@ def test_iqr_outlier_summary_returns_none_for_non_numeric() -> None:
 def test_iqr_outlier_summary_returns_none_for_insufficient_values() -> None:
     df = pd.DataFrame({"n": [1.0, 2.0, 3.0]})
     assert _iqr_outlier_summary(df, "n") is None
+
+
+# ── _bivariate_numeric_numeric ────────────────────────────────────────────────
+
+
+def test_bivariate_numeric_numeric_returns_scatter_df_and_r() -> None:
+    df = pd.DataFrame({"a": [1.0, 2.0, 3.0, 4.0], "b": [2.0, 4.0, 6.0, 8.0]})
+    scatter_df, r = _bivariate_numeric_numeric(df, "a", "b")
+    assert scatter_df is not None
+    assert list(scatter_df.columns) == ["a", "b"]
+    assert len(scatter_df) == 4
+    assert r is not None
+    assert r == pytest.approx(1.0)
+
+
+def test_bivariate_numeric_numeric_returns_none_for_non_numeric_column() -> None:
+    df = pd.DataFrame({"a": [1.0, 2.0, 3.0], "s": ["x", "y", "z"]})
+    scatter_df, r = _bivariate_numeric_numeric(df, "a", "s")
+    assert scatter_df is None
+    assert r is None
+
+
+def test_bivariate_numeric_numeric_returns_none_for_insufficient_rows() -> None:
+    df = pd.DataFrame({"a": [1.0], "b": [2.0]})
+    scatter_df, r = _bivariate_numeric_numeric(df, "a", "b")
+    assert scatter_df is None
+    assert r is None
+
+
+def test_bivariate_numeric_numeric_returns_none_for_all_same_values_in_one_col() -> None:
+    df = pd.DataFrame({"a": [3.0, 3.0, 3.0], "b": [1.0, 2.0, 3.0]})
+    scatter_df, r = _bivariate_numeric_numeric(df, "a", "b")
+    assert scatter_df is None
+    assert r is None
+
+
+# ── _bivariate_numeric_categorical ────────────────────────────────────────────
+
+
+def test_bivariate_numeric_categorical_returns_grouped_stats() -> None:
+    df = pd.DataFrame({"n": [1.0, 2.0, 3.0, 4.0], "c": ["a", "a", "b", "b"]})
+    result = _bivariate_numeric_categorical(df, "n", "c")
+    assert result is not None
+    assert "count" in result.columns
+    assert "mean" in result.columns
+    assert "median" in result.columns
+    assert result.loc["a", "count"] == 2
+
+
+def test_bivariate_numeric_categorical_returns_none_when_numeric_col_is_string() -> None:
+    df = pd.DataFrame({"s": ["x", "y"], "c": ["a", "b"]})
+    assert _bivariate_numeric_categorical(df, "s", "c") is None
+
+
+def test_bivariate_numeric_categorical_returns_none_when_categorical_col_is_numeric() -> None:
+    df = pd.DataFrame({"n": [1.0, 2.0], "m": [3.0, 4.0]})
+    assert _bivariate_numeric_categorical(df, "n", "m") is None
+
+
+def test_bivariate_numeric_categorical_returns_none_for_empty_series() -> None:
+    df = pd.DataFrame({"n": pd.Series([], dtype="float64"), "c": pd.Series([], dtype="object")})
+    assert _bivariate_numeric_categorical(df, "n", "c") is None
+
+
+# ── _bivariate_categorical_categorical ────────────────────────────────────────
+
+
+def test_bivariate_categorical_categorical_returns_crosstab() -> None:
+    df = pd.DataFrame({"a": ["x", "x", "y"], "b": ["p", "q", "p"]})
+    result = _bivariate_categorical_categorical(df, "a", "b")
+    assert result is not None
+    assert result.loc["x", "p"] == 1
+    assert result.loc["x", "q"] == 1
+
+
+def test_bivariate_categorical_categorical_returns_none_when_col_is_numeric() -> None:
+    df = pd.DataFrame({"n": [1.0, 2.0], "c": ["a", "b"]})
+    assert _bivariate_categorical_categorical(df, "n", "c") is None
+
+
+def test_bivariate_categorical_categorical_returns_none_for_empty_df() -> None:
+    df = pd.DataFrame({"a": pd.Series([], dtype="object"), "b": pd.Series([], dtype="object")})
+    assert _bivariate_categorical_categorical(df, "a", "b") is None
+
+
+def test_bivariate_categorical_categorical_shape_matches_unique_value_counts() -> None:
+    df = pd.DataFrame({"a": ["x", "y", "x"], "b": ["p", "p", "q"]})
+    result = _bivariate_categorical_categorical(df, "a", "b")
+    assert result is not None
+    assert result.shape == (2, 2)

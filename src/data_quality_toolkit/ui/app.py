@@ -199,6 +199,99 @@ def _render_eda_univariate(st: Any, df: pd.DataFrame) -> None:
             st.info("No usable values for this column.")
 
 
+def _bivariate_numeric_numeric(
+    df: pd.DataFrame, col1: str, col2: str
+) -> tuple[pd.DataFrame | None, float | None]:
+    """Return (scatter DataFrame, Pearson r) for two numeric columns. None pair if not applicable."""
+    if not pd.api.types.is_numeric_dtype(df[col1]) or not pd.api.types.is_numeric_dtype(df[col2]):
+        return None, None
+    pair = df[[col1, col2]].dropna()
+    if len(pair) < 2 or pair[col1].nunique() < 2 or pair[col2].nunique() < 2:
+        return None, None
+    try:
+        r_val = pair.corr().iloc[0, 1]
+        r = None if pd.isna(r_val) else float(r_val)
+    except (ValueError, TypeError):
+        r = None
+    return pair, r
+
+
+def _bivariate_numeric_categorical(
+    df: pd.DataFrame, numeric_col: str, categorical_col: str
+) -> pd.DataFrame | None:
+    """Return grouped stats (count/mean/median) of numeric_col by categorical_col. None if not applicable."""
+    if not pd.api.types.is_numeric_dtype(df[numeric_col]):
+        return None
+    if pd.api.types.is_numeric_dtype(df[categorical_col]):
+        return None
+    grouped = df.groupby(categorical_col)[numeric_col].agg(["count", "mean", "median"])
+    return grouped if not grouped.empty else None
+
+
+def _bivariate_categorical_categorical(
+    df: pd.DataFrame, col1: str, col2: str
+) -> pd.DataFrame | None:
+    """Return a crosstab frequency table for two categorical columns. None if not applicable."""
+    if pd.api.types.is_numeric_dtype(df[col1]) or pd.api.types.is_numeric_dtype(df[col2]):
+        return None
+    ct = pd.crosstab(df[col1], df[col2])
+    return ct if not ct.empty else None
+
+
+def _render_num_num(st: Any, df: pd.DataFrame, col1: str, col2: str) -> None:
+    scatter_df, r = _bivariate_numeric_numeric(df, col1, col2)
+    if scatter_df is None:
+        st.info("Insufficient distinct values for scatter chart.")
+        return
+    st.caption(f"Scatter: {col1} vs {col2}")
+    st.scatter_chart(scatter_df, x=col1, y=col2)
+    if r is not None:
+        st.caption(f"Pearson r: {r:.3f}")
+
+
+def _render_num_cat(st: Any, df: pd.DataFrame, num_col: str, cat_col: str) -> None:
+    grouped = _bivariate_numeric_categorical(df, num_col, cat_col)
+    if grouped is None:
+        st.info("No usable data for this column pair.")
+        return
+    st.caption(f"{num_col} by {cat_col}")
+    st.dataframe(grouped)
+    st.bar_chart(grouped[["mean"]].rename(columns={"mean": num_col}))
+
+
+def _render_cat_cat(st: Any, df: pd.DataFrame, col1: str, col2: str) -> None:
+    ct = _bivariate_categorical_categorical(df, col1, col2)
+    if ct is None:
+        st.info("No usable data for this column pair.")
+        return
+    st.caption(f"Crosstab: {col1} vs {col2}")
+    st.dataframe(ct)
+
+
+def _render_eda_bivariate(st: Any, df: pd.DataFrame) -> None:
+    """Render EDA Bivariate Explorer: two-column selector, type-aware relationship view."""
+    st.subheader("EDA — Bivariate Explorer")
+    cols = df.columns.tolist()
+    if len(cols) < 2:
+        st.info("Need at least two columns for bivariate analysis.")
+        return
+    col1 = st.selectbox("First column", cols, key="biv_col1")
+    col2 = st.selectbox("Second column", cols, key="biv_col2")
+    if col1 == col2:
+        st.info("Select two different columns.")
+        return
+    n1 = pd.api.types.is_numeric_dtype(df[col1])
+    n2 = pd.api.types.is_numeric_dtype(df[col2])
+    if n1 and n2:
+        _render_num_num(st, df, col1, col2)
+    elif n1:
+        _render_num_cat(st, df, col1, col2)
+    elif n2:
+        _render_num_cat(st, df, col2, col1)
+    else:
+        _render_cat_cat(st, df, col1, col2)
+
+
 def _render_data_overview(st: Any) -> None:
     """Render the Data Overview section: shape, per-column table, stats, duplicates."""
     st.header("Data Overview")
@@ -236,6 +329,7 @@ def _render_data_overview(st: Any) -> None:
     if flags:
         st.warning(f"High-cardinality columns: {', '.join(flags)}")
     _render_eda_univariate(st, df)
+    _render_eda_bivariate(st, df)
 
 
 def main() -> None:
