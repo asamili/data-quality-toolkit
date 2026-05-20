@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 import data_quality_toolkit.cli.main as cli
 
 
 def _ns(**kwargs):
-    d = dict(sep=None, encoding=None, no_header=False, na_values=None, sample_size=None)
+    d = dict(sep=None, encoding=None, no_header=False, na_values=None, sample_size=None, db=None)
     d.update(kwargs)
     return argparse.Namespace(**d)
 
@@ -100,6 +101,62 @@ def test_cmd_assess_no_profile_key_does_not_crash(monkeypatch, capsys):
     args = _ns(csv="data.csv")
     rc = cli.cmd_assess(args)
     assert rc == 0
+
+
+# ── cmd_assess --db flag ──────────────────────────────────────────────────────
+
+
+def test_cmd_assess_without_db_passes_no_db_path(monkeypatch, capsys):
+    """--db absent → run_assessment receives db_path=None."""
+    captured: dict = {}
+
+    def fake_run_assessment(*a, **k):
+        captured.update(k)
+        return _assess_out()
+
+    monkeypatch.setattr(cli, "run_assessment", fake_run_assessment)
+    cli.cmd_assess(_ns(csv="data.csv"))
+    assert captured.get("db_path") is None
+
+
+def test_cmd_assess_with_db_flag_passes_path(monkeypatch, capsys, tmp_path):
+    """--db PATH → run_assessment receives db_path=Path(PATH)."""
+    captured: dict = {}
+
+    def fake_run_assessment(*a, **k):
+        captured.update(k)
+        return _assess_out()
+
+    monkeypatch.setattr(cli, "run_assessment", fake_run_assessment)
+    db = str(tmp_path / "test.db")
+    cli.cmd_assess(_ns(csv="data.csv", db=db))
+    assert captured.get("db_path") == Path(db)
+
+
+def test_cmd_assess_with_db_flag_still_returns_json(monkeypatch, capsys, tmp_path):
+    """--db flag must not suppress stdout JSON."""
+    monkeypatch.setattr(cli, "run_assessment", lambda *a, **k: _assess_out())
+    db = str(tmp_path / "test.db")
+    rc = cli.cmd_assess(_ns(csv="data.csv", db=db))
+    assert rc == 0
+    out = capsys.readouterr().out
+    parsed = json.loads(out)
+    assert "assessment" in parsed
+
+
+def test_cmd_assess_with_db_flag_null_threshold_forwarded(monkeypatch, capsys, tmp_path):
+    """--db + --null-threshold both forwarded to run_assessment."""
+    captured: dict = {}
+
+    def fake_run_assessment(*a, **k):
+        captured.update(k)
+        return _assess_out()
+
+    monkeypatch.setattr(cli, "run_assessment", fake_run_assessment)
+    db = str(tmp_path / "test.db")
+    cli.cmd_assess(_ns(csv="data.csv", db=db, null_threshold=0.1))
+    assert captured.get("db_path") == Path(db)
+    assert captured.get("null_threshold") == 0.1
 
 
 # ── cmd_export_star ────────────────────────────────────────────────────────────

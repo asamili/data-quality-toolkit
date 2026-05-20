@@ -61,18 +61,49 @@ def run_profile(csv_path: str, **read_csv_kwargs: Any) -> dict[str, Any]:
 def run_assessment(
     csv_path: str,
     null_threshold: float = DEFAULT_NULL_THRESHOLD,
+    db_path: Path | None = None,
     **read_csv_kwargs: Any,
 ) -> dict[str, Any]:
-    """Load → profile → assess."""
+    """Load → profile → assess → optionally persist to SQLite."""
+    start = time.time()
     df, meta = load_csv(csv_path, **read_csv_kwargs)
     prof = run_profiling(df, meta["dataset_id"])
     # Type shim: assess() expects Dict[str, Any]; prof is a TypedDict
     assessment = assess(cast(dict[str, Any], prof), null_threshold=null_threshold)
+    duration_secs = round(time.time() - start, 3)
+
+    if db_path is not None:
+        all_issues: list[dict[str, Any]] = cast(list[dict[str, Any]], assessment.get("issues", []))
+        ensure_db(db_path)
+        _con = connect(db_path)
+        try:
+            persist_export_run(
+                _con,
+                run_id=prof["run_id"],
+                dataset_id=prof["dataset_id"],
+                source_path=meta["source_path"],
+                ts=prof["ts"],
+                score=float(assessment["score"]),
+                rows=prof["rows"],
+                cols=prof["cols"],
+                memory_mb=float(prof["memory_mb"]),
+                null_threshold=float(null_threshold),
+                issues_total=len(all_issues),
+                issues_by_severity=_count_by(all_issues, "severity"),
+                issues_by_category=_count_by(all_issues, "category"),
+                duration_secs=duration_secs,
+                columns=cast(list[dict[str, Any]], prof["columns"]),
+                quality_metrics=[],
+                issues=all_issues,
+            )
+        finally:
+            _con.close()
 
     out: dict[str, Any] = {
         "run_id": prof["run_id"],
         "dataset_id": prof["dataset_id"],
         "ts": prof["ts"],
+        "duration_secs": duration_secs,
         "meta": meta,
         "profile": _compact_profile(prof),
         "assessment": assessment,

@@ -225,10 +225,11 @@ def cmd_assess(args: argparse.Namespace) -> int:
     nt = _extract_null_threshold(args)
     fu = _extract_fail_under(args)
     csv_kw = _csv_kwargs_from_args(args)
+    db_path = Path(args.db) if getattr(args, "db", None) else None
     if nt is not None:
-        out = run_assessment(args.csv, null_threshold=nt, **csv_kw)
+        out = run_assessment(args.csv, null_threshold=nt, db_path=db_path, **csv_kw)
     else:
-        out = run_assessment(args.csv, **csv_kw)
+        out = run_assessment(args.csv, db_path=db_path, **csv_kw)
 
     # Human-friendly summary -> stderr (stdout stays pure JSON)
     tick = _safe_text("✓", "[OK]")
@@ -709,6 +710,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="FLOAT",
         help=FAIL_UNDER_HELP,
+    )
+    sp_as.add_argument(
+        "--db",
+        dest="db",
+        default=None,
+        metavar="PATH",
+        help="Persist assessment run to a dashboard-readable SQLite database",
     )
     sp_as.set_defaults(func=cmd_assess)
 
