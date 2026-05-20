@@ -15,12 +15,15 @@ from data_quality_toolkit.storage.connection import StorageError
 from data_quality_toolkit.ui.app import (
     _build_overview_table,
     _build_trend_df,
+    _categorical_top_values,
     _duplicate_row_count,
     _extract_latest_issues,
     _extract_trend_data,
     _high_cardinality_flags,
+    _iqr_outlier_summary,
     _load_csv,
     _load_run_history,
+    _numeric_distribution,
     _numeric_summary,
 )
 
@@ -316,3 +319,89 @@ def test_high_cardinality_flags_empty_when_zero_rows() -> None:
 
 def test_high_cardinality_flags_empty_when_no_columns() -> None:
     assert _high_cardinality_flags({"rows": 5, "columns": []}) == []
+
+
+# ── _numeric_distribution ─────────────────────────────────────────────────────
+
+
+def test_numeric_distribution_returns_dataframe_with_count_column() -> None:
+    df = pd.DataFrame({"n": [float(i) for i in range(1, 11)]})
+    result = _numeric_distribution(df, "n")
+    assert result is not None
+    assert "count" in result.columns
+    assert len(result) > 0
+    assert result.index.dtype == object  # string bin labels
+
+
+def test_numeric_distribution_returns_none_for_non_numeric() -> None:
+    df = pd.DataFrame({"s": ["a", "b", "c"]})
+    assert _numeric_distribution(df, "s") is None
+
+
+def test_numeric_distribution_returns_none_for_single_value() -> None:
+    df = pd.DataFrame({"n": [5.0]})
+    assert _numeric_distribution(df, "n") is None
+
+
+def test_numeric_distribution_returns_none_for_all_same_values() -> None:
+    df = pd.DataFrame({"n": [3.0, 3.0, 3.0, 3.0]})
+    assert _numeric_distribution(df, "n") is None
+
+
+# ── _categorical_top_values ───────────────────────────────────────────────────
+
+
+def test_categorical_top_values_returns_count_dataframe() -> None:
+    df = pd.DataFrame({"c": ["a", "b", "a", "c", "a"]})
+    result = _categorical_top_values(df, "c")
+    assert result is not None
+    assert "count" in result.columns
+    assert result.loc["a", "count"] == 3
+
+
+def test_categorical_top_values_returns_none_for_numeric() -> None:
+    df = pd.DataFrame({"n": [1, 2, 3]})
+    assert _categorical_top_values(df, "n") is None
+
+
+def test_categorical_top_values_respects_n_limit() -> None:
+    df = pd.DataFrame({"c": [str(i) for i in range(25)]})
+    result = _categorical_top_values(df, "c", n=5)
+    assert result is not None
+    assert len(result) == 5
+
+
+def test_categorical_top_values_returns_none_for_empty_series() -> None:
+    df = pd.DataFrame({"c": pd.Series([], dtype="object")})
+    assert _categorical_top_values(df, "c") is None
+
+
+# ── _iqr_outlier_summary ──────────────────────────────────────────────────────
+
+
+def test_iqr_outlier_summary_returns_correct_fields() -> None:
+    df = pd.DataFrame({"n": [1.0, 2.0, 3.0, 4.0, 5.0]})
+    result = _iqr_outlier_summary(df, "n")
+    assert result is not None
+    assert set(result.keys()) == {"q1", "q3", "iqr", "lower_fence", "upper_fence", "outlier_count"}
+    assert result["q1"] == pytest.approx(2.0)
+    assert result["q3"] == pytest.approx(4.0)
+    assert result["iqr"] == pytest.approx(2.0)
+    assert result["outlier_count"] == 0
+
+
+def test_iqr_outlier_summary_detects_outliers() -> None:
+    df = pd.DataFrame({"n": [1.0, 2.0, 3.0, 4.0, 5.0, 100.0]})
+    result = _iqr_outlier_summary(df, "n")
+    assert result is not None
+    assert result["outlier_count"] >= 1
+
+
+def test_iqr_outlier_summary_returns_none_for_non_numeric() -> None:
+    df = pd.DataFrame({"s": ["a", "b", "c", "d", "e"]})
+    assert _iqr_outlier_summary(df, "s") is None
+
+
+def test_iqr_outlier_summary_returns_none_for_insufficient_values() -> None:
+    df = pd.DataFrame({"n": [1.0, 2.0, 3.0]})
+    assert _iqr_outlier_summary(df, "n") is None

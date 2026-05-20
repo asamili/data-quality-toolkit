@@ -116,6 +116,89 @@ def _high_cardinality_flags(profile: Any, threshold: float = 0.9) -> list[str]:
     return flagged
 
 
+def _numeric_distribution(df: pd.DataFrame, col: str, bins: int = 10) -> pd.DataFrame | None:
+    """Return a histogram-like count DataFrame for st.bar_chart. None if not applicable."""
+    series = df[col].dropna()
+    if not pd.api.types.is_numeric_dtype(series) or len(series) < 2 or series.nunique() < 2:
+        return None
+    try:
+        counts = pd.cut(series, bins=bins, duplicates="drop").value_counts().sort_index()
+    except (ValueError, TypeError):
+        return None
+    if counts.empty:
+        return None
+    return pd.DataFrame({"count": counts.values}, index=counts.index.astype(str))
+
+
+def _categorical_top_values(df: pd.DataFrame, col: str, n: int = 20) -> pd.DataFrame | None:
+    """Return top-N value counts DataFrame for st.bar_chart/st.dataframe. None if not applicable."""
+    series = df[col]
+    if pd.api.types.is_numeric_dtype(series):
+        return None
+    counts = series.value_counts().head(n)
+    if counts.empty:
+        return None
+    return counts.to_frame("count")
+
+
+def _iqr_outlier_summary(df: pd.DataFrame, col: str) -> dict[str, Any] | None:
+    """Return IQR-based outlier stats. None if non-numeric or fewer than 4 non-null values."""
+    series = df[col].dropna()
+    if not pd.api.types.is_numeric_dtype(series) or len(series) < 4:
+        return None
+    q1 = float(series.quantile(0.25))
+    q3 = float(series.quantile(0.75))
+    iqr = q3 - q1
+    lower = q1 - 1.5 * iqr
+    upper = q3 + 1.5 * iqr
+    outliers = int(((series < lower) | (series > upper)).sum())
+    return {
+        "q1": q1,
+        "q3": q3,
+        "iqr": iqr,
+        "lower_fence": lower,
+        "upper_fence": upper,
+        "outlier_count": outliers,
+    }
+
+
+def _render_eda_univariate(st: Any, df: pd.DataFrame) -> None:
+    """Render EDA Univariate Explorer: column selector, distribution chart, IQR outlier hint."""
+    st.subheader("EDA — Univariate Explorer")
+    cols = df.columns.tolist()
+    if not cols:
+        st.info("No columns to explore.")
+        return
+    col_name = st.selectbox("Select column", cols)
+    if col_name is None:
+        return
+    is_numeric = pd.api.types.is_numeric_dtype(df[col_name])
+    if is_numeric:
+        dist = _numeric_distribution(df, col_name)
+        if dist is not None:
+            st.caption("Distribution")
+            st.bar_chart(dist)
+        else:
+            st.info("Insufficient distinct values for distribution chart.")
+        outlier_stats = _iqr_outlier_summary(df, col_name)
+        if outlier_stats is not None:
+            caption = (
+                f"IQR: {outlier_stats['iqr']:.2f} | "
+                f"Fences: [{outlier_stats['lower_fence']:.2f}, "
+                f"{outlier_stats['upper_fence']:.2f}] | "
+                f"Outliers: {outlier_stats['outlier_count']}"
+            )
+            st.caption(caption)
+    else:
+        top = _categorical_top_values(df, col_name)
+        if top is not None:
+            st.caption("Top values (up to 20)")
+            st.dataframe(top)
+            st.bar_chart(top)
+        else:
+            st.info("No usable values for this column.")
+
+
 def _render_data_overview(st: Any) -> None:
     """Render the Data Overview section: shape, per-column table, stats, duplicates."""
     st.header("Data Overview")
@@ -135,7 +218,15 @@ def _render_data_overview(st: Any) -> None:
     st.write(f"Shape: {profile['rows']} rows x {profile['cols']} columns")
     st.write(f"Memory: {profile['memory_mb']:.2f} MB")
     st.subheader("Columns")
-    st.table(_build_overview_table(profile))
+    overview = _build_overview_table(profile)
+    st.table(overview)
+    null_df = pd.DataFrame(
+        {"null_pct": [r["null_pct"] for r in overview]},
+        index=[r["column"] for r in overview],
+    )
+    if null_df["null_pct"].sum() > 0:
+        st.caption("Null % by column")
+        st.bar_chart(null_df)
     numeric = _numeric_summary(df)
     if numeric is not None:
         st.subheader("Numeric Summary")
@@ -144,6 +235,7 @@ def _render_data_overview(st: Any) -> None:
     flags = _high_cardinality_flags(profile)
     if flags:
         st.warning(f"High-cardinality columns: {', '.join(flags)}")
+    _render_eda_univariate(st, df)
 
 
 def main() -> None:
