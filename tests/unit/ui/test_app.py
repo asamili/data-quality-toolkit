@@ -28,6 +28,7 @@ from data_quality_toolkit.ui.app import (
     _load_run_history,
     _numeric_distribution,
     _numeric_summary,
+    _plan_preprocessing,
 )
 
 
@@ -498,3 +499,60 @@ def test_bivariate_categorical_categorical_shape_matches_unique_value_counts() -
     result = _bivariate_categorical_categorical(df, "a", "b")
     assert result is not None
     assert result.shape == (2, 2)
+
+
+# ── _plan_preprocessing ───────────────────────────────────────────────────────
+
+
+def test_plan_preprocessing_empty_dataframe_returns_empty_list() -> None:
+    assert _plan_preprocessing(pd.DataFrame()) == []
+
+
+def test_plan_preprocessing_returns_one_row_per_column() -> None:
+    df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"], "c": [1.0, 2.0, 3.0]})
+    plan = _plan_preprocessing(df)
+    assert len(plan) == 3
+    assert [r["column"] for r in plan] == ["a", "b", "c"]
+
+
+def test_plan_preprocessing_high_null_recommends_drop() -> None:
+    df = pd.DataFrame({"a": [1, None, None, None, None, None]})
+    plan = _plan_preprocessing(df)
+    assert "drop or flag column" in plan[0]["recommendations"]
+
+
+def test_plan_preprocessing_moderate_null_numeric_recommends_median_impute() -> None:
+    df = pd.DataFrame({"n": [1.0, None, 3.0, 4.0, 5.0]})
+    plan = _plan_preprocessing(df)
+    assert "impute with median" in plan[0]["recommendations"]
+
+
+def test_plan_preprocessing_moderate_null_categorical_recommends_mode_impute() -> None:
+    df = pd.DataFrame({"c": ["a", None, "b", "c", "d"]})
+    plan = _plan_preprocessing(df)
+    assert "impute with mode" in plan[0]["recommendations"]
+
+
+def test_plan_preprocessing_high_cardinality_recommends_hash_encode() -> None:
+    df = pd.DataFrame({"id": [str(i) for i in range(10)]})
+    plan = _plan_preprocessing(df)
+    assert "drop or hash-encode" in plan[0]["recommendations"]
+
+
+def test_plan_preprocessing_numeric_always_recommends_scaling() -> None:
+    df = pd.DataFrame({"n": [1.0, 2.0, 3.0, 4.0, 5.0]})
+    plan = _plan_preprocessing(df)
+    assert "consider scaling" in plan[0]["recommendations"]
+
+
+def test_plan_preprocessing_numeric_with_outliers_recommends_treatment() -> None:
+    df = pd.DataFrame({"n": [1.0, 2.0, 3.0, 4.0, 100.0]})
+    plan = _plan_preprocessing(df)
+    assert "consider outlier treatment" in plan[0]["recommendations"]
+
+
+def test_plan_preprocessing_clean_categorical_no_issues() -> None:
+    df = pd.DataFrame({"c": ["a", "b", "a", "b", "a"]})
+    plan = _plan_preprocessing(df)
+    assert plan[0]["issues"] == "none"
+    assert "label or one-hot encode" in plan[0]["recommendations"]

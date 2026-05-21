@@ -162,6 +162,49 @@ def _iqr_outlier_summary(df: pd.DataFrame, col: str) -> dict[str, Any] | None:
     }
 
 
+def _plan_preprocessing(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """Return per-column preprocessing recommendation rows derived from the DataFrame."""
+    rows = len(df)
+    plan: list[dict[str, Any]] = []
+    for col in df.columns:
+        is_num = pd.api.types.is_numeric_dtype(df[col])
+        null_pct = float(df[col].isna().mean())
+        unique_ratio = df[col].nunique() / rows if rows > 0 else 0.0
+
+        issues: list[str] = []
+        recs: list[str] = []
+
+        if null_pct > 0.5:
+            issues.append(f"high nulls ({null_pct:.0%})")
+            recs.append("drop or flag column")
+        elif null_pct > 0:
+            issues.append(f"nulls ({null_pct:.0%})")
+            recs.append("impute with median" if is_num else "impute with mode or 'Unknown'")
+
+        if not is_num and unique_ratio > 0.9:
+            issues.append(f"high cardinality ({unique_ratio:.0%} unique)")
+            recs.append("drop or hash-encode")
+
+        if is_num:
+            iqr = _iqr_outlier_summary(df, col)
+            if iqr is not None and iqr["outlier_count"] > 0:
+                issues.append(f"{iqr['outlier_count']} IQR outlier(s)")
+                recs.append("consider outlier treatment")
+            recs.append("consider scaling")
+        elif unique_ratio <= 0.9:
+            recs.append("label or one-hot encode")
+
+        plan.append(
+            {
+                "column": col,
+                "dtype": str(df[col].dtype),
+                "issues": ", ".join(issues) if issues else "none",
+                "recommendations": ", ".join(recs) if recs else "none",
+            }
+        )
+    return plan
+
+
 def _render_eda_univariate(st: Any, df: pd.DataFrame) -> None:
     """Render EDA Univariate Explorer: column selector, distribution chart, IQR outlier hint."""
     st.subheader("EDA — Univariate Explorer")
@@ -292,6 +335,16 @@ def _render_eda_bivariate(st: Any, df: pd.DataFrame) -> None:
         _render_cat_cat(st, df, col1, col2)
 
 
+def _render_preprocessing_plan(st: Any, df: pd.DataFrame) -> None:
+    """Render Preprocessing Recommendations table: per-column issues and suggested transformations."""
+    st.subheader("Preprocessing Recommendations")
+    plan = _plan_preprocessing(df)
+    if not plan:
+        st.info("No columns to analyse.")
+        return
+    st.dataframe(pd.DataFrame(plan))
+
+
 def _render_data_overview(st: Any) -> None:
     """Render the Data Overview section: shape, per-column table, stats, duplicates."""
     st.header("Data Overview")
@@ -330,6 +383,7 @@ def _render_data_overview(st: Any) -> None:
         st.warning(f"High-cardinality columns: {', '.join(flags)}")
     _render_eda_univariate(st, df)
     _render_eda_bivariate(st, df)
+    _render_preprocessing_plan(st, df)
 
 
 def main() -> None:
