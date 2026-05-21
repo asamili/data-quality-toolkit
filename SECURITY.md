@@ -37,7 +37,7 @@ Include:
 
 ### Current limitations relevant to security
 
-DQT v1.2.0 does **not** include:
+DQT v1.7.0 does **not** include:
 
 - PII detection or masking
 - Authentication or authorization
@@ -62,5 +62,5 @@ Do not use DQT as a security control or compliance enforcement tool. If your inp
 
 | Version | Supported |
 |---------|-----------|
-| 1.2.x   | Yes       |
-| < 1.2   | No        |
+| 1.7.x   | Yes       |
+| < 1.7   | No        |
