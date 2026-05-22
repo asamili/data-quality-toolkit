@@ -45,6 +45,7 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         "version",
         "log-demo",
         "build-pbi",
+        "plan",
     }
     allowed_flags = {
         "--outdir",

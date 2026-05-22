@@ -140,6 +140,9 @@ dqt export data/orders.csv --outdir dist/
 # Requires at least two prior export runs written to the same --outdir
 dqt compare data/orders.csv --outdir dist/
 
+# Generate per-column preprocessing recommendations (impute / encode / scale / drop guidance)
+dqt plan data/orders.csv
+
 # Launch the Streamlit dashboard (requires: pip install data-quality-toolkit[ui])
 dqt dashboard
 ```

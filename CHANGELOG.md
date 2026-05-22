@@ -16,6 +16,7 @@ Dashboard and CLI capability shipped since v1.7.0. No version bump or release ta
 - Streamlit dashboard — Preprocessing Recommendations table: per-column impute/scale/encode/outlier/drop guidance derived from dtype, null rate, cardinality, and IQR (advisory only; no transformation applied; no sklearn dependency)
 - `--db PATH` flag on `dqt assess` to persist a run into the dashboard-readable SQLite database
 - CSV→dashboard walkthrough docs (`examples/dashboard/`)
+- `dqt plan <csv>` CLI command: per-column preprocessing recommendations (impute / encode / scale / outlier / drop guidance) derived from dtype, null rate, cardinality, and IQR statistics; outputs JSON on stdout and a human summary on stderr; advisory only, no transformation applied
 
 ### Notes
 - All dashboard changes are UI-only and additive; core CLI commands are unaffected

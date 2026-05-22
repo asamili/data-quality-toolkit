@@ -114,6 +114,18 @@ def run_export_star(csv: str, *, output_dir: str | None = None, **kw: Any) -> An
     return _impl(csv, output_dir=output_dir, **kw)
 
 
+def run_plan(csv: str, **kw: Any) -> dict[str, Any]:
+    """Load CSV and return per-column preprocessing plan (lazy import for monkeypatching)."""
+    from data_quality_toolkit.loaders.file.csv_loader import load_csv
+    from data_quality_toolkit.workflow.preprocessing import plan_preprocessing
+
+    df, meta = load_csv(csv, **kw)
+    return {
+        "dataset_id": meta["dataset_id"],
+        "columns": plan_preprocessing(df),
+    }
+
+
 def _extract_null_threshold(args: argparse.Namespace) -> float | None:
     """Validate and return --null-threshold if provided; None otherwise."""
     nt = getattr(args, "null_threshold", None)
@@ -630,6 +642,24 @@ class _DQTArgumentParser(argparse.ArgumentParser):
         sys.exit(2)
 
 
+def cmd_plan(args: argparse.Namespace) -> int:
+    """Generate per-column preprocessing recommendations for a CSV."""
+    _apply_overrides(args)
+    out = run_plan(args.csv, **_csv_kwargs_from_args(args))
+
+    tick = _safe_text("✓", "[OK]")
+    columns = out.get("columns") or []
+    cols_total = len(columns)
+    cols_with_issues = sum(1 for c in columns if c.get("issues") != "none")
+    print(f"{tick} Plan complete", file=sys.stderr)
+    print(f"  - Columns: {cols_total}", file=sys.stderr)
+    print(f"  - Columns with issues: {cols_with_issues}", file=sys.stderr)
+
+    if not getattr(args, "no_json", False):
+        print(_json_dump(out))
+    return 0
+
+
 def cmd_dashboard(args: argparse.Namespace) -> int:
     try:
         import streamlit  # noqa: F401
@@ -847,6 +877,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp_kpi_val = sub.add_parser("kpi-validate", help="Validate KPI catalog for errors")
     sp_kpi_val.add_argument("--config", default=KPI_DEFAULT_CONFIG, help=KPI_CONFIG_HELP)
     sp_kpi_val.set_defaults(func=cmd_kpi_validate)
+
+    # plan
+    sp_plan = sub.add_parser(
+        "plan",
+        help="Generate per-column preprocessing recommendations for a CSV",
+    )
+    sp_plan.add_argument("csv", help=CSV_PATH_HELP)
+    _add_csv_options(sp_plan)
+    sp_plan.set_defaults(func=cmd_plan)
 
     # dashboard (Phase 4)
     sp_dash = sub.add_parser(
