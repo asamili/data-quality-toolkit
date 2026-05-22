@@ -6,9 +6,13 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [Unreleased]
 
-### Security, Performance, and Memory Hardening (2026-05-22, HEAD `0f26948`)
+---
 
-Four gated changes completing the DQT Hardening Release. No breaking changes to public CLI or output formats.
+## [1.8.0] - 2026-05-22
+
+### Security, Performance, and Memory Hardening, CVE Remediation, and Mypy Cleanup (HEAD `d83a08a`)
+
+Four hardening gates, one CVE remediation gate, and one mypy cleanup gate completing the v1.8.0 release. No breaking changes to public CLI or output formats.
 
 **Security / Tooling Hardening (`b429200`)**
 
@@ -39,21 +43,30 @@ Four gated changes completing the DQT Hardening Release. No breaking changes to 
 - Default full-load path unchanged when `SAMPLE_SIZE` is not set.
 - 11 targeted tests added in `tests/unit/loader/test_csv_loader_memory_hardening.py`
 
+**CVE Remediation (`6718b05`)**
+
+- `python-dotenv` minimum version raised to `>=1.2.2`
+- `pytest` minimum version raised to `>=9.0.3`
+- `black` minimum version raised to `>=26.3.1`
+- pip-audit advisory count reduced from 31 CVEs across 17 packages to 4 remaining deferred advisories (87% reduction)
+
+**Lineage/Manifest Mypy Cleanup (`d83a08a`)**
+
+- Declared `serde_impl`, `json_writer`, `lineage_schema_version`, and `manifest_file` fields in `Settings` with safe defaults, resolving 5 pre-existing `attr-defined` mypy errors in `lineage/manifest/serializer.py` and `lineage/manifest/builder.py`
+- Targeted `lineage/manifest/` mypy errors: 5 → 0
+
 **Validation summary**
 
 - Full pytest suite: 636/636 tests pass
 - ruff: all checks passed across `src/`, `tests/`, `benchmarks/`
 - bandit `-ll -iii`: 0 medium, 0 high issues
-- mypy: clean on all hardening-gate files; 5 pre-existing `attr-defined` errors in `lineage/manifest/` (`serde_impl`, `json_writer`, `lineage_schema_version`, `manifest_file`) not introduced by this work
+- mypy: clean across all source files including `lineage/manifest/`; 0 `attr-defined` errors
+- pip-audit: 31 CVEs → 4 remaining deferred advisories (87% reduction)
 
-**Known deferred items**
+**Deferred**
 
-- Dependency CVE remediation: pip-audit reports 31 CVEs across 17 packages; remediation deferred to a dedicated dependency gate (upgrades were out of scope for this hardening release)
-- Pre-existing mypy errors in `lineage/manifest/serializer.py` and `lineage/manifest/builder.py`: not introduced by hardening; deferred for separate cleanup
-
----
-
-Dashboard and CLI capability shipped since v1.7.0. No version bump or release tag has been issued for these changes yet.
+- `starlette` orphaned transitive dependency: major-version jump required; separate investigation gate
+- Remaining pip-audit advisories: local-env artifacts for `black`, `pytest`, `python-dotenv`; clear on fresh install
 
 ### Added
 - Streamlit dashboard — Score Trend chart (score over time) and Latest Run issues breakdown panel, with ISO8601 timestamp x-axis
