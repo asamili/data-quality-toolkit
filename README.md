@@ -29,6 +29,8 @@ CSV-based workflows often fail late. Data issues are discovered only after manua
 - Exports BI-ready artifacts including star-schema outputs
 - Produces a per-run `quality_report.json` summary for automation and review
 - Supports semantic KPI / DAX generation for BI-oriented workflows
+- Tracks run-to-run quality trends from SQLite-backed run history
+- Provides an optional local Streamlit dashboard for run-history trends, data overview, exploratory data analysis (EDA) charts, and per-column preprocessing recommendations
 
 ### Current product positioning
 DQT is best positioned today as:
@@ -163,6 +165,12 @@ In the dashboard, enter:
 - **Database path:** `dist/dqt.db` (Windows: `dist\dqt.db`)
 - **Dataset ID:** the `dataset_id` value from `dist/star/quality_report.json`
 
+The dashboard provides:
+- **Run History** — past export runs, score-over-time trend, and latest-run issues breakdown
+- **Data Overview** — per-column dtype/null/unique/min/max table, numeric summary, duplicate-row count, and high-cardinality warnings (from a CSV path)
+- **EDA Explorer** — univariate distributions and bivariate relationships (numeric↔numeric scatter with Pearson r, numeric↔categorical grouped stats, categorical↔categorical crosstab)
+- **Preprocessing Recommendations** — per-column impute/scale/encode/outlier/drop guidance derived from dtype, null rate, cardinality, and IQR statistics (advisory only; no transformation is applied)
+
 `dqt assess` prints a quick quality summary but does not populate the dashboard
 database — use `dqt export` for the dashboard. See
 [examples/dashboard/](examples/dashboard/README.md) for a full walkthrough and
@@ -239,8 +247,9 @@ data-quality-toolkit/
 │   ├── exporters/             # Star-schema CSV + quality_report export
 │   ├── workflow/              # Pipeline orchestration and compare
 │   ├── storage/               # SQLite-backed run history (Phase 3)
+│   ├── semantics/             # KPI catalog + DAX/TMSL generation
 │   ├── cli/                   # Command-line interface
-│   └── ui/                    # Experimental Streamlit dashboard (Phase 4)
+│   └── ui/                    # Streamlit dashboard (run history, data overview, EDA, preprocessing)
 ├── tests/                      # Test suites
 ├── docs/                       # Documentation and demo stories
 ├── examples/                   # Demo packages and sample data
@@ -289,7 +298,7 @@ make test
 
 ## ⚠️ Known Limitations
 
-- **CLI-first:** no REST API in this release; experimental Streamlit dashboard available via `dqt dashboard` (Phase 4) — install with `pip install data-quality-toolkit[ui]`
+- **CLI-first:** no REST API in this release; an optional local Streamlit dashboard is available via `dqt dashboard` — install with `pip install data-quality-toolkit[ui]`. The dashboard is a local viewer, not a hosted/multi-user web product
 - **CSV input only:** other file formats are not supported
 - **Minimal config:** CLI flags drive all behavior; an optional `dqt.yaml` sets defaults for `null_threshold`, `fail_under`, and `outdir` only
 - **No streaming / chunking:** large files are loaded fully into memory via pandas
@@ -310,4 +319,4 @@ Built with pandas, typer, rich, pydantic, and other open-source libraries.
 
 ---
 
-**Version**: v1.7.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`), optional project config (`dqt.yaml`)
+**Version**: v1.7.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`), optional project config (`dqt.yaml`), and an optional local Streamlit dashboard (run history, data overview, EDA, preprocessing recommendations)

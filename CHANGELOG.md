@@ -4,6 +4,25 @@ All notable changes to the Data Quality Toolkit project are documented in this f
 
 The format is inspired by Keep a Changelog and adapted for this project.
 
+## [Unreleased]
+
+Dashboard and CLI capability shipped since v1.7.0. No version bump or release tag has been issued for these changes yet.
+
+### Added
+- Streamlit dashboard — Score Trend chart (score over time) and Latest Run issues breakdown panel, with ISO8601 timestamp x-axis
+- Streamlit dashboard — Data Overview section: per-column dtype/null/null_pct/unique/min/max table, numeric summary, duplicate-row count, and high-cardinality warning (reads a CSV path)
+- Streamlit dashboard — EDA Univariate Explorer: numeric distribution histogram, categorical top-values, IQR outlier summary, and null-rate chart
+- Streamlit dashboard — EDA Bivariate Explorer: numeric↔numeric scatter with Pearson r, numeric↔categorical grouped stats, and categorical↔categorical crosstab
+- Streamlit dashboard — Preprocessing Recommendations table: per-column impute/scale/encode/outlier/drop guidance derived from dtype, null rate, cardinality, and IQR (advisory only; no transformation applied; no sklearn dependency)
+- `--db PATH` flag on `dqt assess` to persist a run into the dashboard-readable SQLite database
+- CSV→dashboard walkthrough docs (`examples/dashboard/`)
+
+### Notes
+- All dashboard changes are UI-only and additive; core CLI commands are unaffected
+- The dashboard remains an optional local viewer behind the `[ui]` extra
+
+---
+
 ## [1.7.0] - 2026-05-18
 
 ### Added
@@ -51,7 +70,6 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ### Notes
 - Streamlit is an optional dependency; core CLI commands (`profile`, `assess`, `export`, `compare`) are unaffected
-- Public snapshot sync pending; v1.5.0 private-only until a separate sync gate is admitted
 
 ---
 
