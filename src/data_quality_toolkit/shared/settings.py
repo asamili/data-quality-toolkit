@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     # Security / feature flags
     dqt_allow_network: bool = Field(False, validation_alias="DQT_ALLOW_NETWORK")
 
+    # Lineage / manifest (Phase 10 feature — declared for type-checker visibility)
+    serde_impl: Literal["pydantic", "msgspec"] = Field("pydantic", validation_alias="SERDE_IMPL")
+    json_writer: Literal["json", "orjson"] = Field("json", validation_alias="JSON_WRITER")
+    lineage_schema_version: str = Field("1.0.0", validation_alias="LINEAGE_SCHEMA_VERSION")
+    manifest_file: str = Field("artifacts.json", validation_alias="MANIFEST_FILE")
+
     # ------------------------------
     # Config (v2 dict / v1 class)
     # ------------------------------
