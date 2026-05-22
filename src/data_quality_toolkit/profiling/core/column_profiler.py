@@ -18,6 +18,8 @@ def profile_columns(df: pd.DataFrame, sample: pd.DataFrame | None = None) -> lis
     """
     src = sample if sample is not None else df
     out: list[dict[str, Any]] = []
+    null_counts = df.isna().sum()
+    unique_counts = df.nunique(dropna=True)
 
     for name in df.columns:
         s_full = df[name]
@@ -26,8 +28,8 @@ def profile_columns(df: pd.DataFrame, sample: pd.DataFrame | None = None) -> lis
         prof: dict[str, Any] = {
             "name": name,
             "dtype": str(s_full.dtype),
-            "nulls": int(s_full.isna().sum()),
-            "unique": int(s_full.nunique(dropna=True)),
+            "nulls": int(null_counts[name]),
+            "unique": int(unique_counts[name]),
         }
 
         if pd.api.types.is_numeric_dtype(s_src):

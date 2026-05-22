@@ -48,6 +48,7 @@ dev = [
     "black>=23.0.0",
     "isort>=5.12.0",
     "pre-commit>=3.3.0",
+    "pip-audit>=2.7.0",  # Dependency CVE scanning
     "ipykernel>=6.25.0",  # For notebooks
 ]
 
@@ -133,6 +134,10 @@ fixable = ["ALL"]
 "tests/*" = ["B018", "S101"]  # Allow asserts and expressions in tests
 "src/data_quality_toolkit/cli/main.py" = ["B018"]
 "scripts/*" = ["S101"]  # Allow asserts in scripts
+
+# mccabe: give the already-selected C90 rule an enforced ceiling
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 # Black formatter
 [tool.black]

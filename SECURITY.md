@@ -58,6 +58,29 @@ Do not use DQT as a security control or compliance enforcement tool. If your inp
 
 ---
 
+## Path, output, and network stance
+
+DQT is a **local, single-user CLI**. It trusts the paths you pass it:
+
+- **Input paths** (`csv` argument) are validated only for existence and a `.csv` suffix. They are not sandboxed — DQT reads whatever local path the invoking user supplies. Do not run DQT against paths you do not control.
+- **Output paths** (`--out` / `--outdir`) are written verbatim to the location you specify. DQT performs no scope or traversal guarding on output, by design; the invoking user is responsible for the target directory.
+- **Network**: off by default. The `DQT_ALLOW_NETWORK` flag defaults to `false` and no code path performs outbound calls during profiling, assessment, or export. Secrets such as `API_KEY` are read from the environment only and are never written to output artifacts.
+
+These are deliberate boundaries for a local tool, not gaps. Treat input and output directories as equally sensitive (see above).
+
+---
+
+## Security tooling
+
+The repository enforces security and complexity checks in pre-commit and CI:
+
+- **Bandit** (`-ll -iii -r src/`) — static security analysis of source.
+- **Ruff "S" rules** — flake8-bandit lint rules on every check.
+- **Ruff "C90" / mccabe** — cyclomatic complexity ceiling (`max-complexity = 10`) to bound function complexity.
+- **pip-audit** — dependency CVE scanning. Runs in CI as an advisory step (`pip-audit --desc`, non-blocking) and is available as a manual pre-commit hook (`pre-commit run pip-audit --hook-stage manual`). Acting on reported CVEs (dependency upgrades) is handled in a dedicated dependency gate.
+
+---
+
 ## Supported versions
 
 | Version | Supported |

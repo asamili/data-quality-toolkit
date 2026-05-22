@@ -13,7 +13,6 @@ import pandas as pd
 
 from data_quality_toolkit.loaders.base_loader import BaseLoader
 from data_quality_toolkit.shared.settings import load_settings
-from data_quality_toolkit.utils.helpers import stable_seed
 from data_quality_toolkit.utils.logging import get_logger
 from data_quality_toolkit.utils.validators import validate_csv_path
 
@@ -56,29 +55,36 @@ class CsvLoader(BaseLoader):
         if not validate_csv_path(str(path)):
             raise FileNotFoundError(f"CSV file not found or not a .csv: {source}")
 
-        # Resolve settings (sampling, logging level/format already set via CLI)
         settings = load_settings()
-
-        # Compute dataset_id first (used for deterministic sampling)
         dataset_id = _dataset_id_from_file(path)
+
+        # Read-time sampling: use nrows to avoid full-file materialization.
+        # Sampling yields the first N rows (not random) when SAMPLE_SIZE is set.
+        env_explicit = os.getenv("SAMPLE_SIZE")
+        nrows: int | None = (
+            settings.sample_size if (env_explicit is not None and settings.sample_size) else None
+        )
+        csv_kwargs: dict[str, Any] = dict(read_csv_kwargs)
+        if nrows is not None and "nrows" not in csv_kwargs:
+            csv_kwargs["nrows"] = nrows
 
         logger.info(f"Loading CSV: {path}")
         try:
-            df = pd.read_csv(path, **read_csv_kwargs)
+            df = pd.read_csv(path, **csv_kwargs)
         except pd.errors.EmptyDataError:
             raise ValueError(
                 f"'{path}' is empty or has no columns to parse. "
                 "Provide a CSV with at least a header row."
             ) from None
 
-        # Optional deterministic sampling (Phase 1: in-memory)
-        sample_applied = False
-        # Only sample if the user explicitly set SAMPLE_SIZE (env or CLI wrapper)
-        env_explicit = os.getenv("SAMPLE_SIZE")
-        if env_explicit is not None and settings.sample_size and len(df) > settings.sample_size:
-            rs = stable_seed(dataset_id, "csv_loader.sample")
-            df = df.sample(n=settings.sample_size, random_state=rs).reset_index(drop=True)
-            sample_applied = True
+        sample_applied = nrows is not None and len(df) == nrows
+
+        if len(df) > settings.max_rows_in_memory:
+            raise ValueError(
+                f"Loaded {len(df):,} rows exceeds max_rows_in_memory="
+                f"{settings.max_rows_in_memory:,}. "
+                "Set SAMPLE_SIZE or increase MAX_ROWS_IN_MEMORY."
+            )
 
         stat = path.stat()
         meta: dict[str, Any] = {
@@ -89,7 +95,7 @@ class CsvLoader(BaseLoader):
             "file_size_bytes": int(stat.st_size),
             "modified_ts": _utc_iso(stat.st_mtime),
             "sample_applied": sample_applied,
-            "sample_size": int(settings.sample_size) if sample_applied else None,
+            "sample_size": int(nrows) if (sample_applied and nrows is not None) else None,
         }
 
         logger.info(f"Loaded {meta['rows']} rows, {meta['cols']} columns")

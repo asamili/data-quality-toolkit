@@ -12,8 +12,9 @@ def iqr_outlier_summary(df: pd.DataFrame, col: str) -> dict[str, Any] | None:
     series = df[col].dropna()
     if not pd.api.types.is_numeric_dtype(series) or len(series) < 4:
         return None
-    q1 = float(series.quantile(0.25))
-    q3 = float(series.quantile(0.75))
+    qs = series.quantile([0.25, 0.75])
+    q1 = float(qs.iloc[0])
+    q3 = float(qs.iloc[1])
     iqr = q3 - q1
     lower = q1 - 1.5 * iqr
     upper = q3 + 1.5 * iqr
@@ -33,9 +34,10 @@ def plan_preprocessing(df: pd.DataFrame) -> list[dict[str, Any]]:
     rows = len(df)
     plan: list[dict[str, Any]] = []
     for col in df.columns:
-        is_num = pd.api.types.is_numeric_dtype(df[col])
-        null_pct = float(df[col].isna().mean())
-        unique_ratio = df[col].nunique() / rows if rows > 0 else 0.0
+        s = df[col]
+        is_num = pd.api.types.is_numeric_dtype(s)
+        null_pct = float(s.isna().mean())
+        unique_ratio = s.nunique() / rows if rows > 0 else 0.0
 
         issues: list[str] = []
         recs: list[str] = []
@@ -63,7 +65,7 @@ def plan_preprocessing(df: pd.DataFrame) -> list[dict[str, Any]]:
         plan.append(
             {
                 "column": col,
-                "dtype": str(df[col].dtype),
+                "dtype": str(s.dtype),
                 "issues": ", ".join(issues) if issues else "none",
                 "recommendations": ", ".join(recs) if recs else "none",
             }

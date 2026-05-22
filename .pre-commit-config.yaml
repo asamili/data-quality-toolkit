@@ -74,11 +74,22 @@ repos:
       - id: bandit
         args: ["-ll", "-iii", "-r", "src/"]
 
+  # pip-audit for dependency CVEs (manual stage: opt-in, avoids blocking
+  # offline commits on a network advisory-DB lookup).
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit (dependency CVEs)
+        entry: pip-audit
+        language: python
+        additional_dependencies:
+          - pip-audit>=2.7.0
+        pass_filenames: false
+        stages: [manual]
+
   # docformatter for consistent docstring wrapping.
 
   # check-docstring-first hook from pre-commit-hooks.
-
-  # pip-audit for dependency CVEs.
 
 # Configuration
 fail_fast: false

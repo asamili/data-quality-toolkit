@@ -46,6 +46,12 @@ jobs:
       - name: MyPy
         run: mypy
 
+      # Dependency CVE scan (advisory: reports vulnerabilities without
+      # failing the build; remediation is handled in a dedicated dependency gate)
+      - name: pip-audit (dependency CVEs)
+        continue-on-error: true
+        run: pip-audit --desc
+
       # Tests (respect pytest.ini: coverage + fail_under)
       - name: Unit tests (with coverage)
         run: pytest -v
