@@ -29,6 +29,7 @@ from data_quality_toolkit.ui.app import (
     _numeric_distribution,
     _numeric_summary,
     _plan_preprocessing,
+    _run_assess_csv,
 )
 
 
@@ -556,3 +557,52 @@ def test_plan_preprocessing_clean_categorical_no_issues() -> None:
     plan = _plan_preprocessing(df)
     assert plan[0]["issues"] == "none"
     assert "label or one-hot encode" in plan[0]["recommendations"]
+
+
+# ── _run_assess_csv ───────────────────────────────────────────────────────────
+
+_FAKE_ASSESS_OUT: dict = {
+    "run_id": "r1",
+    "dataset_id": "sha1:abc",
+    "ts": "2025-01-01T00:00:00Z",
+    "meta": {},
+    "profile": {"rows": 3, "cols": 2, "memory_mb": 0.01, "columns": []},
+    "assessment": {"score": 0.9, "issues": [], "run_id": "r1", "dataset_id": "sha1:abc", "ts": ""},
+}
+
+
+def test_run_assess_csv_success() -> None:
+    with patch("data_quality_toolkit.ui.app._assess_csv", return_value=_FAKE_ASSESS_OUT):
+        out, err = _run_assess_csv("data.csv")
+    assert err is None
+    assert out is not None
+    assert out["assessment"]["score"] == pytest.approx(0.9)
+    assert out["profile"]["rows"] == 3
+
+
+def test_run_assess_csv_file_not_found() -> None:
+    with patch(
+        "data_quality_toolkit.ui.app._assess_csv",
+        side_effect=FileNotFoundError("data.csv not found"),
+    ):
+        out, err = _run_assess_csv("data.csv")
+    assert out is None
+    assert err is not None
+    assert "not found" in err
+
+
+def test_run_assess_csv_value_error() -> None:
+    with patch(
+        "data_quality_toolkit.ui.app._assess_csv",
+        side_effect=ValueError("empty or has no columns"),
+    ):
+        out, err = _run_assess_csv("empty.csv")
+    assert out is None
+    assert err is not None
+    assert "empty" in err
+
+
+def test_run_assess_csv_strips_whitespace() -> None:
+    with patch("data_quality_toolkit.ui.app._assess_csv", return_value=_FAKE_ASSESS_OUT) as mock:
+        _run_assess_csv("  data.csv  ")
+    mock.assert_called_once_with("data.csv")

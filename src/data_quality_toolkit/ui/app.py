@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-from data_quality_toolkit.profiling.profiling_orchestrator import run_profiling
+from data_quality_toolkit.api import assess_csv as _assess_csv
 from data_quality_toolkit.storage.connection import StorageError
 from data_quality_toolkit.storage.reader import read_run_history
 from data_quality_toolkit.workflow.preprocessing import iqr_outlier_summary as _iqr_outlier_summary
@@ -65,6 +65,21 @@ def _load_csv(path_str: str) -> tuple[pd.DataFrame | None, str | None]:
     except (OSError, ValueError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
         return None, str(exc)
     return df, None
+
+
+def _run_assess_csv(path_str: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Call the public assess_csv API and return (result, None) or (None, error_message).
+
+    Mirrors the _load_run_history pattern: thin wrapper that isolates exception
+    handling so the Streamlit caller can stay free of bare try/except blocks.
+    Routing through api.assess_csv gives the UI the same hardened load_csv path
+    (row cap, max_rows_in_memory guard) that the CLI and Python API use.
+    """
+    try:
+        result = _assess_csv(path_str.strip())
+        return result, None
+    except Exception as exc:
+        return None, str(exc)
 
 
 def _build_overview_table(profile: Any) -> list[dict[str, Any]]:
@@ -301,7 +316,22 @@ def _render_data_overview(st: Any) -> None:
     if df is None:
         return
 
-    profile = run_profiling(df, "dashboard_overview")
+    out, assess_err = _run_assess_csv(overview_csv)
+    if assess_err is not None:
+        st.error(f"Assessment error: {assess_err}")
+        return
+    if out is None:
+        return
+
+    profile = out["profile"]
+    assessment = out["assessment"]
+    score = float(assessment["score"])
+    issues = list(assessment.get("issues") or [])
+    st.metric("Quality Score", f"{score:.2%}")
+    st.caption(f"Issues flagged: {len(issues)}")
+    if issues:
+        st.dataframe(pd.DataFrame(issues))
+
     st.write(f"Shape: {profile['rows']} rows x {profile['cols']} columns")
     st.write(f"Memory: {profile['memory_mb']:.2f} MB")
     st.subheader("Columns")
