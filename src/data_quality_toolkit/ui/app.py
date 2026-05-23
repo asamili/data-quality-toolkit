@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -80,6 +80,43 @@ def _run_assess_csv(path_str: str) -> tuple[dict[str, Any] | None, str | None]:
         return result, None
     except Exception as exc:
         return None, str(exc)
+
+
+def _load_df_and_assess(
+    path_str: str,
+) -> tuple[pd.DataFrame | None, dict[str, Any] | None, str | None]:
+    """Single-read path for _render_data_overview.
+
+    Loads the CSV once via the hardened csv_loader (max_rows guard, sha1 dataset_id,
+    SAMPLE_SIZE env support), then runs profiling and assessment over the in-memory
+    DataFrame.  Returns (df, result_dict, None) on success or (None, None, error_msg)
+    on failure.
+    """
+    from data_quality_toolkit.assessment.quality_checker import assess as _assess
+    from data_quality_toolkit.loaders.file.csv_loader import load_csv as _load_csv_h
+    from data_quality_toolkit.profiling.profiling_orchestrator import run_profiling as _run_prof
+
+    path = path_str.strip()
+    try:
+        df, meta = _load_csv_h(path)
+        prof = _run_prof(df, meta["dataset_id"])
+        assessment = _assess(cast(dict[str, Any], prof))
+        result: dict[str, Any] = {
+            "run_id": prof["run_id"],
+            "dataset_id": prof["dataset_id"],
+            "ts": prof["ts"],
+            "meta": meta,
+            "profile": {
+                "rows": prof["rows"],
+                "cols": prof["cols"],
+                "memory_mb": prof["memory_mb"],
+                "columns": prof["columns"],
+            },
+            "assessment": assessment,
+        }
+        return df, result, None
+    except Exception as exc:
+        return None, None, str(exc)
 
 
 def _build_overview_table(profile: Any) -> list[dict[str, Any]]:
@@ -309,18 +346,11 @@ def _render_data_overview(st: Any) -> None:
         st.info("Enter a CSV path to see a data overview.")
         return
 
-    df, csv_err = _load_csv(overview_csv)
-    if csv_err is not None:
-        st.error(f"CSV error: {csv_err}")
+    df, out, err = _load_df_and_assess(overview_csv)
+    if err is not None:
+        st.error(f"CSV error: {err}")
         return
-    if df is None:
-        return
-
-    out, assess_err = _run_assess_csv(overview_csv)
-    if assess_err is not None:
-        st.error(f"Assessment error: {assess_err}")
-        return
-    if out is None:
+    if df is None or out is None:
         return
 
     profile = out["profile"]

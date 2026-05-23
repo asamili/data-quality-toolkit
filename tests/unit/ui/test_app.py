@@ -25,6 +25,7 @@ from data_quality_toolkit.ui.app import (
     _high_cardinality_flags,
     _iqr_outlier_summary,
     _load_csv,
+    _load_df_and_assess,
     _load_run_history,
     _numeric_distribution,
     _numeric_summary,
@@ -606,3 +607,87 @@ def test_run_assess_csv_strips_whitespace() -> None:
     with patch("data_quality_toolkit.ui.app._assess_csv", return_value=_FAKE_ASSESS_OUT) as mock:
         _run_assess_csv("  data.csv  ")
     mock.assert_called_once_with("data.csv")
+
+
+# ── _load_df_and_assess ───────────────────────────────────────────────────────
+
+_FAKE_DF = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+_FAKE_META = {"dataset_id": "sha1:abc", "source_path": "data.csv", "rows": 3, "cols": 2}
+_FAKE_PROF = {
+    "run_id": "r1",
+    "dataset_id": "sha1:abc",
+    "ts": "2025-01-01T00:00:00Z",
+    "rows": 3,
+    "cols": 2,
+    "memory_mb": 0.01,
+    "columns": [],
+}
+_FAKE_INNER_ASSESSMENT = {
+    "score": 0.9,
+    "issues": [],
+    "run_id": "r1",
+    "dataset_id": "sha1:abc",
+    "ts": "",
+}
+
+_LOAD_CSV_H = "data_quality_toolkit.loaders.file.csv_loader.load_csv"
+_RUN_PROF = "data_quality_toolkit.profiling.profiling_orchestrator.run_profiling"
+_ASSESS = "data_quality_toolkit.assessment.quality_checker.assess"
+
+
+def test_load_df_and_assess_success() -> None:
+    with (
+        patch(_LOAD_CSV_H, return_value=(_FAKE_DF, _FAKE_META)),
+        patch(_RUN_PROF, return_value=_FAKE_PROF),
+        patch(_ASSESS, return_value=_FAKE_INNER_ASSESSMENT),
+    ):
+        df, result, err = _load_df_and_assess("data.csv")
+    assert err is None
+    assert df is not None
+    assert result is not None
+    assert result["assessment"]["score"] == pytest.approx(0.9)
+    assert result["profile"]["rows"] == 3
+    assert result["dataset_id"] == "sha1:abc"
+
+
+def test_load_df_and_assess_file_not_found() -> None:
+    with patch(_LOAD_CSV_H, side_effect=FileNotFoundError("data.csv not found")):
+        df, result, err = _load_df_and_assess("data.csv")
+    assert df is None
+    assert result is None
+    assert err is not None
+    assert "not found" in err
+
+
+def test_load_df_and_assess_value_error() -> None:
+    with patch(_LOAD_CSV_H, side_effect=ValueError("empty or has no columns")):
+        df, result, err = _load_df_and_assess("empty.csv")
+    assert df is None
+    assert result is None
+    assert err is not None
+    assert "empty" in err
+
+
+def test_load_df_and_assess_strips_whitespace() -> None:
+    with (
+        patch(_LOAD_CSV_H, return_value=(_FAKE_DF, _FAKE_META)) as mock_load,
+        patch(_RUN_PROF, return_value=_FAKE_PROF),
+        patch(_ASSESS, return_value=_FAKE_INNER_ASSESSMENT),
+    ):
+        _load_df_and_assess("  data.csv  ")
+    mock_load.assert_called_once_with("data.csv")
+
+
+def test_load_df_and_assess_result_has_profile_and_assessment() -> None:
+    with (
+        patch(_LOAD_CSV_H, return_value=(_FAKE_DF, _FAKE_META)),
+        patch(_RUN_PROF, return_value=_FAKE_PROF),
+        patch(_ASSESS, return_value=_FAKE_INNER_ASSESSMENT),
+    ):
+        df, result, err = _load_df_and_assess("data.csv")
+    assert err is None
+    assert result is not None
+    assert "profile" in result
+    assert "assessment" in result
+    assert df is not None
+    assert len(df) == 3
