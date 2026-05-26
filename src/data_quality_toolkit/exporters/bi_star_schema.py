@@ -20,13 +20,14 @@ class StarTables(TypedDict):
     fact_quality_metrics: pd.DataFrame
 
 
-def build_star(profile: ProfileResult, _df: pd.DataFrame) -> StarTables:
+def build_star(profile: ProfileResult, _df: pd.DataFrame, source_path: str = "") -> StarTables:
     """
     Build star schema tables from profile.
 
     Args:
         profile: Profile result
         _df: Original DataFrame (unused in Phase 1, reserved for future fact tables)
+        source_path: CSV source path written to dim_dataset; defaults to "".
 
     Returns:
         Dict of table_name -> DataFrame
@@ -40,7 +41,7 @@ def build_star(profile: ProfileResult, _df: pd.DataFrame) -> StarTables:
     time_id = int(ts_parsed.strftime("%Y%m%d")) if pd.notna(ts_parsed) else None
 
     # Dimension: Dataset
-    dim_dataset = pd.DataFrame([{"dataset_id": dataset_id, "source_path": ""}])
+    dim_dataset = pd.DataFrame([{"dataset_id": dataset_id, "source_path": source_path}])
 
     # Dimension: Columns
     dim_column_rows = []

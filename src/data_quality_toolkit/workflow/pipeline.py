@@ -20,7 +20,7 @@ from data_quality_toolkit.exporters.filesystem.csv_exporter import write_star_cs
 from data_quality_toolkit.exporters.issue_export import build_fact_issues
 from data_quality_toolkit.loaders.file.csv_loader import load_csv
 from data_quality_toolkit.profiling.profiling_orchestrator import run_profiling
-from data_quality_toolkit.shared.constants import DEFAULT_NULL_THRESHOLD
+from data_quality_toolkit.shared.constants import ARTIFACT_SCHEMA_VERSION, DEFAULT_NULL_THRESHOLD
 from data_quality_toolkit.shared.models import ProfileResult
 from data_quality_toolkit.shared.settings import load_settings
 from data_quality_toolkit.storage.connection import _get_db_path, connect
@@ -168,7 +168,7 @@ def run_export_star(
     assessment = assess(cast(dict[str, Any], prof), null_threshold=null_threshold)
 
     # Build + validate star schema (use precise TypedDict)
-    tables: StarTables = build_star(prof, df)
+    tables: StarTables = build_star(prof, df, source_path=meta["source_path"])
     validate_relationships(tables)
 
     # Choose output dir: CLI flag > settings.export_base_dir
@@ -194,6 +194,7 @@ def run_export_star(
     # Write per-run quality report (single sharable artifact for CI gates / async review)
     all_issues: list[dict[str, Any]] = cast(list[dict[str, Any]], assessment.get("issues", []))
     quality_report: dict[str, Any] = {
+        "schema_version": ARTIFACT_SCHEMA_VERSION,
         "run_id": prof["run_id"],
         "dataset_id": prof["dataset_id"],
         "ts": prof["ts"],
@@ -210,6 +211,7 @@ def run_export_star(
 
     # Emit relationships.json for BI wiring
     rel = {
+        "schema_version": ARTIFACT_SCHEMA_VERSION,
         "relationships": [
             {
                 "from": "fact_profile_runs",
@@ -229,7 +231,7 @@ def run_export_star(
                 "from_column": "dataset_id",
                 "to_column": "dataset_id",
             },
-        ]
+        ],
     }
     rel_path = base_out / "star" / "relationships.json"
     rel_path.write_text(json.dumps(rel, indent=2), encoding="utf-8")
@@ -246,6 +248,7 @@ def run_export_star(
 
     # Append a compact history record so `compare` can diff run-to-run
     history_record: dict[str, Any] = {
+        "schema_version": ARTIFACT_SCHEMA_VERSION,
         "run_id": quality_report["run_id"],
         "dataset_id": quality_report["dataset_id"],
         "ts": quality_report["ts"],

@@ -71,6 +71,18 @@ def test_build_star_shapes_and_values():
     assert dim_column["column_id"].str.startswith("sha1:abc:").all()
 
 
+def test_build_star_source_path_propagates():
+    df = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})
+    tables = build_star(_profile(), df, source_path="/data/test.csv")
+    assert tables["dim_dataset"]["source_path"].iloc[0] == "/data/test.csv"
+
+
+def test_build_star_source_path_default_empty():
+    df = pd.DataFrame({"a": [1], "b": ["x"]})
+    tables = build_star(_profile(), df)
+    assert tables["dim_dataset"]["source_path"].iloc[0] == ""
+
+
 def test_validate_relationships_happy_and_error():
     tables: StarTables = build_star(_profile(), pd.DataFrame({"a": [1], "b": ["x"]}))
 

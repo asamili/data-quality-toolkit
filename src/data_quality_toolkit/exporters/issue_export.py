@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 
+from data_quality_toolkit.utils.helpers import make_column_id
 from data_quality_toolkit.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -23,7 +24,9 @@ _FACT_ISSUES_COLUMNS = [
 
 def _build_column_id_map(dataset_id: str, columns: list[dict[str, Any]]) -> dict[str, str]:
     """Return {column_name -> column_id} from profiled columns list."""
-    return {str(col.get("name", "")): f"{dataset_id}:{col.get('name', '')}" for col in columns}
+    return {
+        str(col.get("name", "")): make_column_id(dataset_id, col.get("name", "")) for col in columns
+    }
 
 
 def build_fact_issues(
