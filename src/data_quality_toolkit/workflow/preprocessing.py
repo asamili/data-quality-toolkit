@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from data_quality_toolkit.shared.constants import DEFAULT_HIGH_CARDINALITY_THRESHOLD
+
 
 def iqr_outlier_summary(df: pd.DataFrame, col: str) -> dict[str, Any] | None:
     """Return IQR-based outlier stats. None if non-numeric or fewer than 4 non-null values."""
@@ -49,7 +51,7 @@ def plan_preprocessing(df: pd.DataFrame) -> list[dict[str, Any]]:
             issues.append(f"nulls ({null_pct:.0%})")
             recs.append("impute with median" if is_num else "impute with mode or 'Unknown'")
 
-        if not is_num and unique_ratio > 0.9:
+        if not is_num and unique_ratio > DEFAULT_HIGH_CARDINALITY_THRESHOLD:
             issues.append(f"high cardinality ({unique_ratio:.0%} unique)")
             recs.append("drop or hash-encode")
 
@@ -59,7 +61,7 @@ def plan_preprocessing(df: pd.DataFrame) -> list[dict[str, Any]]:
                 issues.append(f"{iqr['outlier_count']} IQR outlier(s)")
                 recs.append("consider outlier treatment")
             recs.append("consider scaling")
-        elif unique_ratio <= 0.9:
+        elif unique_ratio <= DEFAULT_HIGH_CARDINALITY_THRESHOLD:
             recs.append("label or one-hot encode")
 
         plan.append(

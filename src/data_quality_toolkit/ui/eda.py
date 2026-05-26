@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import pandas as pd
 
+from data_quality_toolkit.shared.constants import DEFAULT_HIGH_CARDINALITY_THRESHOLD
 from data_quality_toolkit.workflow.preprocessing import (  # noqa: F401
     iqr_outlier_summary as _iqr_outlier_summary,
 )
@@ -119,7 +120,9 @@ def _duplicate_row_count(df: pd.DataFrame) -> int:
     return int(df.duplicated().sum())
 
 
-def _high_cardinality_flags(profile: Any, threshold: float = 0.9) -> list[str]:
+def _high_cardinality_flags(
+    profile: Any, threshold: float = DEFAULT_HIGH_CARDINALITY_THRESHOLD
+) -> list[str]:
     """Return column names whose unique/rows ratio exceeds *threshold*."""
     rows = profile.get("rows") or 0
     if rows <= 0:
