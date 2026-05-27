@@ -2,6 +2,11 @@
 
 from typing import Any
 
+from data_quality_toolkit.shared.constants import (
+    DEFAULT_HIGH_CARDINALITY_THRESHOLD,
+    DEFAULT_OUTLIER_FRACTION_THRESHOLD,
+)
+
 
 def _detect_duplicate_column_names(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
@@ -25,13 +30,75 @@ def _detect_duplicate_column_names(columns: list[dict[str, Any]]) -> list[dict[s
     return issues
 
 
-def detect_advanced_issues(df: Any, profile: dict[str, Any]) -> list[dict[str, Any]]:
-    """
-    Detect advanced quality issues (stub).
+def _detect_high_cardinality(columns: list[dict[str, Any]], rows: int) -> list[dict[str, Any]]:
+    if rows <= 1:
+        return []
+    issues: list[dict[str, Any]] = []
+    for col in columns:
+        dtype = str(col.get("dtype", ""))
+        if "int" in dtype or "float" in dtype:
+            continue
+        unique = col.get("unique")
+        if unique is None:
+            continue
+        unique_ratio = int(unique) / rows
+        if unique_ratio > DEFAULT_HIGH_CARDINALITY_THRESHOLD:
+            name = col.get("name", "")
+            pct_display = round(unique_ratio * 100, 1)
+            issues.append(
+                {
+                    "type": "high_cardinality",
+                    "column": name,
+                    "pct": round(unique_ratio, 6),
+                    "severity": "medium",
+                    "category": "Cardinality",
+                    "message": f"Column '{name}' has high cardinality ({pct_display}% unique values)",
+                }
+            )
+    return issues
 
-    Future: outliers, cardinality, patterns, etc.
-    """
-    return []
+
+def _detect_numeric_outliers(df: Any, columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    df_columns = set(df.columns) if hasattr(df, "columns") else set()
+    for col in columns:
+        dtype = str(col.get("dtype", ""))
+        if "int" not in dtype and "float" not in dtype:
+            continue
+        name = col.get("name", "")
+        if name not in df_columns:
+            continue
+        series = df[name].dropna()
+        if len(series) < 4:
+            continue
+        q1 = series.quantile(0.25)
+        q3 = series.quantile(0.75)
+        iqr = q3 - q1
+        if iqr == 0:
+            continue
+        lower = q1 - 1.5 * iqr
+        upper = q3 + 1.5 * iqr
+        outlier_fraction = float(((series < lower) | (series > upper)).mean())
+        if outlier_fraction > DEFAULT_OUTLIER_FRACTION_THRESHOLD:
+            pct_display = round(outlier_fraction * 100, 1)
+            issues.append(
+                {
+                    "type": "numeric_outliers",
+                    "column": name,
+                    "pct": round(outlier_fraction, 6),
+                    "severity": "low",
+                    "category": "Distribution",
+                    "message": f"Column '{name}' has {pct_display}% outliers by IQR",
+                }
+            )
+    return issues
+
+
+def detect_advanced_issues(df: Any, profile: dict[str, Any]) -> list[dict[str, Any]]:
+    """Detect advanced quality issues: high cardinality and numeric outliers."""
+    columns: list[dict[str, Any]] = profile.get("columns", [])
+    rows = int(profile.get("rows", 0) or 0)
+    return _detect_high_cardinality(columns, rows) + _detect_numeric_outliers(df, columns)
 
 
 def _detect_blank_column_names(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:

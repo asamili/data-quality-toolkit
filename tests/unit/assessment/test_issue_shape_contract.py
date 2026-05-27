@@ -112,6 +112,26 @@ def test_null_issue_still_has_pct():
     assert issue_d["pct"] == pytest.approx(0.3)
 
 
+# --- advanced issues contract ---
+
+
+def test_advanced_issues_satisfy_contract():
+    """Advanced issues (high_cardinality, numeric_outliers) satisfy the common field contract."""
+    import pandas as pd
+
+    columns = [{"name": "uid", "dtype": "object", "nulls": 0, "unique": 10}]
+    prof = _profile(10, columns)
+    df = pd.DataFrame({"uid": [str(i) for i in range(10)]})
+    result = assess(prof, df=df)
+    advanced = [
+        i for i in result["issues"] if i["type"] in ("high_cardinality", "numeric_outliers")
+    ]
+    assert advanced, "Expected at least one advanced issue"
+    for issue in advanced:
+        missing = _COMMON_FIELDS - issue.keys()
+        assert not missing, f"Advanced issue {issue['type']!r} missing fields: {missing}"
+
+
 # --- detect_issues() unit-level contract ---
 
 

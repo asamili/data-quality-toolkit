@@ -73,7 +73,9 @@ def detect_issues(
 
 
 def assess(
-    profile: dict[str, Any], null_threshold: float = DEFAULT_NULL_THRESHOLD
+    profile: dict[str, Any],
+    null_threshold: float = DEFAULT_NULL_THRESHOLD,
+    df: Any = None,
 ) -> AssessmentResult:
     """
     Perform quality assessment on profile results.
@@ -90,7 +92,12 @@ def assess(
     score = compute_score(profile)
     null_issues: list[Issue] = detect_issues(profile, null_threshold)
     schema_issues: list[Issue] = cast(list[Issue], _issue_detector.detect_issues(profile))
-    all_issues = null_issues + schema_issues
+    advanced_issues: list[Issue] = (
+        cast(list[Issue], _issue_detector.detect_advanced_issues(df, profile))
+        if df is not None
+        else []
+    )
+    all_issues = null_issues + schema_issues + advanced_issues
 
     result: AssessmentResult = {
         "run_id": profile["run_id"],

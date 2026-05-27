@@ -69,7 +69,7 @@ def run_assessment(
     df, meta = load_csv(csv_path, **read_csv_kwargs)
     prof = run_profiling(df, meta["dataset_id"])
     # Type shim: assess() expects Dict[str, Any]; prof is a TypedDict
-    assessment = assess(cast(dict[str, Any], prof), null_threshold=null_threshold)
+    assessment = assess(cast(dict[str, Any], prof), null_threshold=null_threshold, df=df)
     duration_secs = round(time.time() - start, 3)
 
     if db_path is not None:
@@ -165,7 +165,7 @@ def run_export_star(
     prof = run_profiling(df, meta["dataset_id"])
 
     # Compute assessment so the CLI can show a quality score
-    assessment = assess(cast(dict[str, Any], prof), null_threshold=null_threshold)
+    assessment = assess(cast(dict[str, Any], prof), null_threshold=null_threshold, df=df)
 
     # Build + validate star schema (use precise TypedDict)
     tables: StarTables = build_star(prof, df, source_path=meta["source_path"])
