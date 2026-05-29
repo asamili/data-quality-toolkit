@@ -74,12 +74,16 @@ def make_issue(
 def make_assessment_result(
     issues: list[Issue] | None = None,
     score: float = 0.95,
+    completeness_score: float = 0.95,
+    quality_score: float = 0.95,
 ) -> AssessmentResult:
     """Return a valid AssessmentResult dict."""
     return {
         "run_id": make_run_id(),
         "dataset_id": make_dataset_id(),
         "score": score,
+        "completeness_score": completeness_score,
+        "quality_score": quality_score,
         "issues": issues or [make_issue()],
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }

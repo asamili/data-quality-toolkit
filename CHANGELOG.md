@@ -6,6 +6,49 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-05-29
+
+### Added
+- Harden JSONL history writes with atomic-like append and fsync (DQT-ETL-001)
+- Add warning when malformed lines are skipped during history import (DQT-ETL-001)
+- Add CI performance regression guard (DQT-PERF-001)
+- Document v2 `dqt.yaml` rule contract with `config/v2_rules.yaml` example (DQT-VALUE-005)
+
+### Changed
+
+
+- Apply v2 per-column weights to completeness scoring and critical-column penalty multiplier to quality_score (DQT-VALUE-004)
+- Wire v2.0 `dqt.yaml` rule contract into issue detection (null, high-cardinality, and outlier thresholds, plus required columns) (DQT-VALUE-003)
+- Implement v2.0 `dqt.yaml` rule contract parser with support for `dataset` and `columns` sections (DQT-VALUE-002)
+- Remove unused `typer` dependency and stale references (DQT-DEP-001)
+- Remove obsolete `Initialize-Phase0.ps1` bootstrap script (DQT-SCRIPT-001)
+- Implement dependency reproducibility with `constraints.txt` and wired CI installs (DQT-DEP-002)
+
+### Security
+
+- Promote pip-audit CI step from advisory (`continue-on-error: true`) to blocking gate; build now fails on known CVEs (DQT-SEC-001)
+
+---
+
+## [1.9.0] - 2026-05-29
+
+### Added
+
+- Penalty-weighted `quality_score` in assessment output and run history:
+  - `score` — legacy completeness score (fraction of non-null values across all columns); value and behavior unchanged
+  - `completeness_score` — explicit alias for `score`; same value, clearer name
+  - `quality_score` — deducts severity-weighted penalties for schema and distribution issues from `completeness_score`; capped at `[0.0, 1.0]`
+- `--score-field {score,completeness_score,quality_score}` flag on `assess`, `export-star`, and `export`:
+  - Controls which score field drives the `--fail-under` quality gate
+  - Default: `score` — existing `--fail-under` behavior is unchanged
+  - `--score-field quality_score` enables penalty-aware gating without altering the completeness score
+- `compare` output now includes `current_quality_score`, `previous_quality_score`, `current_completeness_score`, and `previous_completeness_score`; legacy records with absent values display `N/A` in stderr summary
+- `assess` and `export-star` stderr summaries now display Score, Completeness Score, and Quality Score lines when the fields are present in the assessment result
+
+### Notes
+
+- Additive change; all existing CLI flags, exit codes, output formats, scoring formulas, and storage schema are unchanged
+
 ---
 
 ## [1.8.0] - 2026-05-22

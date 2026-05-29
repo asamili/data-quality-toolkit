@@ -61,6 +61,7 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         "--star",
         "--out",
         "--fiscal",
+        "--score-field",
     }
 
     if args:

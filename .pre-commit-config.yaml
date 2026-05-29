@@ -64,6 +64,7 @@ repos:
           - pytest-cov
           - "pydantic>=2.6,<2.10"
           - "pydantic-settings>=2.2.1"
+          - pyyaml
         types: [python]
         pass_filenames: false
 

@@ -24,6 +24,17 @@ SEVERITY_LEVELS = ["low", "medium", "high", "critical"]
 
 ARTIFACT_SCHEMA_VERSION = "1"
 
+# Quality score penalty weights
+SEVERITY_PENALTIES: dict[str, float] = {
+    "critical": 0.05,
+    "high": 0.03,
+    "medium": 0.02,
+    "low": 0.01,
+}
+SCHEMA_PENALTY_CAP: float = 0.30
+DIST_PENALTY_CAP: float = 0.15
+EXCLUDED_PENALTY_TYPES: frozenset[str] = frozenset({"missing", "all_null_column"})
+
 
 __all__ = [
     "VERSION",
@@ -36,4 +47,8 @@ __all__ = [
     "DEFAULT_OUTLIER_FRACTION_THRESHOLD",
     "SEVERITY_LEVELS",
     "ARTIFACT_SCHEMA_VERSION",
+    "SEVERITY_PENALTIES",
+    "SCHEMA_PENALTY_CAP",
+    "DIST_PENALTY_CAP",
+    "EXCLUDED_PENALTY_TYPES",
 ]

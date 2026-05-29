@@ -13,6 +13,7 @@ import pandas as pd
 
 from data_quality_toolkit.loaders.base_loader import BaseLoader
 from data_quality_toolkit.shared.settings import load_settings
+from data_quality_toolkit.utils.helpers import stable_seed
 from data_quality_toolkit.utils.logging import get_logger
 from data_quality_toolkit.utils.validators import validate_csv_path
 
@@ -58,15 +59,15 @@ class CsvLoader(BaseLoader):
         settings = load_settings()
         dataset_id = _dataset_id_from_file(path)
 
-        # Read-time sampling: use nrows to avoid full-file materialization.
-        # Sampling yields the first N rows (not random) when SAMPLE_SIZE is set.
+        # Load full file then draw a deterministic random sample when SAMPLE_SIZE
+        # is explicitly set and file rows exceed the target size.
+        # Trade-off: the full file is materialised before sampling; this is
+        # unavoidable for representative (non-head-N) sampling in a single pass.
         env_explicit = os.getenv("SAMPLE_SIZE")
-        nrows: int | None = (
+        target_n: int | None = (
             settings.sample_size if (env_explicit is not None and settings.sample_size) else None
         )
         csv_kwargs: dict[str, Any] = dict(read_csv_kwargs)
-        if nrows is not None and "nrows" not in csv_kwargs:
-            csv_kwargs["nrows"] = nrows
 
         logger.info(f"Loading CSV: {path}")
         try:
@@ -77,7 +78,11 @@ class CsvLoader(BaseLoader):
                 "Provide a CSV with at least a header row."
             ) from None
 
-        sample_applied = nrows is not None and len(df) == nrows
+        sample_applied = False
+        if target_n is not None and len(df) > target_n:
+            seed = stable_seed(dataset_id, "csv_loader")
+            df = df.sample(n=target_n, random_state=seed, replace=False)
+            sample_applied = True
 
         if len(df) > settings.max_rows_in_memory:
             raise ValueError(
@@ -95,7 +100,7 @@ class CsvLoader(BaseLoader):
             "file_size_bytes": int(stat.st_size),
             "modified_ts": _utc_iso(stat.st_mtime),
             "sample_applied": sample_applied,
-            "sample_size": int(nrows) if (sample_applied and nrows is not None) else None,
+            "sample_size": int(target_n) if (sample_applied and target_n is not None) else None,
         }
 
         logger.info(f"Loaded {meta['rows']} rows, {meta['cols']} columns")

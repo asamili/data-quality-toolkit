@@ -84,6 +84,8 @@ def run_assessment(
                 source_path=meta["source_path"],
                 ts=prof["ts"],
                 score=float(assessment["score"]),
+                completeness_score=float(assessment["completeness_score"]),
+                quality_score=float(assessment["quality_score"]),
                 rows=prof["rows"],
                 cols=prof["cols"],
                 memory_mb=float(prof["memory_mb"]),
@@ -199,6 +201,8 @@ def run_export_star(
         "dataset_id": prof["dataset_id"],
         "ts": prof["ts"],
         "score": assessment["score"],
+        "completeness_score": assessment["completeness_score"],
+        "quality_score": assessment["quality_score"],
         "rows": prof["rows"],
         "cols": prof["cols"],
         "issues_total": len(all_issues),
@@ -253,14 +257,17 @@ def run_export_star(
         "dataset_id": quality_report["dataset_id"],
         "ts": quality_report["ts"],
         "score": quality_report["score"],
+        "completeness_score": quality_report["completeness_score"],
+        "quality_score": quality_report["quality_score"],
         "issues_total": quality_report["issues_total"],
         "issues_by_severity": quality_report["issues_by_severity"],
         "issues_by_category": quality_report["issues_by_category"],
         "duration_secs": quality_report.get("duration_secs"),
     }
     history_path = star_dir / "quality_history.jsonl"
-    with history_path.open("a", encoding="utf-8") as _hf:
-        _hf.write(json.dumps(history_record, default=str) + "\n")
+    from data_quality_toolkit.storage.jsonl import append_jsonl_record
+
+    append_jsonl_record(history_path, history_record)
     paths["quality_history"] = str(history_path)
 
     # Persist run to SQLite (additive — failure must not fail export)
@@ -281,6 +288,8 @@ def run_export_star(
                 source_path=meta["source_path"],
                 ts=prof["ts"],
                 score=float(assessment["score"]),
+                completeness_score=float(assessment["completeness_score"]),
+                quality_score=float(assessment["quality_score"]),
                 rows=prof["rows"],
                 cols=prof["cols"],
                 memory_mb=float(prof["memory_mb"]),

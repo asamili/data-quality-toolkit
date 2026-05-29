@@ -10,6 +10,7 @@ today**. No library behavior is modified by this harness.
 python benchmarks/baseline.py            # all shapes -> benchmarks/baseline_results.json
 python benchmarks/baseline.py --skip-1m  # skip the 1,000,000-row shape
 python benchmarks/baseline.py --out other.json
+python benchmarks/baseline.py --check    # performance regression guard (CI)
 ```
 
 Requires `numpy`, `pandas`, `psutil` (all already in the dev environment).

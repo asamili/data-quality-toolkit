@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from data_quality_toolkit.storage.connection import connect
@@ -68,6 +69,11 @@ def ensure_db(db_path: Path) -> None:
         con.executescript(_CREATE_INDEXES)
         con.execute("PRAGMA journal_mode = WAL")
         con.execute("INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '1')")
+        for _col, _typ in [("completeness_score", "REAL"), ("quality_score", "REAL")]:
+            try:
+                con.execute(f"ALTER TABLE runs ADD COLUMN {_col} {_typ}")
+            except sqlite3.OperationalError:
+                pass  # column already exists in existing DBs
         con.commit()
         count = con.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
         if count == 0:

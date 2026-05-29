@@ -167,6 +167,7 @@ $RECYCLE.BIN/
 *.sqlite
 *.sqlite3
 *.json
+!benchmarks/baseline_results.json
 
 # But keep example files
 !examples/*.csv

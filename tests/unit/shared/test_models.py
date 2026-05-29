@@ -1,3 +1,4 @@
+# mypy: warn_unused_ignores=False
 from __future__ import annotations
 
 from dataclasses import replace
@@ -12,9 +13,10 @@ def test_run_ids_dataclass():
     assert r.run_id.startswith("0")
     assert r.dataset_id.startswith("sha1:")
 
-    # frozen dataclass should prevent mutation (use direct assignment, not setattr)
+    # frozen dataclass should prevent mutation; type: ignore[misc] is required because
+    # mypy correctly flags read-only property assignment — the intent is to test the runtime guard
     with pytest.raises((AttributeError, TypeError)):
-        r.run_id = "x"  # type: ignore[misc]  # runtime check; mypy may complain otherwise
+        r.run_id = "x"  # type: ignore[misc]
 
     # if mutation is desired, use replace to create a new instance
     r2 = replace(r, run_id="x")
@@ -62,6 +64,8 @@ def test_assessment_result_typed_dict():
         "run_id": "r1",
         "dataset_id": "sha1:abc",
         "score": 0.95,
+        "completeness_score": 0.95,
+        "quality_score": 0.95,
         "issues": [issue],
         "ts": "2025-01-01T00:00:00Z",
     }

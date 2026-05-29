@@ -20,6 +20,7 @@ Caveats:
       but absolute RSS deltas remain approximate.
 """
 
+# mypy: warn_unused_ignores=False
 from __future__ import annotations
 
 import argparse
@@ -35,7 +36,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import psutil
+import psutil  # type: ignore[import-untyped]
 
 from data_quality_toolkit.loaders.file.csv_loader import load_csv
 from data_quality_toolkit.profiling.profiling_orchestrator import run_profiling
@@ -197,7 +198,40 @@ def main() -> int:
         action="store_true",
         help="Skip the 1,000,000-row shape",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check runtime against baseline_results.json",
+    )
     args = parser.parse_args()
+
+    if args.check:
+        baseline_path = Path(args.out)
+        if not baseline_path.exists():
+            print(f"Baseline file {baseline_path} not found.")
+            return 1
+        with open(baseline_path, encoding="utf-8") as f:
+            baseline_data = json.load(f)
+
+        # Check 100k x 5
+        rows, cols = 100_000, 5
+        print(f"[check] testing {rows} rows x {cols} cols ...", flush=True)
+        with tempfile.TemporaryDirectory(prefix="dqt_bench_") as td:
+            actual = bench_shape(rows, cols, Path(td))
+
+        baseline_entry = next(
+            s for s in baseline_data["shapes"] if s["rows"] == rows and s["cols"] == cols
+        )
+
+        threshold = 2.0
+        baseline_load = baseline_entry["load"]["wall_s"]
+        actual_load = actual["load"]["wall_s"]
+
+        if actual_load > baseline_load * threshold:
+            print(f"Regression detected in load: {actual_load}s > {baseline_load}s * {threshold}")
+            return 1
+        print(f"Check passed: {actual_load}s <= {baseline_load}s * {threshold}")
+        return 0
 
     shapes = [s for s in DEFAULT_SHAPES if not (args.skip_1m and s[0] >= 1_000_000)]
 

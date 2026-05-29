@@ -20,7 +20,7 @@ def _make_prof(**kw):
 
 
 def _make_assessment(**kw):
-    base = {"score": 0.9, "issues": []}
+    base = {"score": 0.9, "completeness_score": 0.9, "quality_score": 0.9, "issues": []}
     base.update(kw)
     return base
 

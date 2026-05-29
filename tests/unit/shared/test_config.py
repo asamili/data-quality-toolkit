@@ -6,7 +6,6 @@ import pytest
 
 from data_quality_toolkit.shared.config import (
     CONFIG_FILENAME,
-    SUPPORTED_KEYS,
     load_dqt_config,
 )
 from data_quality_toolkit.shared.exceptions import ConfigError
@@ -43,7 +42,7 @@ def test_null_only_file_returns_empty(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Valid config
+# Valid config (v1.9 flat)
 # ---------------------------------------------------------------------------
 
 
@@ -80,12 +79,119 @@ def test_all_three_keys_together(tmp_path):
     assert result == {"null_threshold": 0.2, "fail_under": 0.8, "outdir": "./dist"}
 
 
-def test_supported_keys_frozenset_contents():
-    assert SUPPORTED_KEYS == frozenset({"null_threshold", "fail_under", "outdir"})
+# ---------------------------------------------------------------------------
+# Valid config (v2.0 nested)
+# ---------------------------------------------------------------------------
+
+
+def test_valid_dataset_section(tmp_path):
+    p = _write(tmp_path, "dataset:\n  fail_under: 0.9\n  score_field: quality_score\n")
+    result = load_dqt_config(p)
+    assert result["dataset"] == {"fail_under": 0.9, "score_field": "quality_score"}
+
+
+def test_valid_columns_section(tmp_path):
+    content = """
+columns:
+  id:
+    required: true
+    critical: true
+    null_threshold: 0.0
+    unique: true
+    weight: 2.0
+  price:
+    dtype: float
+    outlier_threshold: 0.05
+    weight: 1.5
+  category:
+    accepted_values: ["A", "B"]
+    high_cardinality_threshold: 0.8
+"""
+    p = _write(tmp_path, content)
+    result = load_dqt_config(p)
+    cols = result["columns"]
+    assert cols["id"] == {
+        "required": True,
+        "critical": True,
+        "null_threshold": 0.0,
+        "unique": True,
+        "weight": 2.0,
+    }
+    assert cols["price"] == {"dtype": "float", "outlier_threshold": 0.05, "weight": 1.5}
+    assert cols["category"] == {"accepted_values": ["A", "B"], "high_cardinality_threshold": 0.8}
 
 
 # ---------------------------------------------------------------------------
-# Malformed YAML
+# Validation: Numeric Ranges
+# ---------------------------------------------------------------------------
+
+
+def test_threshold_out_of_range_raises(tmp_path):
+    p = _write(tmp_path, "null_threshold: 1.1\n")
+    with pytest.raises(ConfigError, match="must be between 0.0 and 1.0"):
+        load_dqt_config(p)
+
+
+def test_dataset_fail_under_out_of_range_raises(tmp_path):
+    p = _write(tmp_path, "dataset:\n  fail_under: -0.1\n")
+    with pytest.raises(ConfigError, match="must be between 0.0 and 1.0"):
+        load_dqt_config(p)
+
+
+def test_weight_zero_or_negative_raises(tmp_path):
+    p = _write(tmp_path, "columns:\n  id:\n    weight: 0\n")
+    with pytest.raises(ConfigError, match="must be greater than 0"):
+        load_dqt_config(p)
+
+
+# ---------------------------------------------------------------------------
+# Validation: Types
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_bool_type_raises(tmp_path):
+    p = _write(tmp_path, "columns:\n  id:\n    required: yes_please\n")
+    with pytest.raises(ConfigError, match="must be a boolean"):
+        load_dqt_config(p)
+
+
+def test_invalid_list_type_raises(tmp_path):
+    p = _write(tmp_path, "columns:\n  id:\n    accepted_values: A\n")
+    with pytest.raises(ConfigError, match="must be a list"):
+        load_dqt_config(p)
+
+
+def test_invalid_string_type_raises(tmp_path):
+    p = _write(tmp_path, "columns:\n  id:\n    dtype: 123\n")
+    with pytest.raises(ConfigError, match="must be a string"):
+        load_dqt_config(p)
+
+
+# ---------------------------------------------------------------------------
+# Unknown Keys
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_top_level_key_raises(tmp_path):
+    p = _write(tmp_path, "unknown_top: 1\n")
+    with pytest.raises(ConfigError, match="unknown_top"):
+        load_dqt_config(p)
+
+
+def test_unknown_dataset_key_raises(tmp_path):
+    p = _write(tmp_path, "dataset:\n  unknown_sub: 1\n")
+    with pytest.raises(ConfigError, match="unknown_sub"):
+        load_dqt_config(p)
+
+
+def test_unknown_column_rule_key_raises(tmp_path):
+    p = _write(tmp_path, "columns:\n  id:\n    unknown_rule: 1\n")
+    with pytest.raises(ConfigError, match="unknown_rule"):
+        load_dqt_config(p)
+
+
+# ---------------------------------------------------------------------------
+# Malformed / Non-mapping
 # ---------------------------------------------------------------------------
 
 
@@ -95,77 +201,13 @@ def test_malformed_yaml_raises_config_error(tmp_path):
         load_dqt_config(p)
 
 
-# ---------------------------------------------------------------------------
-# Non-mapping content
-# ---------------------------------------------------------------------------
-
-
 def test_list_root_raises_config_error(tmp_path):
     p = _write(tmp_path, "- item1\n- item2\n")
     with pytest.raises(ConfigError, match="mapping"):
         load_dqt_config(p)
 
 
-def test_scalar_root_raises_config_error(tmp_path):
-    p = _write(tmp_path, "just_a_string\n")
-    with pytest.raises(ConfigError, match="mapping"):
-        load_dqt_config(p)
-
-
-# ---------------------------------------------------------------------------
-# Unknown keys (fail-loud)
-# ---------------------------------------------------------------------------
-
-
-def test_unknown_key_raises_config_error(tmp_path):
-    p = _write(tmp_path, "unknown_option: 1\n")
-    with pytest.raises(ConfigError, match="unknown_option"):
-        load_dqt_config(p)
-
-
-def test_unknown_key_message_names_supported_keys(tmp_path):
-    p = _write(tmp_path, "bad_key: 1\n")
-    with pytest.raises(ConfigError, match="Supported keys"):
-        load_dqt_config(p)
-
-
-def test_multiple_unknown_keys_all_named(tmp_path):
-    p = _write(tmp_path, "aaa: 1\nbbb: 2\n")
-    with pytest.raises(ConfigError, match="aaa") as exc_info:
-        load_dqt_config(p)
-    assert "bbb" in str(exc_info.value)
-
-
-# ---------------------------------------------------------------------------
-# Wrong-typed values
-# ---------------------------------------------------------------------------
-
-
-def test_string_for_null_threshold_raises(tmp_path):
-    p = _write(tmp_path, "null_threshold: high\n")
-    with pytest.raises(ConfigError, match="null_threshold"):
-        load_dqt_config(p)
-
-
-def test_bool_for_null_threshold_raises(tmp_path):
-    p = _write(tmp_path, "null_threshold: true\n")
-    with pytest.raises(ConfigError, match="null_threshold"):
-        load_dqt_config(p)
-
-
-def test_bool_for_fail_under_raises(tmp_path):
-    p = _write(tmp_path, "fail_under: false\n")
-    with pytest.raises(ConfigError, match="fail_under"):
-        load_dqt_config(p)
-
-
-def test_int_for_outdir_raises(tmp_path):
-    p = _write(tmp_path, "outdir: 42\n")
-    with pytest.raises(ConfigError, match="outdir"):
-        load_dqt_config(p)
-
-
-def test_list_for_outdir_raises(tmp_path):
-    p = _write(tmp_path, "outdir:\n  - a\n  - b\n")
-    with pytest.raises(ConfigError, match="outdir"):
+def test_column_rules_not_mapping_raises(tmp_path):
+    p = _write(tmp_path, "columns:\n  id: not_a_mapping\n")
+    with pytest.raises(ConfigError, match="must be a mapping"):
         load_dqt_config(p)

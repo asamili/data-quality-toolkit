@@ -35,6 +35,8 @@ def _run_kwargs(run_id: str = "r1", dataset_id: str = "d1", source_path: str = "
         source_path=source_path,
         ts="2026-01-01T00:00:00Z",
         score=0.95,
+        completeness_score=0.95,
+        quality_score=0.92,
         rows=100,
         cols=2,
         memory_mb=1.0,
@@ -119,6 +121,22 @@ def test_persist_export_run_metric_detail_preserved(tmp_path: Path) -> None:
         assert completeness_by_col["col_age"] == pytest.approx(0.9)
     finally:
         con.close()
+
+
+def test_persist_export_run_score_values_readable(tmp_path: Path) -> None:
+    from data_quality_toolkit.storage.reader import read_run_history
+
+    db = tmp_path / "dqt.db"
+    con = _open_db(db)
+    try:
+        persist_export_run(con, **_run_kwargs())
+    finally:
+        con.close()
+    records = read_run_history(db, "d1")
+    assert len(records) == 1
+    r = records[0]
+    assert r["completeness_score"] == pytest.approx(0.95)
+    assert r["quality_score"] == pytest.approx(0.92)
 
 
 def test_persist_export_run_duplicate_run_raises_storage_error(tmp_path: Path) -> None:

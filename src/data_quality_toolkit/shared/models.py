@@ -46,6 +46,8 @@ class Issue(TypedDict, total=False):
     column: str | None
     pct: float | None
     severity: str
+    category: str
+    message: str
 
 
 class AssessmentResult(TypedDict):
@@ -54,5 +56,7 @@ class AssessmentResult(TypedDict):
     run_id: str
     dataset_id: str
     score: float
+    completeness_score: float
+    quality_score: float
     issues: list[Issue]
     ts: str

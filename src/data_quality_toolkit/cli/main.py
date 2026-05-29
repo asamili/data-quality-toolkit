@@ -25,6 +25,8 @@ CSV_PATH_HELP = "Path to CSV file"
 DEFAULT_DIST = "./dist"
 CROSS_FALLBACK = "[FAIL]"
 FAIL_UNDER_HELP = "Exit 2 if quality score is below this threshold (0.0 to 1.0)"
+SCORE_FIELD_CHOICES = ("score", "completeness_score", "quality_score")
+SCORE_FIELD_DEFAULT = "score"
 # ----- Phase 3 (KPI) constants -----
 KPI_DEFAULT_CONFIG = "config/kpi_catalog.yaml"
 KPI_CONFIG_HELP = "Path to KPI catalog YAML"
@@ -159,15 +161,16 @@ def _apply_dqt_config(args: argparse.Namespace) -> None:
             args.outdir = DEFAULT_DIST
 
 
-def _check_quality_gate(fu: float | None, out: dict) -> int:
-    """Return 2 with a stderr message if score < fu; 0 otherwise."""
+def _check_quality_gate(fu: float | None, out: dict, score_field: str = "score") -> int:
+    """Return 2 with a stderr message if selected score < fu; 0 otherwise."""
     if fu is None:
         return 0
-    score = float((out.get("assessment") or {}).get("score", 1.0))
+    assessment = out.get("assessment") or {}
+    score = float(assessment.get(score_field, assessment.get("score", 1.0)))
     if score < fu:
         cross = _safe_text("✗", CROSS_FALLBACK)
         print(
-            f"{cross} Quality gate FAILED: score {score:.2%} is below --fail-under {fu:.2%}",
+            f"{cross} Quality gate FAILED: {score_field} {score:.2%} is below --fail-under {fu:.2%}",
             file=sys.stderr,
         )
         return 2
@@ -231,11 +234,38 @@ def cmd_profile(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_assessment_score_lines(assessment: dict) -> None:
+    """Print score breakdown lines to stderr for assess/export-star summaries."""
+    try:
+        print(f"  - Score: {float(assessment['score']):.2%}", file=sys.stderr)
+    except Exception:
+        LOGGER.debug("Failed to format Score from assessment: %r", assessment, exc_info=True)
+    if "completeness_score" in assessment:
+        try:
+            print(
+                f"  - Completeness Score: {float(assessment['completeness_score']):.2%}",
+                file=sys.stderr,
+            )
+        except Exception:
+            LOGGER.debug("Failed to format Completeness Score: %r", assessment, exc_info=True)
+    if "quality_score" in assessment:
+        try:
+            print(
+                f"  - Quality Score: {float(assessment['quality_score']):.2%}",
+                file=sys.stderr,
+            )
+        except Exception:
+            LOGGER.debug("Failed to format Quality Score: %r", assessment, exc_info=True)
+    issues = assessment.get("issues") or []
+    print(f"  - Issues flagged: {len(issues)}", file=sys.stderr)
+
+
 def cmd_assess(args: argparse.Namespace) -> int:
     """Assess a CSV file."""
     _apply_overrides(args)
     nt = _extract_null_threshold(args)
     fu = _extract_fail_under(args)
+    score_field = getattr(args, "score_field", SCORE_FIELD_DEFAULT) or SCORE_FIELD_DEFAULT
     csv_kw = _csv_kwargs_from_args(args)
     db_path = Path(args.db) if getattr(args, "db", None) else None
     if nt is not None:
@@ -254,23 +284,11 @@ def cmd_assess(args: argparse.Namespace) -> int:
             print(f"  - Columns: {prof['cols']}", file=sys.stderr)
     assessment = out.get("assessment")
     if isinstance(assessment, dict) and "score" in assessment:
-        try:
-            print(
-                f"  - Quality Score: {float(assessment['score']):.2%}",
-                file=sys.stderr,
-            )
-        except Exception:
-            LOGGER.debug(
-                "Failed to format Quality Score from assessment: %r",
-                assessment,
-                exc_info=True,
-            )
-        issues = assessment.get("issues") or []
-        print(f"  - Issues flagged: {len(issues)}", file=sys.stderr)
+        _print_assessment_score_lines(assessment)
 
     if not getattr(args, "no_json", False):
         print(_json_dump(out))
-    return _check_quality_gate(fu, out)
+    return _check_quality_gate(fu, out, score_field=score_field)
 
 
 def _safe_text(s: str, fallback: str) -> str:
@@ -506,6 +524,22 @@ def cmd_kpi_validate(args: argparse.Namespace) -> int:
         return 1
 
 
+def _print_compare_score_lines(result: dict) -> None:
+    """Print quality_score and completeness_score compare lines to stderr if present."""
+    if "current_quality_score" in result or "previous_quality_score" in result:
+        prev_qs = result.get("previous_quality_score")
+        curr_qs = result.get("current_quality_score")
+        prev_str = f"{prev_qs:.3f}" if prev_qs is not None else "N/A"
+        curr_str = f"{curr_qs:.3f}" if curr_qs is not None else "N/A"
+        print(f"  - Quality Score: {prev_str} -> {curr_str}", file=sys.stderr)
+    if "current_completeness_score" in result or "previous_completeness_score" in result:
+        prev_cs = result.get("previous_completeness_score")
+        curr_cs = result.get("current_completeness_score")
+        prev_str = f"{prev_cs:.3f}" if prev_cs is not None else "N/A"
+        curr_str = f"{curr_cs:.3f}" if curr_cs is not None else "N/A"
+        print(f"  - Completeness Score: {prev_str} -> {curr_str}", file=sys.stderr)
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     """Compare the last two export runs for a dataset."""
     from data_quality_toolkit.loaders.file.csv_loader import _dataset_id_from_file
@@ -548,6 +582,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
 
+    _print_compare_score_lines(result)
+
     prev_issues = result.get("previous_issues_total")
     curr_issues = result.get("current_issues_total")
     if prev_issues is not None and curr_issues is not None:
@@ -573,6 +609,7 @@ def cmd_export_star(args: argparse.Namespace) -> int:
     _apply_overrides(args)
     nt = _extract_null_threshold(args)
     fu = _extract_fail_under(args)
+    score_field = getattr(args, "score_field", SCORE_FIELD_DEFAULT) or SCORE_FIELD_DEFAULT
     csv_kw = _csv_kwargs_from_args(args)
     if nt is not None:
         out = run_export_star(args.csv, output_dir=args.outdir, null_threshold=nt, **csv_kw)
@@ -592,20 +629,7 @@ def cmd_export_star(args: argparse.Namespace) -> int:
 
     assessment = out.get("assessment")
     if isinstance(assessment, dict) and "score" in assessment:
-        try:
-            print(
-                f"  - Quality Score: {float(assessment['score']):.2%}",
-                file=sys.stderr,
-            )
-        except Exception:
-            # Log instead of silencing (Ruff S110)
-            LOGGER.debug(
-                "Failed to format/print Quality Score from assessment: %r",
-                assessment,
-                exc_info=True,
-            )
-        issues = assessment.get("issues") or []
-        print(f"  - Issues flagged: {len(issues)}", file=sys.stderr)
+        _print_assessment_score_lines(assessment)
 
     print(f"{tick} Star schema exported", file=sys.stderr)
     for name, path in (out.get("export_paths") or {}).items():
@@ -615,7 +639,7 @@ def cmd_export_star(args: argparse.Namespace) -> int:
     # Machine-friendly JSON last on STDOUT
     if not getattr(args, "no_json", False):
         print(_json_dump(out))
-    return _check_quality_gate(fu, out)
+    return _check_quality_gate(fu, out, score_field=score_field)
 
 
 def _add_csv_options(parser: argparse.ArgumentParser) -> None:
@@ -742,6 +766,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=FAIL_UNDER_HELP,
     )
     sp_as.add_argument(
+        "--score-field",
+        dest="score_field",
+        choices=SCORE_FIELD_CHOICES,
+        default=SCORE_FIELD_DEFAULT,
+        metavar="FIELD",
+        help="Score field used by --fail-under quality gate (default: score)",
+    )
+    sp_as.add_argument(
         "--db",
         dest="db",
         default=None,
@@ -773,6 +805,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FLOAT",
         help=FAIL_UNDER_HELP,
     )
+    sp_star.add_argument(
+        "--score-field",
+        dest="score_field",
+        choices=SCORE_FIELD_CHOICES,
+        default=SCORE_FIELD_DEFAULT,
+        metavar="FIELD",
+        help="Score field used by --fail-under quality gate (default: score)",
+    )
     sp_star.set_defaults(func=cmd_export_star)
 
     # alias: export
@@ -797,6 +837,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="FLOAT",
         help=FAIL_UNDER_HELP,
+    )
+    sp_export.add_argument(
+        "--score-field",
+        dest="score_field",
+        choices=SCORE_FIELD_CHOICES,
+        default=SCORE_FIELD_DEFAULT,
+        metavar="FIELD",
+        help="Score field used by --fail-under quality gate (default: score)",
     )
     sp_export.set_defaults(func=cmd_export_star)
 

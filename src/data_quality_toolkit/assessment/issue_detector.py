@@ -30,10 +30,14 @@ def _detect_duplicate_column_names(columns: list[dict[str, Any]]) -> list[dict[s
     return issues
 
 
-def _detect_high_cardinality(columns: list[dict[str, Any]], rows: int) -> list[dict[str, Any]]:
+def _detect_high_cardinality(
+    columns: list[dict[str, Any]], rows: int, config: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     if rows <= 1:
         return []
     issues: list[dict[str, Any]] = []
+    column_rules = (config or {}).get("columns", {})
+
     for col in columns:
         dtype = str(col.get("dtype", ""))
         if "int" in dtype or "float" in dtype:
@@ -42,7 +46,13 @@ def _detect_high_cardinality(columns: list[dict[str, Any]], rows: int) -> list[d
         if unique is None:
             continue
         unique_ratio = int(unique) / rows
-        if unique_ratio > DEFAULT_HIGH_CARDINALITY_THRESHOLD:
+
+        # Per-column override or global default
+        col_name = str(col.get("name", ""))
+        rules = column_rules.get(col_name, {})
+        threshold = rules.get("high_cardinality_threshold", DEFAULT_HIGH_CARDINALITY_THRESHOLD)
+
+        if unique_ratio > threshold:
             name = col.get("name", "")
             pct_display = round(unique_ratio * 100, 1)
             issues.append(
@@ -58,9 +68,13 @@ def _detect_high_cardinality(columns: list[dict[str, Any]], rows: int) -> list[d
     return issues
 
 
-def _detect_numeric_outliers(df: Any, columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _detect_numeric_outliers(
+    df: Any, columns: list[dict[str, Any]], config: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     df_columns = set(df.columns) if hasattr(df, "columns") else set()
+    column_rules = (config or {}).get("columns", {})
+
     for col in columns:
         dtype = str(col.get("dtype", ""))
         if "int" not in dtype and "float" not in dtype:
@@ -79,7 +93,12 @@ def _detect_numeric_outliers(df: Any, columns: list[dict[str, Any]]) -> list[dic
         lower = q1 - 1.5 * iqr
         upper = q3 + 1.5 * iqr
         outlier_fraction = float(((series < lower) | (series > upper)).mean())
-        if outlier_fraction > DEFAULT_OUTLIER_FRACTION_THRESHOLD:
+
+        # Per-column override or global default
+        rules = column_rules.get(name, {})
+        threshold = rules.get("outlier_threshold", DEFAULT_OUTLIER_FRACTION_THRESHOLD)
+
+        if outlier_fraction > threshold:
             pct_display = round(outlier_fraction * 100, 1)
             issues.append(
                 {
@@ -94,11 +113,15 @@ def _detect_numeric_outliers(df: Any, columns: list[dict[str, Any]]) -> list[dic
     return issues
 
 
-def detect_advanced_issues(df: Any, profile: dict[str, Any]) -> list[dict[str, Any]]:
+def detect_advanced_issues(
+    df: Any, profile: dict[str, Any], config: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """Detect advanced quality issues: high cardinality and numeric outliers."""
     columns: list[dict[str, Any]] = profile.get("columns", [])
     rows = int(profile.get("rows", 0) or 0)
-    return _detect_high_cardinality(columns, rows) + _detect_numeric_outliers(df, columns)
+    return _detect_high_cardinality(columns, rows, config=config) + _detect_numeric_outliers(
+        df, columns, config=config
+    )
 
 
 def _detect_blank_column_names(columns: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -218,7 +241,33 @@ def _detect_all_null_columns(columns: list[dict[str, Any]], rows: int) -> list[d
     return issues
 
 
-def detect_issues(profile: dict[str, Any]) -> list[dict[str, Any]]:
+def _detect_required_columns(
+    columns: list[dict[str, Any]], config: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Flag missing columns that are marked as 'required' in config."""
+    issues: list[dict[str, Any]] = []
+    column_rules = (config or {}).get("columns", {})
+    if not column_rules:
+        return []
+
+    present_columns = {str(col.get("name", "")) for col in columns}
+    for col_name, rules in column_rules.items():
+        if rules.get("required") is True and col_name not in present_columns:
+            issues.append(
+                {
+                    "type": "missing_required_column",
+                    "column": col_name,
+                    "severity": "critical",
+                    "category": "Schema",
+                    "message": f"Required column '{col_name}' is missing from the dataset",
+                }
+            )
+    return issues
+
+
+def detect_issues(
+    profile: dict[str, Any], config: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """Return all structural and completeness issues detected from a profile."""
     columns: list[dict[str, Any]] = profile.get("columns", [])
     rows = int(profile.get("rows", 0) or 0)
@@ -229,4 +278,5 @@ def detect_issues(profile: dict[str, Any]) -> list[dict[str, Any]]:
         + _detect_placeholder_column_names(columns)
         + _detect_constant_columns(columns)
         + _detect_all_null_columns(columns, rows)
+        + _detect_required_columns(columns, config)
     )

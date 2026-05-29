@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def import_jsonl_history(con: sqlite3.Connection, history_path: Path) -> int:
@@ -11,13 +14,14 @@ def import_jsonl_history(con: sqlite3.Connection, history_path: Path) -> int:
 
     imported = 0
     with open(history_path, encoding="utf-8") as f:
-        for line in f:
+        for i, line in enumerate(f, 1):
             line = line.strip()
             if not line:
                 continue
             try:
                 record = json.loads(line)
             except json.JSONDecodeError:
+                logger.warning("Skipping malformed JSONL line %d in %s", i, history_path)
                 continue
 
             run_id = record.get("run_id")

@@ -14,8 +14,33 @@ import yaml
 from data_quality_toolkit.shared.exceptions import ConfigError
 
 CONFIG_FILENAME = "dqt.yaml"
-SUPPORTED_KEYS: frozenset[str] = frozenset({"null_threshold", "fail_under", "outdir"})
+
+# v1.9 Top-level keys
+SUPPORTED_KEYS: frozenset[str] = frozenset(
+    {"null_threshold", "fail_under", "outdir", "dataset", "columns"}
+)
 _NUMERIC_KEYS: frozenset[str] = frozenset({"null_threshold", "fail_under"})
+
+# v2.0 Rule vocabulary
+SUPPORTED_DATASET_KEYS: frozenset[str] = frozenset({"fail_under", "score_field"})
+SUPPORTED_COLUMN_RULE_KEYS: frozenset[str] = frozenset(
+    {
+        "required",
+        "critical",
+        "null_threshold",
+        "high_cardinality_threshold",
+        "outlier_threshold",
+        "unique",
+        "dtype",
+        "accepted_values",
+        "weight",
+    }
+)
+
+_THRESHOLD_KEYS: frozenset[str] = frozenset(
+    {"null_threshold", "high_cardinality_threshold", "outlier_threshold", "fail_under"}
+)
+_BOOL_KEYS: frozenset[str] = frozenset({"required", "critical", "unique"})
 
 
 def load_dqt_config(path: str | Path = CONFIG_FILENAME) -> dict[str, Any]:
@@ -32,29 +57,128 @@ def load_dqt_config(path: str | Path = CONFIG_FILENAME) -> dict[str, Any]:
         return {}
     if not isinstance(data, dict):
         raise ConfigError(
-            f"{config_path} must contain a mapping of config keys, " f"got {type(data).__name__}"
+            f"{config_path} must contain a mapping of config keys, got {type(data).__name__}"
         )
     unknown = sorted(k for k in data if k not in SUPPORTED_KEYS)
     if unknown:
         supported = ", ".join(sorted(SUPPORTED_KEYS))
         raise ConfigError(
-            f"{config_path} has unknown key(s): {', '.join(unknown)}. "
-            f"Supported keys: {supported}"
+            f"{config_path} has unknown key(s): {', '.join(unknown)}. Supported keys: {supported}"
         )
-    return {k: _validated(config_path, k, v) for k, v in data.items()}
+    return {k: _validated_top_level(config_path, k, v) for k, v in data.items()}
 
 
-def _validated(config_path: Path, key: str, value: Any) -> Any:
+def _validated_top_level(config_path: Path, key: str, value: Any) -> Any:
+    """Validate top-level keys in dqt.yaml."""
     if key in _NUMERIC_KEYS:
-        if isinstance(value, bool) or not isinstance(value, int | float):
+        return _validate_threshold(config_path, key, value)
+    if key == "outdir":
+        return _validate_string(config_path, key, value)
+    if key == "dataset":
+        return _validate_dataset(config_path, value)
+    if key == "columns":
+        return _validate_columns(config_path, value)
+    return value
+
+
+def _validate_dataset(config_path: Path, data: Any) -> dict[str, Any]:
+    """Validate 'dataset' section."""
+    if not isinstance(data, dict):
+        raise ConfigError(f"{config_path}: 'dataset' must be a mapping, got {type(data).__name__}")
+    unknown = sorted(k for k in data if k not in SUPPORTED_DATASET_KEYS)
+    if unknown:
+        raise ConfigError(f"{config_path}: 'dataset' has unknown key(s): {', '.join(unknown)}")
+
+    validated: dict[str, Any] = {}
+    for k, v in data.items():
+        ctx = f"dataset.{k}"
+        if k == "fail_under":
+            val_f: float = _validate_threshold(config_path, ctx, v)
+            validated[k] = val_f
+        elif k == "score_field":
+            val_s: str = _validate_string(config_path, ctx, v)
+            validated[k] = val_s
+    return validated
+
+
+def _validate_columns(config_path: Path, data: Any) -> dict[str, dict[str, Any]]:
+    """Validate 'columns' section."""
+    if not isinstance(data, dict):
+        raise ConfigError(f"{config_path}: 'columns' must be a mapping, got {type(data).__name__}")
+
+    validated: dict[str, dict[str, Any]] = {}
+    for col_name, rules in data.items():
+        if not isinstance(rules, dict):
             raise ConfigError(
-                f"{config_path}: '{key}' must be a number, " f"got {type(value).__name__}"
+                f"{config_path}: rules for column '{col_name}' must be a mapping, got {type(rules).__name__}"
             )
-        return float(value)
+        unknown = sorted(k for k in rules if k not in SUPPORTED_COLUMN_RULE_KEYS)
+        if unknown:
+            raise ConfigError(
+                f"{config_path}: column '{col_name}' has unknown rule key(s): {', '.join(unknown)}"
+            )
+        validated[col_name] = _validate_column_rules(config_path, col_name, rules)
+    return validated
+
+
+def _validate_column_rules(
+    config_path: Path, col_name: str, rules: dict[str, Any]
+) -> dict[str, Any]:
+    """Validate individual column rule set."""
+    validated: dict[str, Any] = {}
+    for k, v in rules.items():
+        ctx = f"columns.{col_name}.{k}"
+        if k in _THRESHOLD_KEYS:
+            val_f: float = _validate_threshold(config_path, ctx, v)
+            validated[k] = val_f
+        elif k in _BOOL_KEYS:
+            val_b: bool = _validate_bool(config_path, ctx, v)
+            validated[k] = val_b
+        elif k == "weight":
+            val_w: float = _validate_weight(config_path, ctx, v)
+            validated[k] = val_w
+        elif k == "dtype":
+            val_s: str = _validate_string(config_path, ctx, v)
+            validated[k] = val_s
+        elif k == "accepted_values":
+            val_l: list[Any] = _validate_list(config_path, ctx, v)
+            validated[k] = val_l
+    return validated
+
+
+def _validate_threshold(config_path: Path, ctx: str, value: Any) -> float:
+    """Validate a 0.0-1.0 float threshold."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ConfigError(f"{config_path}: '{ctx}' must be a number, got {type(value).__name__}")
+    val_f = float(value)
+    if not (0.0 <= val_f <= 1.0):
+        raise ConfigError(f"{config_path}: '{ctx}' must be between 0.0 and 1.0, got {val_f}")
+    return val_f
+
+
+def _validate_bool(config_path: Path, ctx: str, value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise ConfigError(f"{config_path}: '{ctx}' must be a boolean, got {type(value).__name__}")
+    return value
+
+
+def _validate_weight(config_path: Path, ctx: str, value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ConfigError(f"{config_path}: '{ctx}' must be a number, got {type(value).__name__}")
+    if value <= 0:
+        raise ConfigError(f"{config_path}: '{ctx}' must be greater than 0, got {value}")
+    return float(value)
+
+
+def _validate_string(config_path: Path, ctx: str, value: Any) -> str:
     if not isinstance(value, str):
-        raise ConfigError(
-            f"{config_path}: '{key}' must be a string, " f"got {type(value).__name__}"
-        )
+        raise ConfigError(f"{config_path}: '{ctx}' must be a string, got {type(value).__name__}")
+    return value
+
+
+def _validate_list(config_path: Path, ctx: str, value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        raise ConfigError(f"{config_path}: '{ctx}' must be a list, got {type(value).__name__}")
     return value
 
 

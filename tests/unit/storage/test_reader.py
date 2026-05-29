@@ -104,6 +104,81 @@ def test_read_run_history_parses_json_fields(tmp_path: Path) -> None:
     assert result[0]["issues_by_category"] == {"Completeness": 2}
 
 
+def _insert_run_with_scores(
+    con: sqlite3.Connection,
+    run_id: str,
+    dataset_id: str,
+    ts: str,
+    score: float = 0.9,
+    completeness_score: float = 0.9,
+    quality_score: float = 0.85,
+) -> None:
+    con.execute(
+        "INSERT OR IGNORE INTO datasets(dataset_id, source_path) VALUES (?, ?)",
+        (dataset_id, "/f.csv"),
+    )
+    con.execute(
+        "INSERT INTO runs(run_id, dataset_id, ts, score, completeness_score, quality_score,"
+        " rows, cols, memory_mb, null_threshold, issues_total, issues_by_severity,"
+        " issues_by_category, duration_secs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            run_id,
+            dataset_id,
+            ts,
+            score,
+            completeness_score,
+            quality_score,
+            100,
+            2,
+            1.0,
+            0.1,
+            0,
+            "{}",
+            "{}",
+            1.0,
+        ),
+    )
+    con.commit()
+
+
+def test_read_run_history_returns_score_fields(tmp_path: Path) -> None:
+    db = tmp_path / "dqt.db"
+    ensure_db(db)
+    con = connect(db)
+    try:
+        _insert_run_with_scores(
+            con,
+            "r1",
+            "d1",
+            "2026-01-01T00:00:00Z",
+            score=0.90,
+            completeness_score=0.90,
+            quality_score=0.84,
+        )
+    finally:
+        con.close()
+    result = read_run_history(db, "d1")
+    assert len(result) == 1
+    r = result[0]
+    assert r["completeness_score"] == pytest.approx(0.90)
+    assert r["quality_score"] == pytest.approx(0.84)
+
+
+def test_read_run_history_legacy_rows_have_none_scores(tmp_path: Path) -> None:
+    db = tmp_path / "dqt.db"
+    ensure_db(db)
+    con = connect(db)
+    try:
+        _insert_run(con, "r1", "d1", "2026-01-01T00:00:00Z")
+    finally:
+        con.close()
+    result = read_run_history(db, "d1")
+    assert len(result) == 1
+    r = result[0]
+    assert r["completeness_score"] is None
+    assert r["quality_score"] is None
+
+
 def test_read_run_history_returns_expected_fields(tmp_path: Path) -> None:
     db = tmp_path / "dqt.db"
     ensure_db(db)

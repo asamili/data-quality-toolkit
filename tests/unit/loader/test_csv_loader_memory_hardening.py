@@ -31,13 +31,15 @@ def test_sample_size_env_reduces_loaded_rows(tmp_path, monkeypatch):
     assert meta["sample_size"] == 2
 
 
-def test_sample_size_returns_first_n_rows(tmp_path, monkeypatch):
+def test_sample_size_returns_n_representative_rows(tmp_path, monkeypatch):
     monkeypatch.setenv("SAMPLE_SIZE", "3")
     f = tmp_path / "data.csv"
     f.write_text("id\n10\n20\n30\n40\n50\n", encoding="utf-8")
     df, meta = load_csv(str(f))
-    assert list(df["id"]) == [10, 20, 30]
+    assert len(df) == 3
     assert meta["sample_applied"] is True
+    # All returned values come from the original population (not necessarily first 3)
+    assert set(df["id"]).issubset({10, 20, 30, 40, 50})
 
 
 def test_sample_size_larger_than_file_loads_all(tmp_path, monkeypatch):

@@ -210,6 +210,31 @@ Exit codes are scriptable:
 
 This makes DQT usable for **CI-style data quality gates** and **pipeline quality enforcement**.
 
+### Quality score fields
+
+DQT tracks three score fields per assessment run:
+
+| Score field | Description |
+|---|---|
+| `score` | Legacy completeness score — fraction of non-null values across all columns (default) |
+| `completeness_score` | Explicit alias for `score` — same value, clearer name |
+| `quality_score` | Penalty-weighted score — starts from `completeness_score`, then deducts for structural and distribution issues (schema problems, outlier concentration, high cardinality); capped at `[0.0, 1.0]` |
+
+Use `--score-field` to choose which score controls `--fail-under`:
+
+```bash
+# Default — uses legacy score (backward compatible)
+dqt assess data.csv --fail-under 0.90
+
+# Gate on penalty-weighted quality score
+dqt assess data.csv --fail-under 0.90 --score-field quality_score
+
+# Gate on explicit completeness score
+dqt assess data.csv --fail-under 0.90 --score-field completeness_score
+```
+
+`--score-field` accepts `score`, `completeness_score`, or `quality_score`. Default is `score`. Omitting `--score-field` preserves existing exit-code behavior exactly.
+
 **DQT is not an ETL/ELT engine.** It does not transform data, load data into targets, connect to warehouses, or orchestrate pipelines. It validates CSV input and emits quality artifacts; transformation, loading, and scheduling remain the responsibility of your pipeline.
 
 See [examples/pipeline_gate/](examples/pipeline_gate/README.md) for a runnable example.
@@ -218,24 +243,46 @@ See [examples/pipeline_gate/](examples/pipeline_gate/README.md) for a runnable e
 
 ## Project Configuration (`dqt.yaml`)
 
-DQT runs entirely from CLI flags by default — no configuration file is required. Optionally, you can place a `dqt.yaml` file in your project directory to set default values for common options. When present, it is read automatically as DQT runs from that directory.
+DQT runs entirely from CLI flags by default — no configuration file is required. Optionally, you can place a `dqt.yaml` file in your project directory to set default values.
 
 Supported keys (all optional):
 
+### Basic Configuration (v1)
 | Key | CLI equivalent | Purpose |
 |---|---|---|
 | `null_threshold` | `--null-threshold` | Null-rate threshold for column quality checks |
 | `fail_under` | `--fail-under` | Minimum quality score for the pipeline gate |
 | `outdir` | `--outdir` | Default output directory for export artifacts |
 
+### Rule Contract Configuration (v2)
+For advanced rules, use the structured `dataset` and `columns` sections:
+
+| Key | Purpose |
+|---|---|
+| `dataset.fail_under` | Minimum quality score for the pipeline gate |
+| `dataset.score_field` | Choose which score controls the gate (`score`, `completeness_score`, `quality_score`) |
+| `columns.<name>.*` | Per-column thresholds (e.g., `required`, `critical`, `null_threshold`, `weight`, `outlier_threshold`) |
+
 ```yaml
-# dqt.yaml — every key is optional
-null_threshold: 0.1
-fail_under: 0.9
-outdir: dist/
+# dqt.yaml example
+dataset:
+  fail_under: 0.85
+  score_field: quality_score
+
+columns:
+  customer_id:
+    required: true
+    critical: true
+  order_amount:
+    null_threshold: 0.05
+    weight: 2.0
 ```
 
-A config value applies only when the matching CLI flag is omitted; an explicit CLI flag always takes precedence. If `dqt.yaml` is absent, behavior is unchanged — every option still works as a CLI flag. A malformed file or an unknown key is reported as an error.
+**Notes:**
+- A config value applies only when the matching CLI flag is omitted; an explicit CLI flag always takes precedence.
+- Unknown rule keys fail loudly.
+- If `dqt.yaml` is absent, behavior is unchanged — every option still works as a CLI flag.
+
 
 ---
 
@@ -313,7 +360,7 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 
 ## 🏆 Acknowledgments
 
-Built with pandas, typer, rich, pydantic, and other open-source libraries.
+Built with pandas, rich, pydantic, and other open-source libraries.
 
 ## 📞 Support
 
@@ -322,4 +369,4 @@ Built with pandas, typer, rich, pydantic, and other open-source libraries.
 
 ---
 
-**Version**: v1.7.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`), optional project config (`dqt.yaml`), and an optional local Streamlit dashboard (run history, data overview, EDA, preprocessing recommendations)
+**Version**: v1.9.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`), optional project config (`dqt.yaml`), and an optional local Streamlit dashboard (run history, data overview, EDA, preprocessing recommendations)

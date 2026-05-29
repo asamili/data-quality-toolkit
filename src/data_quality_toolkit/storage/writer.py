@@ -17,6 +17,8 @@ def persist_export_run(
     source_path: str,
     ts: str,
     score: float,
+    completeness_score: float,
+    quality_score: float,
     rows: int,
     cols: int,
     memory_mb: float,
@@ -45,15 +47,18 @@ def persist_export_run(
                 )
         con.execute(
             """INSERT INTO runs(
-                run_id, dataset_id, ts, score, rows, cols, memory_mb,
+                run_id, dataset_id, ts, score, completeness_score, quality_score,
+                rows, cols, memory_mb,
                 null_threshold, issues_total, issues_by_severity, issues_by_category,
                 duration_secs
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_id,
                 dataset_id,
                 ts,
                 score,
+                completeness_score,
+                quality_score,
                 rows,
                 cols,
                 memory_mb,

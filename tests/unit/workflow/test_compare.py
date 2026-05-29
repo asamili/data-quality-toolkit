@@ -26,6 +26,8 @@ RUN_A = {
     "dataset_id": "sha1:abc",
     "ts": "2026-04-01T10:00:00Z",
     "score": 0.80,
+    "completeness_score": 0.80,
+    "quality_score": 0.74,
     "issues_total": 5,
     "duration_secs": 1.2,
 }
@@ -35,6 +37,8 @@ RUN_B = {
     "dataset_id": "sha1:abc",
     "ts": "2026-04-02T10:00:00Z",
     "score": 0.90,
+    "completeness_score": 0.90,
+    "quality_score": 0.85,
     "issues_total": 2,
     "duration_secs": 1.0,
 }
@@ -149,6 +153,29 @@ def test_compare_two_runs_returns_deltas(tmp_path: Path) -> None:
     assert result["issues_delta"] == pytest.approx(-3.0)
     assert result["current_ts"] == "2026-04-02T10:00:00Z"
     assert result["previous_ts"] == "2026-04-01T10:00:00Z"
+
+
+def test_compare_returns_score_fields(tmp_path: Path) -> None:
+    p = _write_history(tmp_path, [RUN_A, RUN_B])
+    result = compare_last_two_runs("sha1:abc", p)
+    assert "error" not in result
+    assert result["previous_completeness_score"] == pytest.approx(0.80)
+    assert result["current_completeness_score"] == pytest.approx(0.90)
+    assert result["previous_quality_score"] == pytest.approx(0.74)
+    assert result["current_quality_score"] == pytest.approx(0.85)
+
+
+def test_compare_legacy_records_have_none_score_fields(tmp_path: Path) -> None:
+    skip_scores = {"completeness_score", "quality_score"}
+    run_legacy_a = {k: v for k, v in RUN_A.items() if k not in skip_scores}
+    run_legacy_b = {k: v for k, v in RUN_B.items() if k not in skip_scores}
+    p = _write_history(tmp_path, [run_legacy_a, run_legacy_b])
+    result = compare_last_two_runs("sha1:abc", p)
+    assert "error" not in result
+    assert result["previous_completeness_score"] is None
+    assert result["current_completeness_score"] is None
+    assert result["previous_quality_score"] is None
+    assert result["current_quality_score"] is None
 
 
 def test_compare_filters_by_dataset_id(tmp_path: Path) -> None:
@@ -385,6 +412,10 @@ def test_compare_sqlite_output_shape_matches_expected(
         "current_score",
         "previous_score",
         "score_delta",
+        "current_completeness_score",
+        "previous_completeness_score",
+        "current_quality_score",
+        "previous_quality_score",
         "current_issues_total",
         "previous_issues_total",
         "issues_delta",

@@ -1,7 +1,7 @@
 # Demo Story — From Raw CSV to Quality-Verified BI Artifacts
 
 This document explains the product value of one complete DQT success path,
-using the bundled synthetic orders dataset as the worked example.
+using the Uber NYC pickups dataset as the worked example.
 
 ---
 
@@ -14,7 +14,7 @@ using the bundled synthetic orders dataset as the worked example.
 ### Show these artifacts
 
 -   `quality_report.json` (summary, score, issue counts)
--   `fact_issues.csv` (detailed issue log — 3 rows on sample_orders run)
+-   `fact_issues.csv` (detailed issue log, empty on happy path)
 -   `fact_quality_metrics.csv` (column completeness)
 -   `quality_history.jsonl` (after `compare`)
 
@@ -40,10 +40,10 @@ Without a tool like DQT, answering these questions requires manual inspection in
 
 ## The input
 
-`examples/demo/sample_orders.csv`
+`examples/demo/Uber_Data.csv`
 
-Synthetic business orders dataset — multi-region, mixed statuses, nullable fields.
-170 rows, 14 columns.
+Real Uber pickup data for NYC, January–June 2015.
+29,101 rows, 13 columns.
 
 No pre-processing is required. DQT takes the raw file directly.
 
@@ -53,10 +53,10 @@ No pre-processing is required. DQT takes the raw file directly.
 
 ```bash
 # Using the dqt CLI
-dqt export examples/demo/sample_orders.csv --outdir dist/demo
+dqt export examples/demo/Uber_Data.csv --outdir dist/demo
 
 # Using python -m
-python -m data_quality_toolkit.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
+python -m data_quality_toolkit.cli.main export examples/demo/Uber_Data.csv --outdir dist/demo
 ```
 
 This runs the full pipeline in one step:
@@ -71,10 +71,10 @@ This runs the full pipeline in one step:
 
 The verified run produced the following results:
 
-- Rows: 170
-- Columns: 14
-- Quality score: 95.71%
-- Issues flagged: 3 (`discount_pct` missing, `notes` missing, `currency` constant)
+- Rows: 29,101
+- Columns: 13
+- Quality score: 99.10%
+- Issues flagged: 0
 
 Artifacts written to `dist/demo/`:
 
@@ -93,27 +93,15 @@ quality_report.json
 
 ### `quality_report.json`
 
-The top-level run summary. Written to `star/quality_report.json` in the output directory. The file is a flat JSON document:
+The top-level run summary. The report uses a nested structure with these top-level sections:
 
 ```json
 {
-  "run_id": "...",
-  "dataset_id": "sha1:...",
-  "ts": "2026-05-14T...",
-  "score": 0.9571,
-  "rows": 170,
-  "cols": 14,
-  "issues_total": 3,
-  "issues_by_severity": { "high": 2, "medium": 1 },
-  "issues_by_category": { "Completeness": 3 },
-  "artifacts": {
-    "dim_dataset": "dist/demo/star/dim_dataset.csv",
-    "dim_column": "dist/demo/star/dim_column.csv",
-    "fact_profile_runs": "dist/demo/star/fact_profile_runs.csv",
-    "fact_quality_metrics": "dist/demo/star/fact_quality_metrics.csv",
-    "fact_issues": "dist/demo/star/fact_issues.csv"
-  },
-  "duration_secs": 0.073
+  "meta":         { "run_id": "...", "dataset_id": "sha1:...", "ts": "..." },
+  "profile":      { "rows": 29101, "cols": 13, ... },
+  "assessment":   { "score": 0.9910, "issues_total": 0, "issues_by_severity": {}, "issues_by_category": {} },
+  "star":         { ... },
+  "export_paths": { ... }
 }
 ```
 
@@ -127,7 +115,7 @@ or paste it into a Slack message as run evidence.
 
 ### `fact_issues.csv`
 
-One row per detected problem. On this demo run the file contains 3 rows — `discount_pct` (missing data), `notes` (missing data), and `currency` (constant column).
+One row per detected problem. On this demo run the file is present but empty — the dataset scored 99.10% with no issues flagged.
 
 Schema: `run_id | dataset_id | column_id | issue_type | severity | category | message`
 
@@ -144,8 +132,8 @@ One row per column, per run. Example structure:
 
 | run_id | column_id | null_pct | distinct_count | completeness |
 | --- | --- | --- | --- | --- |
-| `...` | `...:discount_pct` | `0.2471` | `...` | `0.7529` |
-| `...` | `...:notes` | `0.3529` | `...` | `0.6471` |
+| `...` | `...:pickups` | `0.0000` | `...` | `1.0000` |
+| `...` | `...:temp` | `...` | `...` | `...` |
 
 **Who cares:** analysts and BI developers tracking completeness by column over time.
 
@@ -165,12 +153,11 @@ These feed directly into Power BI via `dqt build-pbi` or any BI tool that reads 
 
 | Claim | Evidence from demo run |
 | --- | --- |
-| Works on raw CSV, no prep required | `sample_orders.csv` (170 rows, 14 columns) loaded and profiled without modification |
-| Produces a correct quality score | 95.71% — verified against actual run output |
-| Detects real quality issues | 3 issues flagged: missing data on `discount_pct` and `notes`, constant-column on `currency` |
+| Works on real data, no prep required | Uber CSV (29,101 rows, 13 columns) loaded and profiled without modification |
+| Produces a correct quality score | 99.10% — verified against actual run output |
 | Produces structured, queryable output | `fact_issues.csv` and `fact_quality_metrics.csv` are BI-ready |
 | Produces a single-file summary | `quality_report.json` (nested: meta/profile/assessment/star/export_paths) is self-contained and CI-friendly |
-| Fast | Full run on 170-row dataset completes in under a second |
+| Fast | Full run on 29k rows completes in seconds |
 | One command | No config files, no setup steps beyond `pip install -e .` |
 
 ---
@@ -189,9 +176,9 @@ It shows how quality metrics shifted between the latest two export runs for the 
 
 ```bash
 # Run export twice, then compare
-dqt export examples/demo/sample_orders.csv --outdir dist/demo
-dqt export examples/demo/sample_orders.csv --outdir dist/demo
-dqt compare examples/demo/sample_orders.csv --outdir dist/demo
+dqt export examples/demo/Uber_Data.csv --outdir dist/demo
+dqt export examples/demo/Uber_Data.csv --outdir dist/demo
+dqt compare examples/demo/Uber_Data.csv --outdir dist/demo
 ```
 
 History is stored in `dist/demo/star/quality_history.jsonl`.
@@ -201,7 +188,7 @@ If fewer than two runs exist, compare returns `not_enough_runs` — run `export`
 
 ## Next steps after the demo
 
-1. Replace `sample_orders.csv` with your own dataset and re-run
+1. Replace `Uber_Data.csv` with your own dataset and re-run
 2. Check `quality_report.json` — is the score acceptable? Are issues expected?
 3. Load `fact_issues.csv` and `fact_quality_metrics.csv` into your BI tool
 4. Run `export` a second time and use `compare` to see quality trends

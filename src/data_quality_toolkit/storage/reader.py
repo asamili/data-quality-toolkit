@@ -22,7 +22,8 @@ def read_run_history(db_path: Path, dataset_id: str) -> list[dict[str, Any]]:
         con = connect(db_path)
         try:
             rows = con.execute(
-                "SELECT run_id, dataset_id, ts, score, rows, cols, memory_mb,"
+                "SELECT run_id, dataset_id, ts, score, completeness_score, quality_score,"
+                " rows, cols, memory_mb,"
                 " null_threshold, issues_total, issues_by_severity,"
                 " issues_by_category, duration_secs"
                 " FROM runs WHERE dataset_id = ? ORDER BY ts ASC",

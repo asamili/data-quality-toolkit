@@ -1,0 +1,25 @@
+# v2 Rule Contract Example
+# Defines dataset-level settings and per-column quality rules.
+
+dataset:
+  fail_under: 0.85
+  score_field: quality_score
+
+columns:
+  customer_id:
+    required: true
+    critical: true
+  order_amount:
+    null_threshold: 0.05
+    weight: 2.0
+  order_date:
+    outlier_threshold: 0.01
+    weight: 1.0
+  region:
+    high_cardinality_threshold: 0.2
+    weight: 0.5
+  # Note: unique, dtype, accepted_values are parsed but behavior is deferred in v2.0
+  status:
+    unique: false
+    dtype: string
+    accepted_values: ["pending", "shipped", "delivered", "cancelled"]

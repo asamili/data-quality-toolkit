@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "data-quality-toolkit"
-version = "1.8.0"
+version = "2.0.0"
 description = "CSV-first data quality toolkit for BI and reporting workflows: profile, assess, export, and compare run-to-run quality trends."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -24,7 +24,6 @@ dependencies = [
     "python-dotenv>=1.2.2",
 
     # CLI & UI
-    "typer>=0.9.0",
     "rich>=13.0.0",
 
     # Templates

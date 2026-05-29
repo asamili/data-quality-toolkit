@@ -1,0 +1,123 @@
+{
+  "generated_at": "2026-05-29T19:23:31Z",
+  "env": {
+    "numpy": "1.26.4",
+    "pandas": "2.3.3",
+    "psutil": "7.2.2"
+  },
+  "null_fraction": 0.05,
+  "shapes": [
+    {
+      "rows": 10000,
+      "cols": 5,
+      "csv_file_mb": 0.53,
+      "loaded_rows": 10000,
+      "sample_applied_on_load": false,
+      "load": {
+        "wall_s": 0.1818,
+        "py_peak_mb": 1.17,
+        "rss_delta_mb": 0.95
+      },
+      "profile": {
+        "wall_s": 0.301,
+        "py_peak_mb": 0.54,
+        "rss_delta_mb": 0.37
+      },
+      "preprocess": {
+        "wall_s": 0.0532,
+        "py_peak_mb": 0.51,
+        "rss_delta_mb": 0.07
+      }
+    },
+    {
+      "rows": 100000,
+      "cols": 5,
+      "csv_file_mb": 5.34,
+      "loaded_rows": 100000,
+      "sample_applied_on_load": false,
+      "load": {
+        "wall_s": 0.5066,
+        "py_peak_mb": 10.72,
+        "rss_delta_mb": 2.78
+      },
+      "profile": {
+        "wall_s": 2.0235,
+        "py_peak_mb": 3.78,
+        "rss_delta_mb": 0.59
+      },
+      "preprocess": {
+        "wall_s": 0.156,
+        "py_peak_mb": 3.03,
+        "rss_delta_mb": -0.02
+      }
+    },
+    {
+      "rows": 100000,
+      "cols": 100,
+      "csv_file_mb": 109.53,
+      "loaded_rows": 100000,
+      "sample_applied_on_load": false,
+      "load": {
+        "wall_s": 3.4013,
+        "py_peak_mb": 156.93,
+        "rss_delta_mb": 77.23
+      },
+      "profile": {
+        "wall_s": 2.0416,
+        "py_peak_mb": 9.86,
+        "rss_delta_mb": 0.57
+      },
+      "preprocess": {
+        "wall_s": 1.6755,
+        "py_peak_mb": 3.1,
+        "rss_delta_mb": -0.85
+      }
+    },
+    {
+      "rows": 1000000,
+      "cols": 5,
+      "csv_file_mb": 54.36,
+      "loaded_rows": 1000000,
+      "sample_applied_on_load": false,
+      "load": {
+        "wall_s": 2.3238,
+        "py_peak_mb": 120.81,
+        "rss_delta_mb": 84.31
+      },
+      "profile": {
+        "wall_s": 11.4081,
+        "py_peak_mb": 48.28,
+        "rss_delta_mb": 8.19
+      },
+      "preprocess": {
+        "wall_s": 0.983,
+        "py_peak_mb": 48.26,
+        "rss_delta_mb": -0.89
+      }
+    }
+  ],
+  "behavior_probe": {
+    "default_no_env": {
+      "loaded_rows": 100000,
+      "sample_applied": false,
+      "load": {
+        "wall_s": 0.2936,
+        "py_peak_mb": 10.72,
+        "rss_delta_mb": 0.32
+      }
+    },
+    "env_sample_size_2000": {
+      "loaded_rows": 2000,
+      "sample_applied": true,
+      "load": {
+        "wall_s": 0.3417,
+        "py_peak_mb": 10.72,
+        "rss_delta_mb": 0.92
+      }
+    },
+    "settings_sample_size_default": 0,
+    "settings_max_rows_in_memory": 1000000,
+    "max_rows_in_memory_enforced": true,
+    "notes": "Loader samples at read time (nrows) when SAMPLE_SIZE env is explicitly set, yielding first-N rows and avoiding full-file materialization. Default load is full-file. Profiling samples 'column extras' (min/max) to settings.sample_size by default, but nulls/unique are computed on the full frame. max_rows_in_memory is enforced: loader raises ValueError if loaded rows exceed the limit."
+  }
+}
