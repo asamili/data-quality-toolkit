@@ -8,7 +8,7 @@ try:
 
     VERSION: str = _pkg_version("data-quality-toolkit")
 except Exception:
-    VERSION = "0.6.6"
+    VERSION = "2.0.0"
 
 # Timestamps
 DEFAULT_TS_FORMAT = "%Y-%m-%dT%H:%M:%SZ"

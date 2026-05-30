@@ -9,7 +9,7 @@ description = "CSV-first data quality toolkit for BI and reporting workflows: pr
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
-authors = [{ name = "Data Team" }]
+authors = [{ name = "Asamili" }]
 keywords = ["data-quality", "power-bi", "data-profiling", "data-pipeline", "business-intelligence"]
 
 # Core dependencies for Phase 1 & 2

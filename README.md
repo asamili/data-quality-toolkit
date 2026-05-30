@@ -1,8 +1,8 @@
 # Data Quality Toolkit (DQT)
 
-[![Python](https://img.shields.io/badge/Python-3.12+-green)]()
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue)]()
-[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue)]()
+[![Python](https://img.shields.io/badge/Python-3.12+-green)](https://github.com/asamili/data-quality-toolkit)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](https://github.com/asamili/data-quality-toolkit/blob/main/LICENSE)
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue)](https://github.com/asamili/data-quality-toolkit/actions)
 
 **CLI-first data quality toolkit for CSV validation, issue detection, and BI-ready export artifacts.**
 
@@ -87,7 +87,7 @@ The next productization steps are expected to focus on:
 
 ```bash
 # Clone the repository
-git clone <repo-url>
+git clone https://github.com/asamili/data-quality-toolkit
 cd data-quality-toolkit
 
 # Create virtual environment
@@ -364,9 +364,9 @@ Built with pandas, rich, pydantic, and other open-source libraries.
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](../../issues)
-- **Discussions**: [GitHub Discussions](../../discussions)
+- **Issues**: [GitHub Issues](https://github.com/asamili/data-quality-toolkit/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/asamili/data-quality-toolkit/discussions)
 
 ---
 
-**Version**: v1.9.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`), optional project config (`dqt.yaml`), and an optional local Streamlit dashboard (run history, data overview, EDA, preprocessing recommendations)
+**Version**: v2.0.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`), optional project config (`dqt.yaml`), and an optional local Streamlit dashboard (run history, data overview, EDA, preprocessing recommendations)
