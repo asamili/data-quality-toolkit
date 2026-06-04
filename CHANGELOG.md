@@ -53,7 +53,7 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [1.8.0] - 2026-05-22
 
-### Security, Performance, and Memory Hardening, CVE Remediation, and Mypy Cleanup 
+### Security, Performance, and Memory Hardening, CVE Remediation, and Mypy Cleanup
 
 Four hardening gates, one CVE remediation gate, and one mypy cleanup gate completing the v1.8.0 release. No breaking changes to public CLI or output formats.
 
