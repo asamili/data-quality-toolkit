@@ -313,3 +313,6 @@ docker/dist/
 !.pre-commit-config.yaml
 !.editorconfig
 /examples/demo/Uber_Data.csv
+secrets/
+credentials/
+*.sqlite

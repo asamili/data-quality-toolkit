@@ -113,14 +113,88 @@ def _detect_numeric_outliers(
     return issues
 
 
+def _detect_accepted_value_violations(
+    df: Any, columns: list[dict[str, Any]], config: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    column_rules = (config or {}).get("columns", {})
+    df_columns = set(df.columns) if hasattr(df, "columns") else set()
+
+    for col_name, rules in column_rules.items():
+        accepted = rules.get("accepted_values")
+        if not accepted:
+            continue
+        if col_name not in df_columns:
+            continue
+        accepted_set = set(accepted)
+        non_null = df[col_name].dropna()
+        violations = non_null[~non_null.isin(accepted_set)]
+        if len(violations) == 0:
+            continue
+        violation_count = len(violations)
+        examples = sorted({str(v) for v in violations.head(3)})
+        issues.append(
+            {
+                "type": "accepted_values_violation",
+                "column": col_name,
+                "violation_count": violation_count,
+                "examples": examples,
+                "severity": "high",
+                "category": "Schema",
+                "message": (
+                    f"Column '{col_name}' has {violation_count} value(s) outside accepted set"
+                    f" (e.g. {', '.join(examples)})"
+                ),
+            }
+        )
+    return issues
+
+
+def _detect_uniqueness_violation(
+    df: Any, columns: list[dict[str, Any]], config: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    # Nulls are excluded before duplicate check; null deduplication is handled by completeness checks.
+    issues: list[dict[str, Any]] = []
+    column_rules = (config or {}).get("columns", {})
+    df_columns = set(df.columns) if hasattr(df, "columns") else set()
+
+    for col_name, rules in column_rules.items():
+        if rules.get("unique") is not True:
+            continue
+        if col_name not in df_columns:
+            continue
+        non_null = df[col_name].dropna()
+        duplicate_count = int(non_null.duplicated().sum())
+        if duplicate_count == 0:
+            continue
+        issues.append(
+            {
+                "type": "uniqueness_violation",
+                "column": col_name,
+                "duplicate_count": duplicate_count,
+                "severity": "medium",
+                "category": "Schema",
+                "message": f"Column '{col_name}' has {duplicate_count} duplicate non-null value(s)",
+            }
+        )
+    return issues
+
+
 def detect_advanced_issues(
     df: Any, profile: dict[str, Any], config: dict[str, Any] | None = None
 ) -> list[dict[str, Any]]:
-    """Detect advanced quality issues: high cardinality and numeric outliers."""
+    """Detect advanced quality issues: high cardinality, numeric outliers, accepted values, uniqueness."""
     columns: list[dict[str, Any]] = profile.get("columns", [])
     rows = int(profile.get("rows", 0) or 0)
-    return _detect_high_cardinality(columns, rows, config=config) + _detect_numeric_outliers(
+    base = _detect_high_cardinality(columns, rows, config=config) + _detect_numeric_outliers(
         df, columns, config=config
+    )
+    if df is None or not hasattr(df, "columns"):
+        return base
+    return (
+        base
+        + _detect_accepted_value_violations(df, columns, config=config)
+        + _detect_uniqueness_violation(df, columns, config=config)
     )
 
 
@@ -241,6 +315,38 @@ def _detect_all_null_columns(columns: list[dict[str, Any]], rows: int) -> list[d
     return issues
 
 
+def _detect_dtype_mismatch(
+    columns: list[dict[str, Any]], config: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    column_rules = (config or {}).get("columns", {})
+    if not column_rules:
+        return []
+
+    profile_dtypes = {str(col.get("name", "")): str(col.get("dtype", "")) for col in columns}
+    for col_name, rules in column_rules.items():
+        expected = rules.get("dtype")
+        if not expected:
+            continue
+        actual = profile_dtypes.get(col_name)
+        if actual is None:
+            continue
+        if actual.strip().lower() == str(expected).strip().lower():
+            continue
+        issues.append(
+            {
+                "type": "dtype_mismatch",
+                "column": col_name,
+                "expected_dtype": expected,
+                "actual_dtype": actual,
+                "severity": "high",
+                "category": "Schema",
+                "message": (f"Column '{col_name}' dtype is '{actual}', expected '{expected}'"),
+            }
+        )
+    return issues
+
+
 def _detect_required_columns(
     columns: list[dict[str, Any]], config: dict[str, Any] | None = None
 ) -> list[dict[str, Any]]:
@@ -279,4 +385,5 @@ def detect_issues(
         + _detect_constant_columns(columns)
         + _detect_all_null_columns(columns, rows)
         + _detect_required_columns(columns, config)
+        + _detect_dtype_mismatch(columns, config)
     )
