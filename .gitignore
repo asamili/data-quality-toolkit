@@ -316,3 +316,15 @@ docker/dist/
 secrets/
 credentials/
 *.sqlite
+
+# AI agent local/private configuration
+.claude/
+.gemini/
+.codex/
+CLAUDE.local.md
+*.local.json
+
+# Private or non-public agent instruction surfaces
+AGENTS.md
+GEMINI.md
+CLAUDE.md
