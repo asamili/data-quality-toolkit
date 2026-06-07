@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from data_quality_toolkit.exporters.bi.powerbi_zero_config.packager import (
+from data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config.packager import (
     validate_package,
     validate_relationships,
 )

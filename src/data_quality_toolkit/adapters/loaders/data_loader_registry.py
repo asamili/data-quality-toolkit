@@ -1,7 +1,7 @@
 # src/data_quality_toolkit/loaders/data_loader_registry.py
 """Phase 1: Loader registry (stub for future expansion)."""
 
-from data_quality_toolkit.loaders.base_loader import BaseLoader
+from data_quality_toolkit.adapters.loaders.base_loader import BaseLoader
 
 __all__ = ["register_loader", "get_registered_loader"]
 

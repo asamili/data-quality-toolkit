@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from data_quality_toolkit.assessment.quality_checker import assess
+from data_quality_toolkit.domain.assessment.quality_checker import assess
 
 
 def _ts() -> str:

@@ -4,14 +4,14 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
-from data_quality_toolkit.semantics.dax_emitter import (
+from data_quality_toolkit.domain.semantics.dax_emitter import (
     MEASURE_TABLE,
     build_tmsl_measures,
     emit_dax,
     write_dax,
     write_tmsl,
 )
-from data_quality_toolkit.semantics.schema import KPI, Catalog, Grain, Unit
+from data_quality_toolkit.domain.semantics.schema import KPI, Catalog, Grain, Unit
 
 
 def _kpi(

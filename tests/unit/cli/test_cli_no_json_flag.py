@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-import data_quality_toolkit.cli.main as cli
+import data_quality_toolkit.adapters.cli.main as cli
 
 # ---------------------------------------------------------------------------
 # Parser acceptance

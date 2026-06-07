@@ -1,8 +1,8 @@
 # src/data_quality_toolkit/loaders/loader_factory.py
 """Phase 1: Loader factory (CSV only)."""
 
-from data_quality_toolkit.loaders.base_loader import BaseLoader
-from data_quality_toolkit.loaders.file.csv_loader import CsvLoader
+from data_quality_toolkit.adapters.loaders.base_loader import BaseLoader
+from data_quality_toolkit.adapters.loaders.file.csv_loader import CsvLoader
 
 __all__ = ["get_loader"]
 

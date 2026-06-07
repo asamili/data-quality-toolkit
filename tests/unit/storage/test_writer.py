@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from data_quality_toolkit.storage.connection import StorageError, connect
-from data_quality_toolkit.storage.schema import ensure_db
-from data_quality_toolkit.storage.writer import persist_export_run
+from data_quality_toolkit.adapters.storage.connection import StorageError, connect
+from data_quality_toolkit.adapters.storage.schema import ensure_db
+from data_quality_toolkit.adapters.storage.writer import persist_export_run
 
 _COLUMNS = [{"name": "id", "dtype": "int64"}, {"name": "age", "dtype": "float64"}]
 _QUALITY_METRICS = [
@@ -124,7 +124,7 @@ def test_persist_export_run_metric_detail_preserved(tmp_path: Path) -> None:
 
 
 def test_persist_export_run_score_values_readable(tmp_path: Path) -> None:
-    from data_quality_toolkit.storage.reader import read_run_history
+    from data_quality_toolkit.adapters.storage.reader import read_run_history
 
     db = tmp_path / "dqt.db"
     con = _open_db(db)

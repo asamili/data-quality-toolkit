@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import data_quality_toolkit.cli.main as cli
+import data_quality_toolkit.adapters.cli.main as cli
 
 
 def _make_fake_parser(exc_to_raise, log_level="INFO", log_format="json"):

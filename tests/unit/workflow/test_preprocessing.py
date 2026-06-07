@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import pandas as pd
 
-from data_quality_toolkit.workflow.preprocessing import iqr_outlier_summary, plan_preprocessing
+from data_quality_toolkit.application.workflow.preprocessing import (
+    iqr_outlier_summary,
+    plan_preprocessing,
+)
 
 # ---------------------------------------------------------------------------
 # iqr_outlier_summary

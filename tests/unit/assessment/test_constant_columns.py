@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from data_quality_toolkit.assessment.issue_detector import (
+from data_quality_toolkit.domain.assessment.issue_detector import (
     _detect_constant_columns,
     detect_issues,
 )

@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from data_quality_toolkit.exporters.bi.powerbi_zero_config.generator import generate_powerbi_package
+from data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config.generator import (
+    generate_powerbi_package,
+)
 
 # ---------- helpers ----------
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from data_quality_toolkit.cli.main import main
+from data_quality_toolkit.adapters.cli.main import main
 
 
 def _fake_export_ok(**kwargs):
@@ -21,7 +21,7 @@ def _fake_export_ok(**kwargs):
 
 def test_cli_build_pbi_success(monkeypatch, tmp_path, capsys):
     # Monkeypatch the orchestrator inside the CLI module namespace
-    import data_quality_toolkit.exporters.bi.powerbi_exporter as exporter
+    import data_quality_toolkit.adapters.exporters.bi.powerbi_exporter as exporter
 
     monkeypatch.setattr(exporter, "export_powerbi_package", lambda **kw: _fake_export_ok(**kw))
 
@@ -58,7 +58,7 @@ def test_cli_build_pbi_success(monkeypatch, tmp_path, capsys):
 
 def test_cli_build_pbi_failure(monkeypatch, tmp_path, capsys):
     # Force orchestrator to raise
-    import data_quality_toolkit.exporters.bi.powerbi_exporter as exporter
+    import data_quality_toolkit.adapters.exporters.bi.powerbi_exporter as exporter
 
     def _boom(**kw):
         raise ValueError("simulated failure")

@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from data_quality_toolkit.assessment.issue_detector import (
+from data_quality_toolkit.domain.assessment.issue_detector import (
     _detect_placeholder_column_names,
     detect_issues,
 )

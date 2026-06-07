@@ -10,7 +10,7 @@ from pathlib import Path
 def test_quality_report_written(tmp_path: Path, monkeypatch: object) -> None:
     """run_export_star writes quality_report.json with expected top-level keys."""
 
-    from data_quality_toolkit.workflow.pipeline import run_export_star
+    from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
     csv_file = tmp_path / "data.csv"
     csv_file.write_text("id,val\n1,a\n2,\n3,c\n", encoding="utf-8")
@@ -39,7 +39,7 @@ def test_quality_report_written(tmp_path: Path, monkeypatch: object) -> None:
 
 def test_quality_report_score_range(tmp_path: Path) -> None:
     """Score in quality_report is between 0 and 1."""
-    from data_quality_toolkit.workflow.pipeline import run_export_star
+    from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
     csv_file = tmp_path / "data.csv"
     csv_file.write_text("a,b\n1,2\n3,4\n", encoding="utf-8")
@@ -53,7 +53,7 @@ def test_quality_report_score_range(tmp_path: Path) -> None:
 
 def test_quality_report_issues_counted(tmp_path: Path) -> None:
     """issues_total matches the sum of issues_by_severity values."""
-    from data_quality_toolkit.workflow.pipeline import run_export_star
+    from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
     # Column with 50 % nulls → should flag at least one issue
     csv_file = tmp_path / "data.csv"
@@ -69,7 +69,7 @@ def test_quality_report_issues_counted(tmp_path: Path) -> None:
 
 def test_quality_report_duration_secs(tmp_path: Path) -> None:
     """duration_secs is a non-negative float in quality_report and the return dict."""
-    from data_quality_toolkit.workflow.pipeline import run_export_star
+    from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
     csv_file = tmp_path / "data.csv"
     csv_file.write_text("a,b\n1,2\n3,4\n", encoding="utf-8")
@@ -90,7 +90,7 @@ def test_quality_report_duration_secs(tmp_path: Path) -> None:
 
 def test_quality_report_artifacts_subset(tmp_path: Path) -> None:
     """artifacts dict contains star CSV keys but not 'relationships'."""
-    from data_quality_toolkit.workflow.pipeline import run_export_star
+    from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
     csv_file = tmp_path / "data.csv"
     csv_file.write_text("x,y\n1,2\n", encoding="utf-8")
@@ -106,7 +106,7 @@ def test_quality_report_artifacts_subset(tmp_path: Path) -> None:
 
 def test_history_record_includes_breakdown_fields(tmp_path: Path) -> None:
     """quality_history.jsonl records must include issues_by_severity and issues_by_category."""
-    from data_quality_toolkit.workflow.pipeline import run_export_star
+    from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
     csv_file = tmp_path / "data.csv"
     csv_file.write_text("id,val\n1,a\n2,\n3,c\n", encoding="utf-8")

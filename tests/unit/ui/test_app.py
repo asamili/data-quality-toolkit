@@ -11,8 +11,8 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from data_quality_toolkit.storage.connection import StorageError
-from data_quality_toolkit.ui.app import (
+from data_quality_toolkit.adapters.storage.connection import StorageError
+from data_quality_toolkit.adapters.ui.app import (
     _bivariate_categorical_categorical,
     _bivariate_numeric_categorical,
     _bivariate_numeric_numeric,
@@ -36,7 +36,7 @@ from data_quality_toolkit.ui.app import (
 
 def test_module_imports_without_streamlit() -> None:
     """app module must be importable when Streamlit is absent (deferred import)."""
-    import data_quality_toolkit.ui.app as _cached
+    import data_quality_toolkit.adapters.ui.app as _cached
 
     real_st = sys.modules.get("streamlit")
     sys.modules["streamlit"] = None  # type: ignore[assignment]
@@ -53,7 +53,7 @@ def test_module_imports_without_streamlit() -> None:
 
 
 def test_main_is_callable() -> None:
-    import data_quality_toolkit.ui.app as app
+    import data_quality_toolkit.adapters.ui.app as app
 
     assert callable(app.main)
 
@@ -194,7 +194,7 @@ def test_app_has_script_entrypoint() -> None:
     import ast
     import inspect
 
-    import data_quality_toolkit.ui.app as app_mod
+    import data_quality_toolkit.adapters.ui.app as app_mod
 
     src = Path(inspect.getfile(app_mod)).read_text(encoding="utf-8")
     tree = ast.parse(src)

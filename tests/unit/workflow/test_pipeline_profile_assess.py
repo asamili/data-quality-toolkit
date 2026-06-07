@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from data_quality_toolkit.workflow.pipeline import run_assessment, run_profile
+from data_quality_toolkit.application.workflow.pipeline import run_assessment, run_profile
 
 
 def _write_tiny_csv(path: Path) -> None:

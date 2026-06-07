@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from data_quality_toolkit.profiling.core.column_profiler import profile_columns
+from data_quality_toolkit.domain.profiling.core.column_profiler import profile_columns
 
 
 @pytest.mark.unit

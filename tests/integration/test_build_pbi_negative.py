@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from data_quality_toolkit.exporters.bi.powerbi_exporter import export_powerbi_package
+from data_quality_toolkit.adapters.exporters.bi.powerbi_exporter import export_powerbi_package
 
 
 def _write_minimal_star(star_dir: Path) -> Path:

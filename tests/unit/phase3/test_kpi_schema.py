@@ -3,7 +3,7 @@ from typing import Any, NotRequired, TypedDict, cast
 import pytest
 from pydantic import ValidationError
 
-from data_quality_toolkit.semantics.schema import KPI, Catalog
+from data_quality_toolkit.domain.semantics.schema import KPI, Catalog
 
 
 class KPIKwargsLoose(TypedDict, total=False):

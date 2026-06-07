@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 import yaml
 
-from data_quality_toolkit.semantics.catalog_loader import load_catalog, save_catalog
-from data_quality_toolkit.semantics.schema import KPI, Catalog
+from data_quality_toolkit.domain.semantics.catalog_loader import load_catalog, save_catalog
+from data_quality_toolkit.domain.semantics.schema import KPI, Catalog
 
 
 def write_yaml(p: Path, data: dict[str, Any]) -> None:

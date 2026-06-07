@@ -97,29 +97,29 @@ def _apply_overrides(args: argparse.Namespace) -> None:
 
 def run_profile(csv: str, **kw: Any) -> Any:
     """Proxy to pipeline.run_profile (lazy import to avoid early heavy imports)."""
-    from data_quality_toolkit.workflow.pipeline import run_profile as _impl
+    from data_quality_toolkit.application.workflow.pipeline import run_profile as _impl
 
     return _impl(csv, **kw)
 
 
 def run_assessment(csv: str, **kw: Any) -> Any:
     """Proxy to pipeline.run_assessment."""
-    from data_quality_toolkit.workflow.pipeline import run_assessment as _impl
+    from data_quality_toolkit.application.workflow.pipeline import run_assessment as _impl
 
     return _impl(csv, **kw)
 
 
 def run_export_star(csv: str, *, output_dir: str | None = None, **kw: Any) -> Any:
     """Proxy to pipeline.run_export_star."""
-    from data_quality_toolkit.workflow.pipeline import run_export_star as _impl
+    from data_quality_toolkit.application.workflow.pipeline import run_export_star as _impl
 
     return _impl(csv, output_dir=output_dir, **kw)
 
 
 def run_plan(csv: str, **kw: Any) -> dict[str, Any]:
     """Load CSV and return per-column preprocessing plan (lazy import for monkeypatching)."""
-    from data_quality_toolkit.loaders.file.csv_loader import load_csv
-    from data_quality_toolkit.workflow.preprocessing import plan_preprocessing
+    from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
+    from data_quality_toolkit.application.workflow.preprocessing import plan_preprocessing
 
     df, meta = load_csv(csv, **kw)
     return {
@@ -307,7 +307,7 @@ def cmd_gen_dim_time(args: argparse.Namespace) -> int:
     """Generate dim_time.csv."""
     from pathlib import Path
 
-    from data_quality_toolkit.exporters.time.dim_time_generator import write_dim_time
+    from data_quality_toolkit.adapters.exporters.time.dim_time_generator import write_dim_time
 
     try:
         path = write_dim_time(
@@ -337,7 +337,7 @@ def cmd_gen_dim_time(args: argparse.Namespace) -> int:
 
 def cmd_build_pbi(args: argparse.Namespace) -> int:
     """Build Phase 2 Power BI package (zero-config orchestrator)."""
-    from data_quality_toolkit.exporters.bi.powerbi_exporter import export_powerbi_package
+    from data_quality_toolkit.adapters.exporters.bi.powerbi_exporter import export_powerbi_package
 
     tick = _safe_text("✓", "[OK]")
     try:
@@ -377,7 +377,7 @@ def cmd_build_pbi(args: argparse.Namespace) -> int:
 
 def cmd_kpi_emit(args: argparse.Namespace) -> int:
     """Generate DAX measures and TMSL from KPI catalog."""
-    from data_quality_toolkit.semantics import (
+    from data_quality_toolkit.domain.semantics import (
         load_catalog,
         validate_semantics,
         write_dax,
@@ -417,7 +417,7 @@ def cmd_kpi_emit(args: argparse.Namespace) -> int:
 
 def cmd_kpi_graph(args: argparse.Namespace) -> int:
     """Export KPI dependency graph (Mermaid or Graphviz)."""
-    from data_quality_toolkit.semantics import graph_export, load_catalog, write_mermaid
+    from data_quality_toolkit.domain.semantics import graph_export, load_catalog, write_mermaid
 
     tick = _safe_text("✓", "[OK]")
     try:
@@ -468,8 +468,8 @@ def cmd_kpi_graph(args: argparse.Namespace) -> int:
 
 def cmd_kpi_validate(args: argparse.Namespace) -> int:
     """Validate KPI catalog (schema, semantics, cycles)."""
-    from data_quality_toolkit.semantics import load_catalog, validate_semantics
-    from data_quality_toolkit.semantics.dag import build_graph, detect_cycles
+    from data_quality_toolkit.domain.semantics import load_catalog, validate_semantics
+    from data_quality_toolkit.domain.semantics.dag import build_graph, detect_cycles
 
     try:
         print(f"Validating KPI catalog: {args.config}", file=sys.stderr)
@@ -542,8 +542,8 @@ def _print_compare_score_lines(result: dict) -> None:
 
 def cmd_compare(args: argparse.Namespace) -> int:
     """Compare the last two export runs for a dataset."""
-    from data_quality_toolkit.loaders.file.csv_loader import _dataset_id_from_file
-    from data_quality_toolkit.workflow.compare import compare_last_two_runs
+    from data_quality_toolkit.adapters.loaders.file.csv_loader import _dataset_id_from_file
+    from data_quality_toolkit.application.workflow.compare import compare_last_two_runs
 
     try:
         dataset_id = _dataset_id_from_file(Path(args.csv))
@@ -694,7 +694,7 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-    import data_quality_toolkit.ui.app as _app_mod
+    import data_quality_toolkit.adapters.ui.app as _app_mod
 
     app_file = inspect.getfile(_app_mod)
     try:

@@ -55,7 +55,7 @@ def _column_index(columns: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
 def _ui_assess(csv: Path) -> dict[str, Any]:
     """Reproduce the dashboard's assessment path exactly (ui.app._run_assess_csv)."""
-    from data_quality_toolkit.ui.app import _run_assess_csv
+    from data_quality_toolkit.adapters.ui.app import _run_assess_csv
 
     out, err = _run_assess_csv(str(csv))
     assert err is None and out is not None, f"UI _run_assess_csv failed: {err}"

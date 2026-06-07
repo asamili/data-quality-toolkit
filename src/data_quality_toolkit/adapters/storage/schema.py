@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from data_quality_toolkit.storage.connection import connect
-from data_quality_toolkit.storage.importer import import_jsonl_history
+from data_quality_toolkit.adapters.storage.connection import connect
+from data_quality_toolkit.adapters.storage.importer import import_jsonl_history
 
 _CREATE_TABLES = """\
 CREATE TABLE IF NOT EXISTS datasets (

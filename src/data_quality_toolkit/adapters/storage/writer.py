@@ -4,7 +4,7 @@ import json
 import sqlite3
 from typing import Any
 
-from data_quality_toolkit.storage.connection import StorageError
+from data_quality_toolkit.adapters.storage.connection import StorageError
 
 _METRIC_FIELDS = ("null_pct", "distinct_count", "completeness")
 

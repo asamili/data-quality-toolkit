@@ -38,10 +38,10 @@ import numpy as np
 import pandas as pd
 import psutil  # type: ignore[import-untyped]
 
-from data_quality_toolkit.loaders.file.csv_loader import load_csv
-from data_quality_toolkit.profiling.profiling_orchestrator import run_profiling
+from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
+from data_quality_toolkit.application.workflow.preprocessing import plan_preprocessing
+from data_quality_toolkit.domain.profiling.profiling_orchestrator import run_profiling
 from data_quality_toolkit.shared.settings import load_settings
-from data_quality_toolkit.workflow.preprocessing import plan_preprocessing
 
 # (rows, cols, label) — last entry is optional/heavy
 DEFAULT_SHAPES: list[tuple[int, int]] = [

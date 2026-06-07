@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-import data_quality_toolkit.cli.main as cli
+import data_quality_toolkit.adapters.cli.main as cli
 
 
 def _make_fnf_parser(path: str, log_level: str = "INFO", log_format: str = "json"):

@@ -41,7 +41,7 @@ def test_run_assessment_without_db_path_does_not_persist(
     mock_profile.return_value = _make_prof()
     mock_assess.return_value = _make_assessment()
 
-    from data_quality_toolkit.workflow.pipeline import run_assessment
+    from data_quality_toolkit.application.workflow.pipeline import run_assessment
 
     out = run_assessment("a.csv")
 
@@ -67,7 +67,7 @@ def test_run_assessment_with_db_path_calls_persist(
     mock_connect.return_value = mock_con
 
     db = tmp_path / "test.db"
-    from data_quality_toolkit.workflow.pipeline import run_assessment
+    from data_quality_toolkit.application.workflow.pipeline import run_assessment
 
     run_assessment("a.csv", db_path=db)
 
@@ -94,7 +94,7 @@ def test_run_assessment_persist_payload_fields(
     mock_connect.return_value = MagicMock()
 
     db = tmp_path / "test.db"
-    from data_quality_toolkit.workflow.pipeline import run_assessment
+    from data_quality_toolkit.application.workflow.pipeline import run_assessment
 
     run_assessment("a.csv", db_path=db)
 
@@ -118,7 +118,7 @@ def test_run_assessment_output_includes_duration_secs(mock_load, mock_profile, m
     mock_profile.return_value = _make_prof()
     mock_assess.return_value = _make_assessment()
 
-    from data_quality_toolkit.workflow.pipeline import run_assessment
+    from data_quality_toolkit.application.workflow.pipeline import run_assessment
 
     out = run_assessment("a.csv")
     assert "duration_secs" in out

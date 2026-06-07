@@ -1,6 +1,6 @@
 import types
 
-from data_quality_toolkit.assessment import issue_detector as mod
+from data_quality_toolkit.domain.assessment import issue_detector as mod
 
 
 def test_detect_issues_stub_returns_empty_list_and_is_pure():

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from data_quality_toolkit.assessment.quality_checker import compute_score
+from data_quality_toolkit.domain.assessment.quality_checker import compute_score
 
 
 def _ts() -> str:

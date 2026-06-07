@@ -11,7 +11,7 @@ from typing import Any
 
 import pandas as pd
 
-from data_quality_toolkit.loaders.base_loader import BaseLoader
+from data_quality_toolkit.adapters.loaders.base_loader import BaseLoader
 from data_quality_toolkit.shared.settings import load_settings
 from data_quality_toolkit.utils.helpers import stable_seed
 from data_quality_toolkit.utils.logging import get_logger

@@ -5,13 +5,13 @@ from typing import Literal
 
 import pytest
 
-from data_quality_toolkit.semantics.dag import (
+from data_quality_toolkit.domain.semantics.dag import (
     build_graph,
     detect_cycles,
     get_execution_order,
     topo_sort,
 )
-from data_quality_toolkit.semantics.schema import KPI, Catalog
+from data_quality_toolkit.domain.semantics.schema import KPI, Catalog
 
 
 def _kpi(

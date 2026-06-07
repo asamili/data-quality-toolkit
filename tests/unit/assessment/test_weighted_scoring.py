@@ -2,7 +2,10 @@
 
 from typing import cast
 
-from data_quality_toolkit.assessment.quality_checker import compute_quality_score, compute_score
+from data_quality_toolkit.domain.assessment.quality_checker import (
+    compute_quality_score,
+    compute_score,
+)
 from data_quality_toolkit.shared.models import Issue
 
 

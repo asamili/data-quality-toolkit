@@ -8,7 +8,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from data_quality_toolkit.exporters.time.dim_time_generator import generate_dim_time, write_dim_time
+from data_quality_toolkit.adapters.exporters.time.dim_time_generator import (
+    generate_dim_time,
+    write_dim_time,
+)
 
 
 def test_dim_time_basic():

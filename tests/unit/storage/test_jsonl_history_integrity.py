@@ -2,8 +2,8 @@ import json
 import logging
 import sqlite3
 
-from data_quality_toolkit.storage.importer import import_jsonl_history
-from data_quality_toolkit.storage.jsonl import append_jsonl_record
+from data_quality_toolkit.adapters.storage.importer import import_jsonl_history
+from data_quality_toolkit.adapters.storage.jsonl import append_jsonl_record
 
 
 def test_append_jsonl_record(tmp_path):

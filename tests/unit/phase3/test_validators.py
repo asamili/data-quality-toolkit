@@ -4,8 +4,8 @@ from typing import Literal
 
 import pytest
 
-from data_quality_toolkit.semantics.schema import KPI, Catalog
-from data_quality_toolkit.semantics.validators import validate_dax_syntax, validate_semantics
+from data_quality_toolkit.domain.semantics.schema import KPI, Catalog
+from data_quality_toolkit.domain.semantics.validators import validate_dax_syntax, validate_semantics
 
 
 def _kpi(

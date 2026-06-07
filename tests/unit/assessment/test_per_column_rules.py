@@ -4,8 +4,8 @@ from typing import Any
 
 import pandas as pd
 
-from data_quality_toolkit.assessment import issue_detector
-from data_quality_toolkit.assessment.quality_checker import assess, detect_issues
+from data_quality_toolkit.domain.assessment import issue_detector
+from data_quality_toolkit.domain.assessment.quality_checker import assess, detect_issues
 
 
 def test_per_column_null_threshold_override():

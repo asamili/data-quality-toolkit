@@ -8,7 +8,7 @@ from typing import cast
 
 import pytest
 
-from data_quality_toolkit.assessment.quality_checker import (
+from data_quality_toolkit.domain.assessment.quality_checker import (
     assess,
     compute_quality_score,
     compute_score,

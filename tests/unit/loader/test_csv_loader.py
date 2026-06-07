@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from data_quality_toolkit.loaders.file.csv_loader import load_csv
+from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
 
 
 def test_csv_loader_smoke(tmp_path):

@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from data_quality_toolkit.storage.connection import StorageError, connect
+from data_quality_toolkit.adapters.storage.connection import StorageError, connect
 
 _JSON_FIELDS = ("issues_by_severity", "issues_by_category")
 

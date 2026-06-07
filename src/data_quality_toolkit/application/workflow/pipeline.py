@@ -10,22 +10,22 @@ from typing import Any, cast
 
 import pandas as pd
 
-from data_quality_toolkit.assessment.quality_checker import assess
-from data_quality_toolkit.exporters.bi_star_schema import (
+from data_quality_toolkit.adapters.exporters.bi_star_schema import (
     StarTables,
     build_star,
     validate_relationships,
 )
-from data_quality_toolkit.exporters.filesystem.csv_exporter import write_star_csvs
-from data_quality_toolkit.exporters.issue_export import build_fact_issues
-from data_quality_toolkit.loaders.file.csv_loader import load_csv
-from data_quality_toolkit.profiling.profiling_orchestrator import run_profiling
+from data_quality_toolkit.adapters.exporters.filesystem.csv_exporter import write_star_csvs
+from data_quality_toolkit.adapters.exporters.issue_export import build_fact_issues
+from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
+from data_quality_toolkit.adapters.storage.connection import _get_db_path, connect
+from data_quality_toolkit.adapters.storage.schema import ensure_db
+from data_quality_toolkit.adapters.storage.writer import persist_export_run
+from data_quality_toolkit.domain.assessment.quality_checker import assess
+from data_quality_toolkit.domain.profiling.profiling_orchestrator import run_profiling
 from data_quality_toolkit.shared.constants import ARTIFACT_SCHEMA_VERSION, DEFAULT_NULL_THRESHOLD
 from data_quality_toolkit.shared.models import ProfileResult
 from data_quality_toolkit.shared.settings import load_settings
-from data_quality_toolkit.storage.connection import _get_db_path, connect
-from data_quality_toolkit.storage.schema import ensure_db
-from data_quality_toolkit.storage.writer import persist_export_run
 from data_quality_toolkit.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -265,7 +265,7 @@ def run_export_star(
         "duration_secs": quality_report.get("duration_secs"),
     }
     history_path = star_dir / "quality_history.jsonl"
-    from data_quality_toolkit.storage.jsonl import append_jsonl_record
+    from data_quality_toolkit.adapters.storage.jsonl import append_jsonl_record
 
     append_jsonl_record(history_path, history_record)
     paths["quality_history"] = str(history_path)

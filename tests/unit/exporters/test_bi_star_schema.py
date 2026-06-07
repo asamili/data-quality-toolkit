@@ -5,7 +5,7 @@ from typing import Any, cast
 import pandas as pd
 import pytest
 
-from data_quality_toolkit.exporters.bi_star_schema import (
+from data_quality_toolkit.adapters.exporters.bi_star_schema import (
     StarTables,
     build_star,
     validate_relationships,

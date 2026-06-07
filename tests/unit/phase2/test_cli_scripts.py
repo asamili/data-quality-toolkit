@@ -8,7 +8,7 @@ from pathlib import Path
 
 def test_generate_dim_time_json(monkeypatch, capsys, tmp_path: Path):
     # Patch write_dim_time to avoid real work
-    import data_quality_toolkit.exporters.time.dim_time_generator as gen
+    import data_quality_toolkit.adapters.exporters.time.dim_time_generator as gen
 
     fake_out = tmp_path / "time" / "dim_time.csv"
     fake_out.parent.mkdir(parents=True, exist_ok=True)
@@ -23,7 +23,7 @@ def test_generate_dim_time_json(monkeypatch, capsys, tmp_path: Path):
     )
 
     # Import the canonical package CLI (not scripts.*)
-    from data_quality_toolkit.cli import main as dqt_main
+    from data_quality_toolkit.adapters.cli import main as dqt_main
 
     rc = dqt_main.main(
         [
@@ -50,14 +50,14 @@ def test_generate_dim_time_json(monkeypatch, capsys, tmp_path: Path):
 
 
 def test_generate_dim_time_error(monkeypatch, capsys):
-    import data_quality_toolkit.exporters.time.dim_time_generator as gen
+    import data_quality_toolkit.adapters.exporters.time.dim_time_generator as gen
 
     monkeypatch.setattr(
         gen, "write_dim_time", lambda *a, **k: (_ for _ in ()).throw(ValueError("boom"))
     )
 
     # Import the canonical package CLI (not scripts.*)
-    from data_quality_toolkit.cli import main as dqt_main
+    from data_quality_toolkit.adapters.cli import main as dqt_main
 
     rc = dqt_main.main(["gen-dim-time", "--json"])
     assert rc == 1
@@ -69,7 +69,7 @@ def test_generate_dim_time_error(monkeypatch, capsys):
 
 def test_build_powerbi_template_json(monkeypatch, capsys, tmp_path: Path):
     # Patch orchestrator
-    import data_quality_toolkit.exporters.bi.powerbi_exporter as exp
+    import data_quality_toolkit.adapters.exporters.bi.powerbi_exporter as exp
 
     def _fake_export(**kw):
         outdir = kw["output_dir"]
@@ -86,7 +86,7 @@ def test_build_powerbi_template_json(monkeypatch, capsys, tmp_path: Path):
     monkeypatch.setattr(exp, "export_powerbi_package", _fake_export)
 
     # ✅ call the canonical CLI
-    from data_quality_toolkit.cli import main as dqt_main
+    from data_quality_toolkit.adapters.cli import main as dqt_main
 
     outdir = tmp_path / "pkg"
     rc = dqt_main.main(
@@ -114,7 +114,7 @@ def test_build_powerbi_template_json(monkeypatch, capsys, tmp_path: Path):
 
 
 def test_build_powerbi_template_human(monkeypatch, capsys, tmp_path: Path):
-    import data_quality_toolkit.exporters.bi.powerbi_exporter as exp
+    import data_quality_toolkit.adapters.exporters.bi.powerbi_exporter as exp
 
     monkeypatch.setattr(
         exp,
@@ -129,7 +129,7 @@ def test_build_powerbi_template_human(monkeypatch, capsys, tmp_path: Path):
     )
 
     # ✅ call the canonical CLI
-    from data_quality_toolkit.cli import main as dqt_main
+    from data_quality_toolkit.adapters.cli import main as dqt_main
 
     outdir = tmp_path / "pkg"
     rc = dqt_main.main(["build-pbi", "--star", str(tmp_path / "star"), "--out", str(outdir)])
@@ -140,14 +140,14 @@ def test_build_powerbi_template_human(monkeypatch, capsys, tmp_path: Path):
 
 
 def test_build_powerbi_template_error(monkeypatch, capsys):
-    import data_quality_toolkit.exporters.bi.powerbi_exporter as exp
+    import data_quality_toolkit.adapters.exporters.bi.powerbi_exporter as exp
 
     monkeypatch.setattr(
         exp, "export_powerbi_package", lambda **kw: (_ for _ in ()).throw(RuntimeError("kaboom"))
     )
 
     # ✅ call the canonical CLI
-    from data_quality_toolkit.cli import main as dqt_main
+    from data_quality_toolkit.adapters.cli import main as dqt_main
 
     rc = dqt_main.main(["build-pbi"])
     assert rc == 1

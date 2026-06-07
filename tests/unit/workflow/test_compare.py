@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from data_quality_toolkit.storage.connection import connect
-from data_quality_toolkit.storage.schema import ensure_db
-from data_quality_toolkit.workflow.compare import (
+from data_quality_toolkit.adapters.storage.connection import connect
+from data_quality_toolkit.adapters.storage.schema import ensure_db
+from data_quality_toolkit.application.workflow.compare import (
     _dict_delta,
     _load_history,
     _safe_delta,

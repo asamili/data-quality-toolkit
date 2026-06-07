@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from data_quality_toolkit.ui.app import (
+from data_quality_toolkit.adapters.ui.app import (
     _render_cat_cat,
     _render_data_overview,
     _render_eda_bivariate,

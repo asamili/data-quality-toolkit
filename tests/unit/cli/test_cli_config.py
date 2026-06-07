@@ -10,8 +10,8 @@ import argparse
 
 import pytest
 
-import data_quality_toolkit.cli.main as cli
-from data_quality_toolkit.cli.main import DEFAULT_DIST
+import data_quality_toolkit.adapters.cli.main as cli
+from data_quality_toolkit.adapters.cli.main import DEFAULT_DIST
 from data_quality_toolkit.shared.exceptions import ConfigError
 
 # ---------------------------------------------------------------------------

@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import pytest
 
-from data_quality_toolkit.loaders.data_loader_registry import get_registered_loader, register_loader
-from data_quality_toolkit.loaders.file.csv_loader import CsvLoader
-from data_quality_toolkit.loaders.loader_factory import get_loader
+from data_quality_toolkit.adapters.loaders.data_loader_registry import (
+    get_registered_loader,
+    register_loader,
+)
+from data_quality_toolkit.adapters.loaders.file.csv_loader import CsvLoader
+from data_quality_toolkit.adapters.loaders.loader_factory import get_loader
 
 
 def test_loader_factory_returns_csv():

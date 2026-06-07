@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from data_quality_toolkit.assessment.quality_checker import assess, detect_issues
+from data_quality_toolkit.domain.assessment.quality_checker import assess, detect_issues
 
 
 def _ts() -> str:

@@ -2,7 +2,7 @@
 
 import json
 
-from data_quality_toolkit.exporters.bi.powerbi_zero_config.generator import render_template
+from data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config.generator import render_template
 
 
 def test_relationships_rendering(tmp_path):

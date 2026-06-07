@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from data_quality_toolkit.storage.connection import connect
-from data_quality_toolkit.storage.reader import read_run_history
-from data_quality_toolkit.storage.schema import ensure_db
+from data_quality_toolkit.adapters.storage.connection import connect
+from data_quality_toolkit.adapters.storage.reader import read_run_history
+from data_quality_toolkit.adapters.storage.schema import ensure_db
 
 
 def _insert_run(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from data_quality_toolkit.storage.schema import ensure_db
+from data_quality_toolkit.adapters.storage.schema import ensure_db
 
 _EXPECTED_TABLES = {"datasets", "columns", "runs", "quality_metrics", "issues", "schema_meta"}
 _EXPECTED_INDEXES = {"idx_runs_dataset", "idx_columns_dataset", "idx_metrics_run", "idx_issues_run"}

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from data_quality_toolkit.storage.connection import StorageError, _get_db_path, connect
+from data_quality_toolkit.adapters.storage.connection import StorageError, _get_db_path, connect
 
 
 class _FakeSettings:

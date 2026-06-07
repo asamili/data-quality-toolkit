@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from data_quality_toolkit.semantics.normalizer import compare_dax, normalize_dax
+from data_quality_toolkit.domain.semantics.normalizer import compare_dax, normalize_dax
 
 
 def test_keyword_upper_and_whitespace():

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from data_quality_toolkit.profiling.core.column_profiler import profile_columns
-from data_quality_toolkit.profiling.profiling_orchestrator import run_profiling
+from data_quality_toolkit.domain.profiling.core.column_profiler import profile_columns
+from data_quality_toolkit.domain.profiling.profiling_orchestrator import run_profiling
 
 
 def test_profile_columns_basic():

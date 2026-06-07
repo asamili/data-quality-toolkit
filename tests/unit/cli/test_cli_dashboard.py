@@ -6,7 +6,7 @@ import argparse
 import sys
 from unittest.mock import MagicMock, patch
 
-import data_quality_toolkit.cli.main as cli
+import data_quality_toolkit.adapters.cli.main as cli
 
 
 def test_build_parser_wires_dashboard() -> None:

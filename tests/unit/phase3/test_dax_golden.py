@@ -7,7 +7,12 @@ import re
 from pathlib import Path
 from typing import NamedTuple
 
-from data_quality_toolkit.semantics import emit_dax, load_catalog, normalize_dax, validate_semantics
+from data_quality_toolkit.domain.semantics import (
+    emit_dax,
+    load_catalog,
+    normalize_dax,
+    validate_semantics,
+)
 
 
 class ParsedMeasure(NamedTuple):

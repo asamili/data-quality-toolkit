@@ -2,7 +2,7 @@ import csv
 import json
 from pathlib import Path
 
-from data_quality_toolkit.exporters.bi.powerbi_zero_config import generator as gen
+from data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config import generator as gen
 
 
 def _touch_csv(path: Path, headers, rows=()):
@@ -61,7 +61,7 @@ def test_generate_powerbi_package_includes_time_relationship_when_present(monkey
     import csv
     from pathlib import Path
 
-    from data_quality_toolkit.exporters.bi.powerbi_zero_config import generator as gen
+    from data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config import generator as gen
 
     def _touch_csv(path: Path, headers, rows=()):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -157,7 +157,7 @@ def test_generate_powerbi_package_does_not_include_time_relationship_without_dim
     import csv
     from pathlib import Path
 
-    from data_quality_toolkit.exporters.bi.powerbi_zero_config import generator as gen
+    from data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config import generator as gen
 
     def _touch_csv(path: Path, headers, rows=()):
         path.parent.mkdir(parents=True, exist_ok=True)

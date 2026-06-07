@@ -8,8 +8,8 @@ from typing import cast  # <-- add
 
 import pandas as pd
 
-from data_quality_toolkit.profiling.core.column_profiler import profile_columns
-from data_quality_toolkit.profiling.core.dataset_profiler import profile_dataset
+from data_quality_toolkit.domain.profiling.core.column_profiler import profile_columns
+from data_quality_toolkit.domain.profiling.core.dataset_profiler import profile_dataset
 from data_quality_toolkit.shared.constants import DEFAULT_TS_FORMAT
 from data_quality_toolkit.shared.models import ColumnProfile, ProfileResult  # <-- add
 from data_quality_toolkit.shared.settings import load_settings

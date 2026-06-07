@@ -7,8 +7,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from data_quality_toolkit.assessment import issue_detector as mod
-from data_quality_toolkit.assessment.quality_checker import assess
+from data_quality_toolkit.domain.assessment import issue_detector as mod
+from data_quality_toolkit.domain.assessment.quality_checker import assess
 
 _COMMON_FIELDS = {"type", "column", "severity", "category", "message"}
 

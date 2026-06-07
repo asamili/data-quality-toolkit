@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-import data_quality_toolkit.cli.main as cli
+import data_quality_toolkit.adapters.cli.main as cli
 
 
 def _empty_csv(tmp_path):

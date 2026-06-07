@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from data_quality_toolkit.workflow.executor import execute
+from data_quality_toolkit.application.workflow.executor import execute
 
 
 def test_execute_calls_function_with_args_kwargs():

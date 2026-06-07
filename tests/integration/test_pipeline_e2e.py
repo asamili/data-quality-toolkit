@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from data_quality_toolkit.workflow.pipeline import run_export_star
+from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
 pytestmark = pytest.mark.integration  # only run when -m integration
 

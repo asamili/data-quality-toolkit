@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from data_quality_toolkit.workflow.workflow_builder import WorkflowBuilder, WorkflowSpec
+from data_quality_toolkit.application.workflow.workflow_builder import WorkflowBuilder, WorkflowSpec
 
 
 def test_workflow_spec_dataclass():

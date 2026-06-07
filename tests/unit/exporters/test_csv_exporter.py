@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from data_quality_toolkit.exporters.filesystem.csv_exporter import write_star_csvs
+from data_quality_toolkit.adapters.exporters.filesystem.csv_exporter import write_star_csvs
 
 
 def test_write_star_csvs_creates_files(tmp_path):

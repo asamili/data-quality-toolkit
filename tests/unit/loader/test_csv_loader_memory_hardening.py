@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from data_quality_toolkit.loaders.file.csv_loader import load_csv
+from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
 
 # ---------------------------------------------------------------------------
 # Read-time sampling (SAMPLE_SIZE)

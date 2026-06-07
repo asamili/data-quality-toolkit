@@ -6,13 +6,13 @@ from typing import Any, cast
 
 import pandas as pd
 
-from data_quality_toolkit.shared.constants import DEFAULT_HIGH_CARDINALITY_THRESHOLD
-from data_quality_toolkit.workflow.preprocessing import (  # noqa: F401
+from data_quality_toolkit.application.workflow.preprocessing import (  # noqa: F401
     iqr_outlier_summary as _iqr_outlier_summary,
 )
-from data_quality_toolkit.workflow.preprocessing import (  # noqa: F401
+from data_quality_toolkit.application.workflow.preprocessing import (  # noqa: F401
     plan_preprocessing as _plan_preprocessing,
 )
+from data_quality_toolkit.shared.constants import DEFAULT_HIGH_CARDINALITY_THRESHOLD
 
 
 def _extract_trend_data(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -55,9 +55,11 @@ def _load_df_and_assess(
     DataFrame.  Returns (df, result_dict, None) on success or (None, None, error_msg)
     on failure.
     """
-    from data_quality_toolkit.assessment.quality_checker import assess as _assess
-    from data_quality_toolkit.loaders.file.csv_loader import load_csv as _load_csv_h
-    from data_quality_toolkit.profiling.profiling_orchestrator import run_profiling as _run_prof
+    from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv as _load_csv_h
+    from data_quality_toolkit.domain.assessment.quality_checker import assess as _assess
+    from data_quality_toolkit.domain.profiling.profiling_orchestrator import (
+        run_profiling as _run_prof,
+    )
 
     path = path_str.strip()
     try:

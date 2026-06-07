@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from data_quality_toolkit.exporters.issue_export import (
+from data_quality_toolkit.adapters.exporters.issue_export import (
     _FACT_ISSUES_COLUMNS,
     build_fact_issues,
 )

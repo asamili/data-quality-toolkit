@@ -1,8 +1,8 @@
-from data_quality_toolkit.storage.connection import StorageError, _get_db_path, connect
-from data_quality_toolkit.storage.importer import import_jsonl_history
-from data_quality_toolkit.storage.reader import read_run_history
-from data_quality_toolkit.storage.schema import ensure_db
-from data_quality_toolkit.storage.writer import persist_export_run
+from data_quality_toolkit.adapters.storage.connection import StorageError, _get_db_path, connect
+from data_quality_toolkit.adapters.storage.importer import import_jsonl_history
+from data_quality_toolkit.adapters.storage.reader import read_run_history
+from data_quality_toolkit.adapters.storage.schema import ensure_db
+from data_quality_toolkit.adapters.storage.writer import persist_export_run
 
 __all__ = [
     "StorageError",

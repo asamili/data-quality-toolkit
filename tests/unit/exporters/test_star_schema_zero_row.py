@@ -5,8 +5,11 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from data_quality_toolkit.exporters.bi_star_schema import build_star, validate_relationships
-from data_quality_toolkit.exporters.filesystem.csv_exporter import write_star_csvs
+from data_quality_toolkit.adapters.exporters.bi_star_schema import (
+    build_star,
+    validate_relationships,
+)
+from data_quality_toolkit.adapters.exporters.filesystem.csv_exporter import write_star_csvs
 from data_quality_toolkit.shared.models import ProfileResult
 
 _REQUIRED_TABLES = {"dim_dataset", "dim_column", "fact_profile_runs", "fact_quality_metrics"}

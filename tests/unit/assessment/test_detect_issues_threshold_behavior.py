@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 import pandas as pd
 import pytest
 
-from data_quality_toolkit.assessment.issue_detector import detect_advanced_issues
-from data_quality_toolkit.assessment.quality_checker import detect_issues
+from data_quality_toolkit.domain.assessment.issue_detector import detect_advanced_issues
+from data_quality_toolkit.domain.assessment.quality_checker import detect_issues
 
 
 def _ts() -> str:

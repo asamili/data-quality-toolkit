@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-import data_quality_toolkit.cli.main as cli
+import data_quality_toolkit.adapters.cli.main as cli
 
 
 def _ns(**kwargs):

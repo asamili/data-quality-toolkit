@@ -7,10 +7,9 @@ from typing import Any
 
 import pandas as pd
 
-from data_quality_toolkit.api import assess_csv as _assess_csv
-from data_quality_toolkit.storage.connection import StorageError
-from data_quality_toolkit.storage.reader import read_run_history
-from data_quality_toolkit.ui.eda import (
+from data_quality_toolkit.adapters.storage.connection import StorageError
+from data_quality_toolkit.adapters.storage.reader import read_run_history
+from data_quality_toolkit.adapters.ui.eda import (
     _bivariate_categorical_categorical,
     _bivariate_numeric_categorical,
     _bivariate_numeric_numeric,
@@ -27,6 +26,7 @@ from data_quality_toolkit.ui.eda import (
     _numeric_summary,
     _plan_preprocessing,
 )
+from data_quality_toolkit.api import assess_csv as _assess_csv
 
 
 def _load_run_history(

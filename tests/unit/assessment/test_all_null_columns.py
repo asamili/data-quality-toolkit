@@ -6,11 +6,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from data_quality_toolkit.assessment.issue_detector import (
+from data_quality_toolkit.domain.assessment.issue_detector import (
     _detect_all_null_columns,
     detect_issues,
 )
-from data_quality_toolkit.assessment.quality_checker import assess
+from data_quality_toolkit.domain.assessment.quality_checker import assess
 
 # ---------------------------------------------------------------------------
 # helpers

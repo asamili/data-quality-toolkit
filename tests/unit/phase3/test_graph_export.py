@@ -3,13 +3,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from data_quality_toolkit.semantics.graph_export import (
+from data_quality_toolkit.domain.semantics.graph_export import (
     _get_node_color,
     _get_node_shape,
     write_graphviz,
     write_mermaid,
 )
-from data_quality_toolkit.semantics.schema import KPI, Catalog, Grain, Unit
+from data_quality_toolkit.domain.semantics.schema import KPI, Catalog, Grain, Unit
 
 
 def _kpi(

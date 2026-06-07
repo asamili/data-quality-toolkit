@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from data_quality_toolkit.workflow.pipeline import run_assessment, run_profile
+from data_quality_toolkit.application.workflow.pipeline import run_assessment, run_profile
 
 
 def _empty_csv(tmp_path):

@@ -3,7 +3,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from data_quality_toolkit.assessment.quality_checker import assess, compute_score, detect_issues
+from data_quality_toolkit.domain.assessment.quality_checker import (
+    assess,
+    compute_score,
+    detect_issues,
+)
 
 
 def _ts() -> str:

@@ -13,8 +13,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from data_quality_toolkit.storage.connection import StorageError
-from data_quality_toolkit.storage.reader import read_run_history
+from data_quality_toolkit.adapters.storage.connection import StorageError
+from data_quality_toolkit.adapters.storage.reader import read_run_history
 
 
 def _load_history(history_path: Path) -> list[dict[str, Any]]:

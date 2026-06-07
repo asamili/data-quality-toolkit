@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from data_quality_toolkit.workflow.pipeline import run_pipeline_csv_to_star
+from data_quality_toolkit.application.workflow.pipeline import run_pipeline_csv_to_star
 
 
 def test_pipeline_shim(tmp_path: Path):

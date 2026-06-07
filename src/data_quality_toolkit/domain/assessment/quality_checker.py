@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from data_quality_toolkit.assessment import issue_detector as _issue_detector
+from data_quality_toolkit.domain.assessment import issue_detector as _issue_detector
 from data_quality_toolkit.shared.config import load_dqt_config
 from data_quality_toolkit.shared.constants import (
     DEFAULT_NULL_THRESHOLD,

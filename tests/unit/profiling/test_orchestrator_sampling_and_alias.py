@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-import data_quality_toolkit.profiling.profiling_orchestrator as orch
-from data_quality_toolkit.profiling.core.dataset_profiler import dataset_stats, profile_dataset
+import data_quality_toolkit.domain.profiling.profiling_orchestrator as orch
+from data_quality_toolkit.domain.profiling.core.dataset_profiler import (
+    dataset_stats,
+    profile_dataset,
+)
 from data_quality_toolkit.shared.models import ColumnProfile
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from data_quality_toolkit.workflow.pipeline import run_export_star
+from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
 
 def test_run_export_star_creates_csvs_and_relationships(tmp_path):

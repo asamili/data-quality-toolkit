@@ -5,9 +5,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Final, TypedDict, cast
 
-from data_quality_toolkit.exporters.bi.powerbi_zero_config.generator import generate_powerbi_package
-from data_quality_toolkit.exporters.bi.powerbi_zero_config.packager import validate_package
-from data_quality_toolkit.exporters.time.dim_time_generator import write_dim_time
+from data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config.generator import (
+    generate_powerbi_package,
+)
+from data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config.packager import validate_package
+from data_quality_toolkit.adapters.exporters.time.dim_time_generator import write_dim_time
 from data_quality_toolkit.utils.helpers import ensure_dir
 from data_quality_toolkit.utils.logging import get_logger
 
