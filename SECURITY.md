@@ -37,7 +37,7 @@ Include:
 
 ### Current limitations relevant to security
 
-DQT v1.7.0 does **not** include:
+DQT v2.0.0 does **not** include:
 
 - PII detection or masking
 - Authentication or authorization
@@ -85,5 +85,5 @@ The repository enforces security and complexity checks in pre-commit and CI:
 
 | Version | Supported |
 |---------|-----------|
-| 1.7.x   | Yes       |
-| < 1.7   | No        |
+| 2.0.x   | Yes       |
+| < 2.0   | No        |

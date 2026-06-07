@@ -102,12 +102,12 @@ pip install -e .
 
 Use the full interpreter path — works immediately after `pip install -e .` with no shell configuration required. Replace `<path-to-python>` with your `dqt` env interpreter (default: `C:\Users\<you>\micromamba\envs\dqt\python.exe`). Verify the install first:
 ```powershell
-<path-to-python> -m data_quality_toolkit.cli.main --help
+<path-to-python> -m data_quality_toolkit.adapters.cli.main --help
 ```
 
 ```powershell
 # Export the bundled demo dataset — produces quality artifacts under dist/demo/
-<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.adapters.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
 ```
 Open `dist/demo/star/quality_report.json` to confirm the run succeeded (score, issue counts, artifact paths).
 
@@ -184,9 +184,120 @@ troubleshooting.
 If `dqt` is not on your PATH, invoke the CLI directly via the interpreter:
 
 ```bash
-<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
-<path-to-python> -m data_quality_toolkit.cli.main compare examples/demo/sample_orders.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.adapters.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
+<path-to-python> -m data_quality_toolkit.adapters.cli.main compare examples/demo/sample_orders.csv --outdir dist/demo
 ```
+
+## Python API
+
+Install once (`pip install -e .`), then import directly — no CLI required.
+
+```python
+from data_quality_toolkit import (
+    profile_csv, assess_csv, export_csv, compare_runs, plan_csv,
+    kpi_validate, kpi_emit, kpi_graph, generate_dim_time,
+)
+
+# Profile: returns shape and per-column stats. No disk writes.
+result = profile_csv("data/orders.csv")
+print(result["profile"]["rows"], result["profile"]["cols"])
+
+# Assess: profile + quality score + detected issues. No disk writes.
+result = assess_csv("data/orders.csv")
+print(result["assessment"]["score"])          # e.g. 0.87
+print(result["assessment"]["quality_score"])  # penalty-weighted score
+for issue in result["assessment"]["issues"]:
+    print(issue["type"], issue["column"], issue["severity"])
+
+# Assess with quality gate — raise your own exception on failure:
+result = assess_csv("data/orders.csv")
+if result["assessment"]["quality_score"] < 0.9:
+    raise ValueError("Quality gate failed")
+
+# Export: full pipeline — profile → assess → star-schema CSVs + quality_report.json + SQLite history.
+result = export_csv("data/orders.csv", output_dir="dist/")
+print(result["export_paths"])
+
+# Compare: trend analysis from the last two export runs.
+result = compare_runs("data/orders.csv", output_dir="dist/")
+print(result["score_delta"])
+
+# Plan: per-column preprocessing recommendations (impute/scale/encode/drop). No disk writes.
+result = plan_csv("data/orders.csv")
+for col in result["columns"]:
+    print(col["column"], col["issues"], col["recommendations"])
+
+# KPI catalog validation (schema, semantics, cycles). No disk writes.
+result = kpi_validate("config/kpi_catalog.yaml")
+print(result["status"], result["kpis"])       # "valid", 8
+
+# KPI emit: generate DAX measures + TMSL model JSON from catalog.
+result = kpi_emit(
+    "config/kpi_catalog.yaml",
+    dax_out="dist/powerbi_package/dax/quality_measures.dax",
+    tmsl_out="dist/powerbi_package/dax/model.tmsl.json",
+)
+print(result["dax"], result["tmsl"])
+
+# KPI graph: export dependency graph as Mermaid (.mmd) or Graphviz (.dot).
+result = kpi_graph("config/kpi_catalog.yaml", out="dist/semantics/kpi_graph", graph_format="mermaid")
+print(result["graph"])                        # path to written .mmd file
+
+# Time dimension: generate dim_time.csv (optional output_dir writes to disk).
+result = generate_dim_time("2018-01-01", "2030-12-31", output_dir="dist/time")
+print(result["rows"], result["path"])
+```
+
+Optional CSV-parsing kwargs (`sep`, `encoding`, `na_values`, `sample_size`) are accepted by all CSV functions.
+
+> **Note:** `dqt.yaml` is not loaded by the Python API — pass options explicitly as keyword arguments.
+
+## Advanced CLI Commands
+
+The following commands complement the core workflow documented above.
+
+### Preprocessing plan
+
+```bash
+# Per-column preprocessing recommendations (advisory only — no transformation applied)
+dqt plan data/orders.csv
+```
+
+### Persist assessment to dashboard database
+
+```bash
+# Run assessment and write the result to a SQLite database for dashboard viewing
+dqt assess data/orders.csv --db dist/dqt.db
+```
+
+### Power BI package (star schema → .pbit)
+
+```bash
+# Generate a Power BI zero-config package from an existing star-schema export
+dqt build-pbi --star dist/star --out dist/powerbi_package
+```
+
+### Dimension time table
+
+```bash
+# Generate a standalone dim_time.csv for use in BI models
+dqt gen-dim-time --start 2018-01-01 --end 2030-12-31 --out dist/time
+```
+
+### KPI catalog (DAX / TMSL generation)
+
+```bash
+# Validate a KPI catalog YAML for schema, semantic, and cycle errors
+dqt kpi-validate --config config/kpi_catalog.yaml
+
+# Generate DAX measures and TMSL from the KPI catalog
+dqt kpi-emit --config config/kpi_catalog.yaml
+
+# Export the KPI dependency graph (Mermaid or Graphviz)
+dqt kpi-graph --config config/kpi_catalog.yaml --format mermaid
+```
+
+---
 
 ## Pipeline Quality Gate (ETL/ELT)
 
@@ -290,20 +401,21 @@ columns:
 
 ```
 data-quality-toolkit/
-├── src/data_quality_toolkit/   # Core library
-│   ├── loaders/               # CSV loading and validation
-│   ├── profiling/             # Column-level profiling
-│   ├── assessment/            # Quality issue detection
-│   ├── exporters/             # Star-schema CSV + quality_report export
-│   ├── workflow/              # Pipeline orchestration and compare
-│   ├── storage/               # SQLite-backed run history (Phase 3)
-│   ├── semantics/             # KPI catalog + DAX/TMSL generation
-│   ├── cli/                   # Command-line interface
-│   └── ui/                    # Streamlit dashboard (run history, data overview, EDA, preprocessing)
-├── tests/                      # Test suites
-├── docs/                       # Documentation and demo stories
-├── examples/                   # Demo packages and sample data
-└── scripts/                    # Automation scripts
+├── src/data_quality_toolkit/
+│   ├── domain/                # Business rules: profiling, assessment, semantics/KPI
+│   ├── application/           # Workflow orchestration: pipeline, compare, preprocessing
+│   ├── adapters/
+│   │   ├── cli/               # Command-line interface (dqt entrypoint)
+│   │   ├── ui/                # Streamlit dashboard (run history, data overview, EDA, preprocessing)
+│   │   ├── loaders/           # CSV loading and validation
+│   │   ├── exporters/         # Star-schema CSV, quality_report, Power BI, dim_time
+│   │   └── storage/           # SQLite-backed run history
+│   ├── shared/                # Cross-cutting constants, settings, exceptions
+│   └── utils/                 # Helpers, logging, validators
+├── tests/                     # Test suites (unit/, integration/, e2e/)
+├── docs/                      # Documentation and demo stories
+├── examples/                  # Demo packages and sample data
+└── config/                    # KPI catalog and rule contract examples
 ```
 
 ## 🧪 Testing

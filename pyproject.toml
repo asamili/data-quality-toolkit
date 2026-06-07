@@ -9,7 +9,7 @@ description = "CSV-first data quality toolkit for BI and reporting workflows: pr
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
-authors = [{ name = "Asamili" }]
+authors = [{ name = "Data Team" }]
 keywords = ["data-quality", "power-bi", "data-profiling", "data-pipeline", "business-intelligence"]
 
 # Core dependencies for Phase 1 & 2
@@ -49,6 +49,7 @@ dev = [
     "pre-commit>=3.3.0",
     "pip-audit>=2.7.0",  # Dependency CVE scanning
     "ipykernel>=6.25.0",  # For notebooks
+    "import-linter>=2.1",  # Architecture boundary enforcement
 ]
 
 viz = [
@@ -88,7 +89,7 @@ Changelog = "https://github.com/asamili/data-quality-toolkit/blob/main/CHANGELOG
 
 # CLI entrypoint
 [project.scripts]
-dqt = "data_quality_toolkit.cli.main:main"
+dqt = "data_quality_toolkit.adapters.cli.main:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -104,7 +105,7 @@ data_quality_toolkit = [
     "*.json",
     "templates/*",
     "templates/**/*",
-    "exporters/bi/templates/*",
+    "adapters/exporters/bi/templates/*",
     "static/*",
     "py.typed"
 ]
@@ -130,8 +131,8 @@ ignore = [
 fixable = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["B018", "S101"]  # Allow asserts and expressions in tests
-"src/data_quality_toolkit/cli/main.py" = ["B018"]
+"tests/*" = ["B018", "S101", "S108"]  # Allow asserts, expressions, and /tmp paths in tests
+"src/data_quality_toolkit/adapters/cli/main.py" = ["B018"]
 "scripts/*" = ["S101"]  # Allow asserts in scripts
 
 # mccabe: give the already-selected C90 rule an enforced ceiling
@@ -173,6 +174,7 @@ warn_no_return = true
 check_untyped_defs = true
 strict_optional = true
 files = ["src", "tests"]
+exclude = ["build", "dist"]
 
 [[tool.mypy.overrides]]
 module = [
@@ -220,3 +222,96 @@ directory = "htmlcov"
 
 [tool.coverage.xml]
 output = "coverage.xml"
+
+# ===== Import-linter: Architecture Boundary Contracts =====
+# Run with: lint-imports --config pyproject.toml
+# These contracts encode the Option B layered architecture (DQT-FULLSTACK-RESTRUCTURE-001B).
+# Restructure complete (001C-A through 001C-G). All paths reflect the final layout.
+#
+# Layer model (final — Option B pragmatic layering, not strict hexagonal):
+#   domain:       domain.profiling, domain.assessment, domain.semantics
+#   application:  application.workflow  (api.py stays at package root per H4)
+#   adapters:     adapters.loaders, adapters.exporters, adapters.storage, adapters.ui, adapters.cli
+#   shared:       shared, utils  (cross-cutting, stays at package root)
+
+[tool.importlinter]
+root_packages = ["data_quality_toolkit"]
+
+[[tool.importlinter.contracts]]
+name = "Domain modules must not import adapters, application, or delivery layers"
+type = "forbidden"
+source_modules = [
+    "data_quality_toolkit.domain.assessment",
+    "data_quality_toolkit.domain.profiling",
+    "data_quality_toolkit.domain.semantics",
+]
+forbidden_modules = [
+    "data_quality_toolkit.adapters.loaders",
+    "data_quality_toolkit.adapters.exporters",
+    "data_quality_toolkit.adapters.storage",
+    "data_quality_toolkit.adapters.cli",
+    "data_quality_toolkit.adapters.ui",
+    "data_quality_toolkit.application.workflow",
+    "data_quality_toolkit.api",
+]
+
+[[tool.importlinter.contracts]]
+name = "Shared kernel must not import any business module"
+type = "forbidden"
+source_modules = [
+    "data_quality_toolkit.shared",
+    "data_quality_toolkit.utils",
+]
+forbidden_modules = [
+    "data_quality_toolkit.domain.assessment",
+    "data_quality_toolkit.domain.profiling",
+    "data_quality_toolkit.domain.semantics",
+    "data_quality_toolkit.adapters.loaders",
+    "data_quality_toolkit.adapters.exporters",
+    "data_quality_toolkit.adapters.storage",
+    "data_quality_toolkit.application.workflow",
+    "data_quality_toolkit.adapters.cli",
+    "data_quality_toolkit.adapters.ui",
+    "data_quality_toolkit.api",
+]
+
+[[tool.importlinter.contracts]]
+# H1 DOCUMENTED EXCEPTION (DQT-FULLSTACK-RESTRUCTURE-001B HOLD H1):
+# workflow/pipeline.py (application layer) imports loaders, exporters, and storage
+# (adapter layer) directly. In strict hexagonal architecture this coupling would be
+# inverted via port interfaces. Option B is pragmatic layering, not strict hexagonal.
+# This coupling is intentional and documented here — NOT silently permitted.
+# Resolving it (introducing port interfaces) is explicitly Option C scope.
+name = "Application-to-adapter coupling (H1 documented exception — Option B pragmatic layering)"
+type = "forbidden"
+source_modules = [
+    "data_quality_toolkit.domain.assessment",
+    "data_quality_toolkit.domain.profiling",
+    "data_quality_toolkit.domain.semantics",
+    "data_quality_toolkit.shared",
+    "data_quality_toolkit.utils",
+]
+forbidden_modules = [
+    "data_quality_toolkit.adapters.cli",
+    "data_quality_toolkit.adapters.ui",
+]
+ignore_imports = [
+    # H1: pipeline orchestration (application) calls adapter-layer IO directly
+    "data_quality_toolkit.application.workflow.pipeline -> data_quality_toolkit.adapters.loaders.file.csv_loader",
+    "data_quality_toolkit.application.workflow.pipeline -> data_quality_toolkit.adapters.exporters.bi_star_schema",
+    "data_quality_toolkit.application.workflow.pipeline -> data_quality_toolkit.adapters.exporters.filesystem.csv_exporter",
+    "data_quality_toolkit.application.workflow.pipeline -> data_quality_toolkit.adapters.exporters.issue_export",
+    "data_quality_toolkit.application.workflow.pipeline -> data_quality_toolkit.adapters.storage.connection",
+    "data_quality_toolkit.application.workflow.pipeline -> data_quality_toolkit.adapters.storage.schema",
+    "data_quality_toolkit.application.workflow.pipeline -> data_quality_toolkit.adapters.storage.writer",
+    "data_quality_toolkit.application.workflow.pipeline -> data_quality_toolkit.adapters.storage.jsonl",
+    "data_quality_toolkit.application.workflow.compare -> data_quality_toolkit.adapters.storage.connection",
+    "data_quality_toolkit.application.workflow.compare -> data_quality_toolkit.adapters.storage.reader",
+    # api.py (application seam at root) calls adapter-layer loaders for dataset_id
+    "data_quality_toolkit.api -> data_quality_toolkit.adapters.loaders.file.csv_loader",
+    # ui/eda pulls preprocessing from workflow (adapter → application, permitted)
+    "data_quality_toolkit.adapters.ui.eda -> data_quality_toolkit.application.workflow.preprocessing",
+    # ui/app uses storage reader directly (adapter → adapter, permitted)
+    "data_quality_toolkit.adapters.ui.app -> data_quality_toolkit.adapters.storage.connection",
+    "data_quality_toolkit.adapters.ui.app -> data_quality_toolkit.adapters.reader",
+]

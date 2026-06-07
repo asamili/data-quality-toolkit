@@ -41,7 +41,7 @@ def profile_csv(
     sample_size: int | None = None,
 ) -> dict[str, Any]:
     """Profile a CSV file. Returns profile metadata — no disk writes."""
-    from data_quality_toolkit.workflow.pipeline import run_profile
+    from data_quality_toolkit.application.workflow.pipeline import run_profile
 
     _apply_sample_size(sample_size)
     return run_profile(str(path), **_build_csv_kwargs(sep, encoding, na_values))
@@ -57,7 +57,7 @@ def assess_csv(
     sample_size: int | None = None,
 ) -> dict[str, Any]:
     """Profile and assess a CSV file. Returns profile + quality score + issues. No disk writes."""
-    from data_quality_toolkit.workflow.pipeline import run_assessment
+    from data_quality_toolkit.application.workflow.pipeline import run_assessment
 
     _apply_sample_size(sample_size)
     kw = _build_csv_kwargs(sep, encoding, na_values)
@@ -77,7 +77,7 @@ def export_csv(
     sample_size: int | None = None,
 ) -> dict[str, Any]:
     """Full pipeline: profile → assess → star schema → write artifacts. Returns run metadata."""
-    from data_quality_toolkit.workflow.pipeline import run_export_star
+    from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
     _apply_sample_size(sample_size)
     kw = _build_csv_kwargs(sep, encoding, na_values)
@@ -93,8 +93,8 @@ def compare_runs(
     output_dir: str | Path,
 ) -> dict[str, Any]:
     """Compare the last two export_csv runs for this CSV. output_dir must match export_csv call."""
-    from data_quality_toolkit.loaders.file.csv_loader import _dataset_id_from_file
-    from data_quality_toolkit.workflow.compare import compare_last_two_runs
+    from data_quality_toolkit.adapters.loaders.file.csv_loader import _dataset_id_from_file
+    from data_quality_toolkit.application.workflow.compare import compare_last_two_runs
 
     dataset_id = _dataset_id_from_file(Path(path))
     history_path = Path(output_dir) / "star" / "quality_history.jsonl"
