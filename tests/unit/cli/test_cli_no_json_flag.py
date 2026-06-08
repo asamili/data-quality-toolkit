@@ -63,11 +63,11 @@ def _compare_ns(**kwargs):
 
 def _patch_compare(monkeypatch, result):
     monkeypatch.setattr(
-        "data_quality_toolkit.workflow.compare.compare_last_two_runs",
+        "data_quality_toolkit.application.workflow.compare.compare_last_two_runs",
         lambda *a, **k: result,
     )
     monkeypatch.setattr(
-        "data_quality_toolkit.loaders.file.csv_loader._dataset_id_from_file",
+        "data_quality_toolkit.adapters.loaders.file.csv_loader.dataset_id_from_file",
         lambda *a, **k: _DATASET_ID,
     )
 

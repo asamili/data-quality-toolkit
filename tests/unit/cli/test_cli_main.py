@@ -79,15 +79,17 @@ def test_cmd_log_demo_with_exception(monkeypatch):
 # ---------- commands that call pipeline ----------
 
 
-def test_cmd_profile_passes_kwargs_and_sets_env(monkeypatch, capsys):
+def test_cmd_profile_passes_sample_size_explicit_no_env_mutation(monkeypatch, capsys):
     recorded = {}
 
-    def fake_run_profile(csv, **kw):
+    def fake_run_profile(csv, sample_size=None, **kw):
         recorded["csv"] = csv
+        recorded["sample_size"] = sample_size
         recorded["kw"] = kw
         return {"ok": True}
 
     monkeypatch.setattr(cli, "run_profile", fake_run_profile)
+    monkeypatch.delenv("SAMPLE_SIZE", raising=False)
     args = _ns(sep=",", encoding="utf-8", no_header=True, na_values="NA,NaN", sample_size=123)
     args.csv = "data.csv"
     rc = cli.cmd_profile(args)
@@ -97,8 +99,11 @@ def test_cmd_profile_passes_kwargs_and_sets_env(monkeypatch, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
 
-    # kwargs mapping
+    # sample_size passed as explicit named param (not via env)
     assert recorded["csv"] == "data.csv"
+    assert recorded["sample_size"] == 123
+
+    # CSV kwargs exclude sample_size (it travels as a named param)
     assert recorded["kw"] == {
         "sep": ",",
         "encoding": "utf-8",
@@ -106,10 +111,8 @@ def test_cmd_profile_passes_kwargs_and_sets_env(monkeypatch, capsys):
         "na_values": ["NA", "NaN"],
     }
 
-    # env override applied
-    assert os.environ.get("SAMPLE_SIZE") == "123"
-    # clean up to avoid bleed between tests
-    del os.environ["SAMPLE_SIZE"]
+    # env NOT mutated
+    assert os.environ.get("SAMPLE_SIZE") is None
 
 
 def test_cmd_assess(monkeypatch, capsys):

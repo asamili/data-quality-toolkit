@@ -103,7 +103,7 @@ def test_generator_with_templates(monkeypatch, tmp_path: Path):
 
     # Monkeypatch template dir discovery
     monkeypatch.setattr(
-        "data_quality_toolkit.exporters.bi.powerbi_zero_config.generator._get_template_dir",
+        "data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config.generator._get_template_dir",
         lambda: tpl_dir,
     )
 
@@ -178,7 +178,7 @@ def test_parameters_template_windows_path_json_safe(monkeypatch, tmp_path: Path)
 
     # Use our template dir
     monkeypatch.setattr(
-        "data_quality_toolkit.exporters.bi.powerbi_zero_config.generator._get_template_dir",
+        "data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config.generator._get_template_dir",
         lambda: tpl_dir,
     )
 

@@ -1,3 +1,3 @@
-"""Phase 4 dashboard UI package."""
+"""Dashboard UI package."""
 
 __all__ = ["app"]

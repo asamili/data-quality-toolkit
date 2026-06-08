@@ -27,6 +27,8 @@ import argparse
 import gc
 import json
 import os
+import platform
+import sys
 import tempfile
 import time
 import tracemalloc
@@ -38,8 +40,10 @@ import numpy as np
 import pandas as pd
 import psutil  # type: ignore[import-untyped]
 
+from data_quality_toolkit.adapters.exporters.bi_star_schema import build_star
 from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
 from data_quality_toolkit.application.workflow.preprocessing import plan_preprocessing
+from data_quality_toolkit.domain.assessment.quality_checker import assess
 from data_quality_toolkit.domain.profiling.profiling_orchestrator import run_profiling
 from data_quality_toolkit.shared.settings import load_settings
 
@@ -57,6 +61,27 @@ _NULL_FRACTION = 0.05
 
 def _rss_mb() -> float:
     return float(_PROC.memory_info().rss) / (1024 * 1024)
+
+
+def _get_env_metadata() -> dict[str, Any]:
+    """Capture detailed system and environment metadata."""
+    mem = psutil.virtual_memory()
+    return {
+        "timestamp": datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "os": platform.system(),
+        "os_release": platform.release(),
+        "os_version": platform.version(),
+        "python_version": sys.version,
+        "cpu_count_logical": psutil.cpu_count(logical=True),
+        "cpu_count_physical": psutil.cpu_count(logical=False),
+        "processor": platform.processor(),
+        "total_ram_gb": round(mem.total / (1024**3), 2),
+        "versions": {
+            "numpy": np.__version__,
+            "pandas": pd.__version__,
+            "psutil": psutil.__version__,
+        },
+    }
 
 
 def make_dataframe(rows: int, cols: int, seed: int = 1234) -> pd.DataFrame:
@@ -116,10 +141,18 @@ def bench_shape(rows: int, cols: int, tmp_dir: Path) -> dict[str, Any]:
     loaded, load_m = _measure(lambda: load_csv(str(csv_path)))
     df, meta = loaded
     dataset_id = str(meta["dataset_id"])
+
     # Stage 2: profile
-    _, profile_m = _measure(lambda d=df, ds=dataset_id: run_profiling(d, ds))
-    # Stage 3: preprocess plan
+    profile, profile_m = _measure(lambda d=df, ds=dataset_id: run_profiling(d, ds))
+
+    # Stage 3: assess
+    _, assess_m = _measure(lambda p=profile, d=df: assess(p, df=d))
+
+    # Stage 4: preprocess plan
     _, plan_m = _measure(lambda d=df: plan_preprocessing(d))
+
+    # Stage 5: star-schema export
+    _, export_m = _measure(lambda p=profile, d=df: build_star(p, d, source_path=str(csv_path)))
 
     result = {
         "rows": rows,
@@ -129,7 +162,9 @@ def bench_shape(rows: int, cols: int, tmp_dir: Path) -> dict[str, Any]:
         "sample_applied_on_load": bool(meta["sample_applied"]),
         "load": load_m,
         "profile": profile_m,
+        "assess": assess_m,
         "preprocess": plan_m,
+        "export": export_m,
     }
     del df
     gc.collect()
@@ -246,11 +281,7 @@ def main() -> int:
 
     payload = {
         "generated_at": datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "env": {
-            "numpy": np.__version__,
-            "pandas": pd.__version__,
-            "psutil": psutil.__version__,
-        },
+        "env": _get_env_metadata(),
         "null_fraction": _NULL_FRACTION,
         "shapes": results,
         "behavior_probe": probe,
@@ -261,18 +292,22 @@ def main() -> int:
 
     # Console table
     print("\n=== Baseline (wall_s | py_peak_mb | rss_delta_mb) ===")
-    header = f"{'shape':>14} {'file_mb':>8} | {'load':>26} | {'profile':>26} | {'preprocess':>26}"
+    stages = ["load", "profile", "assess", "preprocess", "export"]
+    header = f"{'shape':>14} {'file_mb':>8}"
+    for stage in stages:
+        header += f" | {stage:>26}"
     print(header)
+
     for r in results:
         shape = f"{r['rows']}x{r['cols']}"
+        row_str = f"{shape:>14} {r['csv_file_mb']:>8}"
 
-        def fmt(stage: dict[str, float]) -> str:
-            return f"{stage['wall_s']:>7}s {stage['py_peak_mb']:>7}py {stage['rss_delta_mb']:>7}rss"
+        def fmt(stage_data: dict[str, float]) -> str:
+            return f"{stage_data['wall_s']:>7}s {stage_data['py_peak_mb']:>7}py {stage_data['rss_delta_mb']:>7}rss"
 
-        print(
-            f"{shape:>14} {r['csv_file_mb']:>8} | {fmt(r['load'])} | "
-            f"{fmt(r['profile'])} | {fmt(r['preprocess'])}"
-        )
+        for stage in stages:
+            row_str += f" | {fmt(r[stage])}"
+        print(row_str)
     print(f"\nWrote {out_path}")
     return 0
 

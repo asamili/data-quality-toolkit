@@ -1,5 +1,5 @@
-# src/data_quality_toolkit/cli/main.py
-"""Phase 1: CLI implementation."""
+# src/data_quality_toolkit/adapters/cli/main.py
+"""CLI implementation."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import argparse
 import inspect
 import json
 import logging
-import os
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
@@ -82,50 +81,87 @@ def _csv_kwargs_from_args(args: argparse.Namespace) -> dict[str, Any]:
         kw["header"] = None
     if getattr(args, "na_values", None):
         kw["na_values"] = [x.strip() for x in args.na_values.split(",") if x.strip()]
-    # IMPORTANT: do NOT include sample_size here; env override is used instead
+    # IMPORTANT: do NOT include sample_size here; it is passed as an explicit named parameter
     return kw
 
 
-def _apply_overrides(args: argparse.Namespace) -> None:
-    # Allow CLI to override SAMPLE_SIZE for deterministic sampling in loader/profiling
-    if getattr(args, "sample_size", None) is not None:
-        os.environ["SAMPLE_SIZE"] = str(int(args.sample_size))
+def _get_sample_size(args: argparse.Namespace) -> int | None:
+    """Extract --sample-size from parsed args; returns None when not provided."""
+    val = getattr(args, "sample_size", None)
+    return int(val) if val is not None else None
 
 
 # --- Test-friendly, lazy-imported wrappers (so monkeypatch can replace them) ---
 
 
-def run_profile(csv: str, **kw: Any) -> Any:
+def run_profile(csv: str, sample_size: int | None = None, **kw: Any) -> Any:
     """Proxy to pipeline.run_profile (lazy import to avoid early heavy imports)."""
     from data_quality_toolkit.application.workflow.pipeline import run_profile as _impl
 
-    return _impl(csv, **kw)
+    return _impl(csv, sample_size=sample_size, **kw)
 
 
-def run_assessment(csv: str, **kw: Any) -> Any:
+def run_profile_chunked(csv: str, chunksize: int = 100_000, **kw: Any) -> Any:
+    """Proxy to pipeline.run_profile_chunked (lazy import for monkeypatching)."""
+    from data_quality_toolkit.application.workflow.pipeline import run_profile_chunked as _impl
+
+    return _impl(csv, chunksize=chunksize, **kw)
+
+
+def run_assessment(csv: str, sample_size: int | None = None, **kw: Any) -> Any:
     """Proxy to pipeline.run_assessment."""
     from data_quality_toolkit.application.workflow.pipeline import run_assessment as _impl
 
-    return _impl(csv, **kw)
+    return _impl(csv, sample_size=sample_size, **kw)
 
 
-def run_export_star(csv: str, *, output_dir: str | None = None, **kw: Any) -> Any:
+def run_assessment_chunked(csv: str, chunksize: int = 100_000, **kw: Any) -> Any:
+    """Proxy to pipeline.run_assessment_chunked (lazy import for monkeypatching)."""
+    from data_quality_toolkit.application.workflow.pipeline import run_assessment_chunked as _impl
+
+    return _impl(csv, chunksize=chunksize, **kw)
+
+
+def run_export_star(
+    csv: str, *, output_dir: str | None = None, sample_size: int | None = None, **kw: Any
+) -> Any:
     """Proxy to pipeline.run_export_star."""
     from data_quality_toolkit.application.workflow.pipeline import run_export_star as _impl
 
-    return _impl(csv, output_dir=output_dir, **kw)
+    return _impl(csv, output_dir=output_dir, sample_size=sample_size, **kw)
 
 
-def run_plan(csv: str, **kw: Any) -> dict[str, Any]:
+def run_plan(csv: str, sample_size: int | None = None, **kw: Any) -> dict[str, Any]:
     """Load CSV and return per-column preprocessing plan (lazy import for monkeypatching)."""
     from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
     from data_quality_toolkit.application.workflow.preprocessing import plan_preprocessing
 
-    df, meta = load_csv(csv, **kw)
+    df, meta = load_csv(csv, sample_size=sample_size, **kw)
     return {
         "dataset_id": meta["dataset_id"],
         "columns": plan_preprocessing(df),
     }
+
+
+def kpi_validate_catalog(config_path: str) -> dict[str, Any]:
+    """Proxy to application.workflow.kpi.validate_kpi_catalog (lazy import for monkeypatching)."""
+    from data_quality_toolkit.application.workflow.kpi import validate_kpi_catalog
+
+    return validate_kpi_catalog(config_path)
+
+
+def kpi_emit_artifacts(config_path: str, dax_out: str, tmsl_out: str) -> dict[str, Any]:
+    """Proxy to application.workflow.kpi.emit_kpi_artifacts (lazy import for monkeypatching)."""
+    from data_quality_toolkit.application.workflow.kpi import emit_kpi_artifacts
+
+    return emit_kpi_artifacts(config_path, dax_out, tmsl_out)
+
+
+def kpi_export_graph(config_path: str, out: str, graph_format: str = "mermaid") -> dict[str, Any]:
+    """Proxy to application.workflow.kpi.export_kpi_graph (lazy import for monkeypatching)."""
+    from data_quality_toolkit.application.workflow.kpi import export_kpi_graph
+
+    return export_kpi_graph(config_path, out, graph_format=graph_format)  # type: ignore[arg-type]
 
 
 def _extract_null_threshold(args: argparse.Namespace) -> float | None:
@@ -213,21 +249,30 @@ def cmd_log_demo(args: argparse.Namespace) -> int:
 
 def cmd_profile(args: argparse.Namespace) -> int:
     """Profile a CSV file."""
-    _apply_overrides(args)
-    out = run_profile(args.csv, **_csv_kwargs_from_args(args))
+    chunksize: int | None = getattr(args, "chunksize", None)
+    if chunksize is not None:
+        out = run_profile_chunked(args.csv, chunksize=chunksize, **_csv_kwargs_from_args(args))
+    else:
+        out = run_profile(
+            args.csv, sample_size=_get_sample_size(args), **_csv_kwargs_from_args(args)
+        )
 
     # Human-friendly summary -> stderr (stdout stays pure JSON)
     tick = _safe_text("✓", "[OK]")
     csv_name = Path(args.csv).name
-    print(f"{tick} Profile complete  [{csv_name}]", file=sys.stderr)
+    mode = " [chunked]" if chunksize is not None else ""
+    print(f"{tick} Profile complete  [{csv_name}]{mode}", file=sys.stderr)
     prof = out.get("profile") or {}
     if isinstance(prof, dict):
         if "rows" in prof:
             print(f"  - Rows: {prof['rows']}", file=sys.stderr)
         if "cols" in prof:
             print(f"  - Columns: {prof['cols']}", file=sys.stderr)
-        if "memory_mb" in prof:
-            print(f"  - Memory: {prof['memory_mb']:.2f} MB", file=sys.stderr)
+        memory_mb = prof.get("memory_mb")
+        if memory_mb is not None:
+            print(f"  - Memory: {memory_mb:.2f} MB", file=sys.stderr)
+    if out.get("approximate"):
+        print("  - Note: approximate profile (chunked mode)", file=sys.stderr)
 
     if not getattr(args, "no_json", False):
         print(_json_dump(out))
@@ -260,30 +305,69 @@ def _print_assessment_score_lines(assessment: dict) -> None:
     print(f"  - Issues flagged: {len(issues)}", file=sys.stderr)
 
 
-def cmd_assess(args: argparse.Namespace) -> int:
-    """Assess a CSV file."""
-    _apply_overrides(args)
-    nt = _extract_null_threshold(args)
-    fu = _extract_fail_under(args)
-    score_field = getattr(args, "score_field", SCORE_FIELD_DEFAULT) or SCORE_FIELD_DEFAULT
-    csv_kw = _csv_kwargs_from_args(args)
+def _dispatch_assessment(
+    args: argparse.Namespace,
+    nt: float | None,
+    chunksize: int | None,
+    csv_kw: dict[str, Any],
+) -> Any:
+    """Route to chunked or full-load assessment."""
+    if chunksize is not None:
+        chunked_kw: dict[str, Any] = {}
+        if nt is not None:
+            chunked_kw["null_threshold"] = nt
+        return run_assessment_chunked(args.csv, chunksize=chunksize, **chunked_kw, **csv_kw)
+    sample_size = _get_sample_size(args)
     db_path = Path(args.db) if getattr(args, "db", None) else None
     if nt is not None:
-        out = run_assessment(args.csv, null_threshold=nt, db_path=db_path, **csv_kw)
-    else:
-        out = run_assessment(args.csv, db_path=db_path, **csv_kw)
+        return run_assessment(
+            args.csv, null_threshold=nt, db_path=db_path, sample_size=sample_size, **csv_kw
+        )
+    return run_assessment(args.csv, db_path=db_path, sample_size=sample_size, **csv_kw)
+
+
+def _print_chunked_assessment_note(assessment: dict[str, Any]) -> None:
+    """Print chunked-mode note and completeness score to stderr."""
+    print(
+        "  - Note: partial chunked assessment — distribution/cardinality/outlier rules skipped",
+        file=sys.stderr,
+    )
+    if "completeness_score" in assessment:
+        try:
+            print(
+                f"  - Completeness Score: {float(assessment['completeness_score']):.2%}",
+                file=sys.stderr,
+            )
+        except Exception:
+            LOGGER.debug("Failed to format Completeness Score: %r", assessment, exc_info=True)
+    issues = assessment.get("issues") or []
+    print(f"  - Issues flagged: {len(issues)}", file=sys.stderr)
+
+
+def cmd_assess(args: argparse.Namespace) -> int:
+    """Assess a CSV file."""
+    nt = _extract_null_threshold(args)
+    fu = _extract_fail_under(args)
+    chunksize: int | None = getattr(args, "chunksize", None)
+    score_field = getattr(args, "score_field", SCORE_FIELD_DEFAULT) or SCORE_FIELD_DEFAULT
+    csv_kw = _csv_kwargs_from_args(args)
+    out = _dispatch_assessment(args, nt, chunksize, csv_kw)
 
     # Human-friendly summary -> stderr (stdout stays pure JSON)
     tick = _safe_text("✓", "[OK]")
-    print(f"{tick} Assessment complete", file=sys.stderr)
+    mode = " [chunked, partial]" if chunksize is not None else ""
+    print(f"{tick} Assessment complete{mode}", file=sys.stderr)
     prof = out.get("profile") or {}
     if isinstance(prof, dict):
         if "rows" in prof:
             print(f"  - Rows: {prof['rows']}", file=sys.stderr)
         if "cols" in prof:
             print(f"  - Columns: {prof['cols']}", file=sys.stderr)
+
     assessment = out.get("assessment")
-    if isinstance(assessment, dict) and "score" in assessment:
+    if chunksize is not None and isinstance(assessment, dict):
+        _print_chunked_assessment_note(assessment)
+    elif isinstance(assessment, dict) and "score" in assessment:
         _print_assessment_score_lines(assessment)
 
     if not getattr(args, "no_json", False):
@@ -377,35 +461,15 @@ def cmd_build_pbi(args: argparse.Namespace) -> int:
 
 def cmd_kpi_emit(args: argparse.Namespace) -> int:
     """Generate DAX measures and TMSL from KPI catalog."""
-    from data_quality_toolkit.domain.semantics import (
-        load_catalog,
-        validate_semantics,
-        write_dax,
-        write_tmsl,
-    )
-
     tick = _safe_text("✓", "[OK]")
     try:
         print(f"Loading KPI catalog from {args.config}...", file=sys.stderr)
-        catalog = load_catalog(args.config)
-        validate_semantics(catalog)
-        print(f"{tick} Loaded {len(catalog.kpis)} KPIs", file=sys.stderr)
+        result = kpi_emit_artifacts(args.config, args.dax_out, args.tmsl_out)
 
-        # DAX
-        dax_path = write_dax(catalog, args.dax_out)
-        print(f"{tick} Generated DAX: {dax_path}", file=sys.stderr)
+        print(f"{tick} Loaded {result.get('kpis', 0)} KPIs", file=sys.stderr)
+        print(f"{tick} Generated DAX: {result.get('dax')}", file=sys.stderr)
+        print(f"{tick} Generated TMSL: {result.get('tmsl')}", file=sys.stderr)
 
-        # TMSL
-        tmsl_path = write_tmsl(catalog, args.tmsl_out)
-        print(f"{tick} Generated TMSL: {tmsl_path}", file=sys.stderr)
-
-        # Machine-readable summary to STDOUT
-        result = {
-            "status": "success",
-            "kpis": len(catalog.kpis),
-            "dax": dax_path,
-            "tmsl": tmsl_path,
-        }
         print(_json_dump(result))
         return 0
 
@@ -417,31 +481,18 @@ def cmd_kpi_emit(args: argparse.Namespace) -> int:
 
 def cmd_kpi_graph(args: argparse.Namespace) -> int:
     """Export KPI dependency graph (Mermaid or Graphviz)."""
-    from data_quality_toolkit.domain.semantics import graph_export, load_catalog, write_mermaid
-
     tick = _safe_text("✓", "[OK]")
     try:
         print(f"Loading KPI catalog from {args.config}...", file=sys.stderr)
-        catalog = load_catalog(args.config)
-
         fmt = (args.format or KPI_GRAPH_FORMAT_DEFAULT).lower()
-        out_path = args.out
+        result = kpi_export_graph(args.config, args.out, fmt)
 
-        if fmt == "graphviz":
-            # normalize extension
-            if out_path.endswith(".mmd"):
-                out_path = out_path[:-4] + ".dot"
-            graph_path = graph_export.write_graphviz(catalog, out_path)
-        else:
-            # default: mermaid
-            if not out_path.endswith(".mmd"):
-                out_path = out_path + ".mmd"
-            graph_path = write_mermaid(catalog, out_path)
-
+        graph_path = result.get("graph", "")
+        nodes = result.get("nodes", 0)
         print(f"{tick} Generated {fmt} graph: {graph_path}", file=sys.stderr)
 
         # Preview for small catalogs (first 20 lines)
-        if len(catalog.kpis) <= 10:
+        if nodes <= 10 and graph_path:
             print("\nGraph preview:", file=sys.stderr)
             text = Path(graph_path).read_text(encoding="utf-8")
             lines = text.splitlines()
@@ -451,12 +502,6 @@ def cmd_kpi_graph(args: argparse.Namespace) -> int:
             if len(lines) > 20:
                 print("...", file=sys.stderr)
 
-        result = {
-            "status": "success",
-            "graph": graph_path,
-            "format": fmt,
-            "nodes": len(catalog.kpis),
-        }
         print(_json_dump(result))
         return 0
 
@@ -468,54 +513,28 @@ def cmd_kpi_graph(args: argparse.Namespace) -> int:
 
 def cmd_kpi_validate(args: argparse.Namespace) -> int:
     """Validate KPI catalog (schema, semantics, cycles)."""
-    from data_quality_toolkit.domain.semantics import load_catalog, validate_semantics
-    from data_quality_toolkit.domain.semantics.dag import build_graph, detect_cycles
-
     try:
         print(f"Validating KPI catalog: {args.config}", file=sys.stderr)
-        catalog = load_catalog(args.config)
-        print(f"✓ Loaded {len(catalog.kpis)} KPIs", file=sys.stderr)
+        result = kpi_validate_catalog(args.config)
+        kpi_count = result.get("kpis", 0)
+        print(f"✓ Loaded {kpi_count} KPIs", file=sys.stderr)
 
-        # Cycles first (fast feedback)
-        graph = build_graph(catalog)
-        cycles = detect_cycles(graph)
-        if cycles:
+        if result.get("status") == "invalid":
             print("✗ Dependency cycles detected:", file=sys.stderr)
-            for cycle in cycles:
-                print(f"  - {' -> '.join(cycle + [cycle[0]])}", file=sys.stderr)
-            # Emit machine-readable summary and exit non-zero
-            invalid_result: dict[str, Any] = {
-                "status": "invalid",
-                "reason": "cycles",
-                "cycles": [c + [c[0]] for c in cycles],
-            }
-            print(_json_dump(invalid_result))
+            for cycle_path in result.get("cycles", []):
+                print(f"  - {' -> '.join(str(c) for c in cycle_path)}", file=sys.stderr)
+            output = {k: v for k, v in result.items() if k != "by_grain"}
+            print(_json_dump(output))
             return 1
 
-        # Semantic rules (grain/unit & unknown deps already guarded by build_graph)
-        validate_semantics(catalog)
         print("✓ Semantic validation passed", file=sys.stderr)
-
-        # Summary by grain
-        by_grain: dict[str, list] = {}
-        for kpi in catalog.kpis:
-            by_grain.setdefault(kpi.grain, []).append(kpi)
-
         print("\nCatalog Summary:", file=sys.stderr)
-        for grain, kpis in by_grain.items():
-            print(f"  {grain}: {len(kpis)} KPIs", file=sys.stderr)
+        for grain, count in (result.get("by_grain") or {}).items():
+            print(f"  {grain}: {count} KPIs", file=sys.stderr)
+        print(f"  Total dependencies: {result.get('dependencies', 0)}", file=sys.stderr)
 
-        deps_count = sum(len(k.depends_on) for k in catalog.kpis)
-        print(f"  Total dependencies: {deps_count}", file=sys.stderr)
-
-        valid_result: dict[str, Any] = {
-            "status": "valid",
-            "kpis": len(catalog.kpis),
-            "cycles": 0,
-            "grains": list(by_grain.keys()),
-            "dependencies": deps_count,
-        }
-        print(_json_dump(valid_result))
+        output = {k: v for k, v in result.items() if k != "by_grain"}
+        print(_json_dump(output))
         return 0
 
     except Exception as e:
@@ -542,11 +561,11 @@ def _print_compare_score_lines(result: dict) -> None:
 
 def cmd_compare(args: argparse.Namespace) -> int:
     """Compare the last two export runs for a dataset."""
-    from data_quality_toolkit.adapters.loaders.file.csv_loader import _dataset_id_from_file
+    from data_quality_toolkit.adapters.loaders.file.csv_loader import dataset_id_from_file
     from data_quality_toolkit.application.workflow.compare import compare_last_two_runs
 
     try:
-        dataset_id = _dataset_id_from_file(Path(args.csv))
+        dataset_id = dataset_id_from_file(Path(args.csv))
     except Exception as e:
         print(f"Error: could not compute dataset_id from '{args.csv}': {e}", file=sys.stderr)
         return 1
@@ -606,15 +625,17 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
 def cmd_export_star(args: argparse.Namespace) -> int:
     """Export star schema."""
-    _apply_overrides(args)
     nt = _extract_null_threshold(args)
     fu = _extract_fail_under(args)
     score_field = getattr(args, "score_field", SCORE_FIELD_DEFAULT) or SCORE_FIELD_DEFAULT
+    sample_size = _get_sample_size(args)
     csv_kw = _csv_kwargs_from_args(args)
     if nt is not None:
-        out = run_export_star(args.csv, output_dir=args.outdir, null_threshold=nt, **csv_kw)
+        out = run_export_star(
+            args.csv, output_dir=args.outdir, null_threshold=nt, sample_size=sample_size, **csv_kw
+        )
     else:
-        out = run_export_star(args.csv, output_dir=args.outdir, **csv_kw)
+        out = run_export_star(args.csv, output_dir=args.outdir, sample_size=sample_size, **csv_kw)
 
     # Friendly summary -> STDERR (so STDOUT stays pure JSON)
     tick = _safe_text("✓", "[OK]")
@@ -668,8 +689,7 @@ class _DQTArgumentParser(argparse.ArgumentParser):
 
 def cmd_plan(args: argparse.Namespace) -> int:
     """Generate per-column preprocessing recommendations for a CSV."""
-    _apply_overrides(args)
-    out = run_plan(args.csv, **_csv_kwargs_from_args(args))
+    out = run_plan(args.csv, sample_size=_get_sample_size(args), **_csv_kwargs_from_args(args))
 
     tick = _safe_text("✓", "[OK]")
     columns = out.get("columns") or []
@@ -743,6 +763,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp_prof = sub.add_parser("profile", help="Load CSV and emit profile JSON")
     sp_prof.add_argument("csv", help=CSV_PATH_HELP)
     _add_csv_options(sp_prof)
+    sp_prof.add_argument(
+        "--chunksize",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Stream CSV in chunks of N rows (approximate profile; skips dtype/unique/memory_mb)",
+    )
     sp_prof.set_defaults(func=cmd_profile)
 
     # assess
@@ -779,6 +806,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         help="Persist assessment run to a dashboard-readable SQLite database",
+    )
+    sp_as.add_argument(
+        "--chunksize",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Stream CSV in chunks of N rows (partial assessment; "
+            "distribution/cardinality/outlier rules skipped)"
+        ),
     )
     sp_as.set_defaults(func=cmd_assess)
 

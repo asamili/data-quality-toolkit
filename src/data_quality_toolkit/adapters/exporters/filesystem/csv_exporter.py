@@ -1,4 +1,4 @@
-"""Export star schema to CSV files."""
+"""Phase 1: Export star schema to CSV files."""
 
 from __future__ import annotations
 

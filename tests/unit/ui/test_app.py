@@ -1,4 +1,4 @@
-"""Unit tests for data_quality_toolkit.ui.app — no live Streamlit required."""
+"""Unit tests for data_quality_toolkit.adapters.ui.app — no live Streamlit required."""
 
 from __future__ import annotations
 
@@ -20,17 +20,21 @@ from data_quality_toolkit.adapters.ui.app import (
     _build_trend_df,
     _categorical_top_values,
     _duplicate_row_count,
+    _export_csv_to_dir,
     _extract_latest_issues,
     _extract_trend_data,
+    _generate_dim_time_csv,
     _high_cardinality_flags,
     _iqr_outlier_summary,
-    _load_csv,
+    _kpi_emit_to_bytes,
+    _kpi_graph_to_str,
     _load_df_and_assess,
     _load_run_history,
     _numeric_distribution,
     _numeric_summary,
     _plan_preprocessing,
     _run_assess_csv,
+    _run_kpi_validate,
 )
 
 
@@ -41,15 +45,15 @@ def test_module_imports_without_streamlit() -> None:
     real_st = sys.modules.get("streamlit")
     sys.modules["streamlit"] = None  # type: ignore[assignment]
     try:
-        del sys.modules["data_quality_toolkit.ui.app"]
-        mod = importlib.import_module("data_quality_toolkit.ui.app")
+        del sys.modules["data_quality_toolkit.adapters.ui.app"]
+        mod = importlib.import_module("data_quality_toolkit.adapters.ui.app")
         assert callable(mod.main)
     finally:
         if real_st is not None:
             sys.modules["streamlit"] = real_st
         else:
             sys.modules.pop("streamlit", None)
-        sys.modules["data_quality_toolkit.ui.app"] = _cached
+        sys.modules["data_quality_toolkit.adapters.ui.app"] = _cached
 
 
 def test_main_is_callable() -> None:
@@ -66,7 +70,7 @@ def test_load_run_history_missing_db_returns_empty(tmp_path: Path) -> None:
 
 def test_load_run_history_storage_error_returns_message(tmp_path: Path) -> None:
     with patch(
-        "data_quality_toolkit.ui.app.read_run_history",
+        "data_quality_toolkit.adapters.ui.app.read_run_history",
         side_effect=StorageError("db corrupt"),
     ):
         records, err = _load_run_history(str(tmp_path / "some.db"), "ds1")
@@ -212,39 +216,6 @@ def test_app_has_script_entrypoint() -> None:
         "app.py is missing if __name__ == '__main__': main() — "
         "streamlit run will show a blank page"
     )
-
-
-def test_load_csv_missing_file_returns_error(tmp_path: Path) -> None:
-    df, err = _load_csv(str(tmp_path / "nope.csv"))
-    assert df is None
-    assert err is not None
-    assert "not found" in err.lower()
-
-
-def test_load_csv_valid_file_returns_dataframe(tmp_path: Path) -> None:
-    csv = tmp_path / "data.csv"
-    csv.write_text("a,b\n1,x\n2,y\n", encoding="utf-8")
-    df, err = _load_csv(str(csv))
-    assert err is None
-    assert df is not None
-    assert list(df.columns) == ["a", "b"]
-    assert len(df) == 2
-
-
-def test_load_csv_strips_whitespace(tmp_path: Path) -> None:
-    csv = tmp_path / "data.csv"
-    csv.write_text("a\n1\n", encoding="utf-8")
-    df, err = _load_csv("  " + str(csv) + "  ")
-    assert err is None
-    assert df is not None
-
-
-def test_load_csv_empty_file_returns_error(tmp_path: Path) -> None:
-    csv = tmp_path / "empty.csv"
-    csv.write_text("", encoding="utf-8")
-    df, err = _load_csv(str(csv))
-    assert df is None
-    assert err is not None
 
 
 def test_build_overview_table_includes_all_fields() -> None:
@@ -573,7 +544,7 @@ _FAKE_ASSESS_OUT: dict = {
 
 
 def test_run_assess_csv_success() -> None:
-    with patch("data_quality_toolkit.ui.app._assess_csv", return_value=_FAKE_ASSESS_OUT):
+    with patch("data_quality_toolkit.adapters.ui.app._assess_csv", return_value=_FAKE_ASSESS_OUT):
         out, err = _run_assess_csv("data.csv")
     assert err is None
     assert out is not None
@@ -583,7 +554,7 @@ def test_run_assess_csv_success() -> None:
 
 def test_run_assess_csv_file_not_found() -> None:
     with patch(
-        "data_quality_toolkit.ui.app._assess_csv",
+        "data_quality_toolkit.adapters.ui.app._assess_csv",
         side_effect=FileNotFoundError("data.csv not found"),
     ):
         out, err = _run_assess_csv("data.csv")
@@ -594,7 +565,7 @@ def test_run_assess_csv_file_not_found() -> None:
 
 def test_run_assess_csv_value_error() -> None:
     with patch(
-        "data_quality_toolkit.ui.app._assess_csv",
+        "data_quality_toolkit.adapters.ui.app._assess_csv",
         side_effect=ValueError("empty or has no columns"),
     ):
         out, err = _run_assess_csv("empty.csv")
@@ -604,7 +575,9 @@ def test_run_assess_csv_value_error() -> None:
 
 
 def test_run_assess_csv_strips_whitespace() -> None:
-    with patch("data_quality_toolkit.ui.app._assess_csv", return_value=_FAKE_ASSESS_OUT) as mock:
+    with patch(
+        "data_quality_toolkit.adapters.ui.app._assess_csv", return_value=_FAKE_ASSESS_OUT
+    ) as mock:
         _run_assess_csv("  data.csv  ")
     mock.assert_called_once_with("data.csv")
 
@@ -630,9 +603,9 @@ _FAKE_INNER_ASSESSMENT = {
     "ts": "",
 }
 
-_LOAD_CSV_H = "data_quality_toolkit.loaders.file.csv_loader.load_csv"
-_RUN_PROF = "data_quality_toolkit.profiling.profiling_orchestrator.run_profiling"
-_ASSESS = "data_quality_toolkit.assessment.quality_checker.assess"
+_LOAD_CSV_H = "data_quality_toolkit.adapters.loaders.file.csv_loader.load_csv"
+_RUN_PROF = "data_quality_toolkit.domain.profiling.profiling_orchestrator.run_profiling"
+_ASSESS = "data_quality_toolkit.domain.assessment.quality_checker.assess"
 
 
 def test_load_df_and_assess_success() -> None:
@@ -691,3 +664,137 @@ def test_load_df_and_assess_result_has_profile_and_assessment() -> None:
     assert "assessment" in result
     assert df is not None
     assert len(df) == 3
+
+
+# ── _run_kpi_validate ─────────────────────────────────────────────────────────
+
+_REAL_CATALOG = "config/kpi_catalog.yaml"
+
+
+def test_run_kpi_validate_valid_catalog() -> None:
+    result, err = _run_kpi_validate(_REAL_CATALOG)
+    assert err is None
+    assert result is not None
+    assert result["status"] == "valid"
+    assert result["kpis"] > 0
+
+
+def test_run_kpi_validate_missing_file_returns_error() -> None:
+    result, err = _run_kpi_validate("nonexistent/catalog.yaml")
+    assert result is None
+    assert err is not None
+    assert len(err) > 0
+
+
+def test_run_kpi_validate_strips_whitespace() -> None:
+    result, err = _run_kpi_validate("  " + _REAL_CATALOG + "  ")
+    assert err is None
+    assert result is not None
+    assert result["status"] == "valid"
+
+
+# ── _generate_dim_time_csv ────────────────────────────────────────────────────
+
+
+def test_generate_dim_time_csv_returns_csv_string() -> None:
+    csv_str, row_count, err = _generate_dim_time_csv("2024-01-01", "2024-01-05")
+    assert err is None
+    assert row_count == 5
+    assert csv_str is not None
+    assert "date_key" in csv_str or len(csv_str) > 0
+
+
+def test_generate_dim_time_csv_bad_dates_returns_error() -> None:
+    csv_str, row_count, err = _generate_dim_time_csv("not-a-date", "also-bad")
+    assert csv_str is None
+    assert row_count is None
+    assert err is not None
+
+
+def test_generate_dim_time_csv_with_fiscal_year() -> None:
+    csv_str, row_count, err = _generate_dim_time_csv(
+        "2024-01-01", "2024-01-03", week_start=1, fiscal_year_start=7
+    )
+    assert err is None
+    assert row_count == 3
+    assert csv_str is not None
+
+
+# ── _kpi_emit_to_bytes ────────────────────────────────────────────────────────
+
+
+def test_kpi_emit_to_bytes_returns_dax_and_tmsl() -> None:
+    dax_bytes, tmsl_bytes, err = _kpi_emit_to_bytes(_REAL_CATALOG)
+    assert err is None
+    assert dax_bytes is not None and len(dax_bytes) > 0
+    assert tmsl_bytes is not None and len(tmsl_bytes) > 0
+
+
+def test_kpi_emit_to_bytes_missing_catalog_returns_error() -> None:
+    dax_bytes, tmsl_bytes, err = _kpi_emit_to_bytes("nonexistent/catalog.yaml")
+    assert dax_bytes is None
+    assert tmsl_bytes is None
+    assert err is not None
+
+
+# ── _kpi_graph_to_str ─────────────────────────────────────────────────────────
+
+
+def test_kpi_graph_to_str_returns_mermaid_content() -> None:
+    content, err = _kpi_graph_to_str(_REAL_CATALOG, graph_format="mermaid")
+    assert err is None
+    assert content is not None
+    assert len(content) > 0
+
+
+def test_kpi_graph_to_str_returns_graphviz_content() -> None:
+    content, err = _kpi_graph_to_str(_REAL_CATALOG, graph_format="graphviz")
+    assert err is None
+    assert content is not None
+    assert len(content) > 0
+
+
+def test_kpi_graph_to_str_missing_catalog_returns_error() -> None:
+    content, err = _kpi_graph_to_str("nonexistent/catalog.yaml")
+    assert content is None
+    assert err is not None
+
+
+# ── _export_csv_to_dir ────────────────────────────────────────────────────────
+
+
+def test_export_csv_to_dir_relative_path_returns_error() -> None:
+    result, err = _export_csv_to_dir("/data/test.csv", "relative/path")
+    assert result is None
+    assert err is not None
+    assert "absolute" in err.lower()
+
+
+def test_export_csv_to_dir_traversal_path_returns_error() -> None:
+    result, err = _export_csv_to_dir("/data/test.csv", "/safe/../etc")
+    assert result is None
+    assert err is not None
+    assert ".." in err or "traversal" in err.lower()
+
+
+def test_export_csv_to_dir_valid_path_calls_export_csv(tmp_path: Path) -> None:
+    out_dir = tmp_path / "export_out"
+    fake_result: dict = {"export_paths": {"dim_dataset": str(out_dir / "star/dim_dataset.csv")}}
+    with patch("data_quality_toolkit.api.export_csv", return_value=fake_result) as mock_exp:
+        result, err = _export_csv_to_dir("/data/test.csv", str(out_dir))
+    assert err is None
+    assert result == fake_result
+    mock_exp.assert_called_once()
+    assert out_dir.exists()
+
+
+def test_export_csv_to_dir_export_error_returns_error(tmp_path: Path) -> None:
+    out_dir = tmp_path / "export_err_dir"
+    with patch(
+        "data_quality_toolkit.api.export_csv",
+        side_effect=RuntimeError("csv parse failed"),
+    ):
+        result, err = _export_csv_to_dir("/data/test.csv", str(out_dir))
+    assert result is None
+    assert err is not None
+    assert "csv parse failed" in err

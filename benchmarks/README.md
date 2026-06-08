@@ -40,76 +40,34 @@ Captured 2026-05-22 (numpy 1.26.4, pandas 2.3.3, psutil 7.2.2). Raw data in
 | 100k × 100 | 109.53 | 3.57 | 156.9 MB | 76.5 MB | 2.16  | 2.24 |
 | 1M × 5     | 54.36  | 2.86 | 120.8 MB | 85.1 MB | 13.31 | 1.09 |
 
-## Findings confirmed (baseline, not yet optimized)
+## Interpretation Rules & Cautions
 
-1. **Full-file read; sampling does not cut read memory.** Load `py_peak`/`rss`
-   track file size (100k×100 → 157 MB peak for a 110 MB file). The probe is
-   decisive: with `SAMPLE_SIZE=2000` the frame downsamples to 2000 rows but load
-   `py_peak` stays **10.7 MB — identical to the full read**. Sampling happens
-   *after* the full `pd.read_csv`, so peak memory is unaffected.
-2. **Profiling time dominated by full-frame `nunique` on high-cardinality data.**
-   1M×5 profile = **13.3 s**, far above 100k×100 = 2.2 s. The high-cardinality
-   string id column drives near-`O(n)` hashing per column. `nulls`/`unique` are
-   computed on the full frame regardless of `sample_size`; only min/max extras
-   use the sample.
-3. **Preprocessing scales with rows × cols × passes.** 100k×100 = 2.24 s from
-   ~4–6 full-column passes (isna.mean, nunique, dropna, 2 quantiles, mask) per
-   column.
-4. **`max_rows_in_memory` is configured but never enforced.** Default 1,000,000;
-   no code path reads it. The 1M×5 shape loads fully with no guard.
+- **Internal Baseline Only:** These benchmarks are used to detect relative regressions during development. They are not absolute performance guarantees.
+- **Machine Dependent:** Results vary significantly based on CPU, RAM speed, and Disk I/O. Always include system metadata when sharing results.
+- **Single-Threaded:** DQT profiling is currently single-threaded (pandas-based). Multi-core systems will not see linear speedups without architectural changes.
+- **Memory Boundaries:** Default `MAX_ROWS_IN_MEMORY` is 1,000,000. Datasets exceeding this require `SAMPLE_SIZE` env to enable I/O-layer sampling (`nrows`).
 
-## Behavior reference (current, unchanged)
+## Available Harnesses
 
-- Loader samples **only** when `SAMPLE_SIZE` env is explicitly set; default load
-  is full-file.
-- Profiling samples "column extras" (min/max) to `settings.sample_size`
-  (default 1000); full frame still scanned for nulls/unique.
-- `max_rows_in_memory` = 1,000,000, unenforced.
+### 1. Data Pipeline Baseline (`baseline.py`)
 
-Optimization is out of scope for this gate — see the recommended optimization
-gates in the hardening release plan.
+Captures wall-clock time and memory for the core pipeline:
+`load` → `profile` → `assess` → `preprocess` → `export` (Star Schema).
 
----
+### 2. KPI Semantic Scaling (`kpi_bench.py`)
 
-## After refactor (Complexity/Profiler Hotspot gate)
+Measures validation and emission (DAX/TMSL) latency for KPI catalogs.
+Generates synthetic catalogs with configurable depth to test DAG cycle detection and emission order performance.
 
-Vectorized `df.isna().sum()` / `df.nunique()` in `column_profiler.py` and
-combined `series.quantile([0.25, 0.75])` in `preprocessing.py`. No behavior
-changes; all 19 targeted tests pass.
+```bash
+python benchmarks/kpi_bench.py --sizes 10 50 100 250 500
+```
 
-| shape | stage | baseline wall_s | after wall_s | Δ |
-|------:|------:|----------------:|-------------:|--:|
-| 100k × 5   | profile    | 1.348 | 0.968 | −28% |
-| 100k × 100 | profile    | 2.156 | 1.541 | −29% |
-| 1M × 5     | profile    | 13.307 | 10.476 | −21% |
-| 100k × 5   | preprocess | 0.105 | 0.079 | −24% |
-| 100k × 100 | preprocess | 2.240 | 1.472 | −34% |
-| 1M × 5     | preprocess | 1.087 | 0.860 | −21% |
+### 3. Storage Aging (`storage_bench.py`)
 
-Memory (`py_peak_mb`) unchanged across all shapes. Load times unaffected.
+Measures read latency for historical run records as the database grows.
+Tests how the SQLite-backed audit trail handles thousands of entries for a single dataset.
 
----
-
-## After memory hardening (Memory/Loader gate)
-
-`csv_loader.py` changes:
-- `SAMPLE_SIZE` env now injects `nrows` into `pd.read_csv` — full file is never
-  materialized before sampling (first-N rows instead of random post-read sample).
-- `max_rows_in_memory` is now enforced: raises `ValueError` if loaded rows exceed
-  the configured limit (default 1,000,000).
-
-All 53 targeted loader + shared tests pass. Behavior probe (100k × 5 file,
-`SAMPLE_SIZE=2000` vs no env):
-
-| case | loaded_rows | py_peak_mb | rss_delta_mb |
-|------|------------:|-----------:|-------------:|
-| default (no SAMPLE_SIZE) | 100,000 | 10.72 | 1.55 |
-| SAMPLE_SIZE=2000 (nrows) | 2,000   | 10.72 | 0.01 |
-
-`py_peak_mb` is unchanged across both cases — `tracemalloc` does not capture
-pandas/numpy C-level buffer allocations (see caveats above). The RSS delta
-confirms near-zero new allocation for the sampled load. The architectural
-improvement is that pandas never reads the remaining 98,000 rows from disk.
-
-`max_rows_in_memory` is now active. The 1M x 5 shape (1,000,000 rows) loads
-without error against the default limit of 1,000,000 (`len > limit`, not `>=`).
+```bash
+python benchmarks/storage_bench.py --runs 100 1000 10000
+```

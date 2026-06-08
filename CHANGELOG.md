@@ -53,11 +53,11 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [1.8.0] - 2026-05-22
 
-### Security, Performance, and Memory Hardening, CVE Remediation, and Mypy Cleanup
+### Security, Performance, and Memory Hardening, CVE Remediation, and Mypy Cleanup (HEAD `d83a08a`)
 
 Four hardening gates, one CVE remediation gate, and one mypy cleanup gate completing the v1.8.0 release. No breaking changes to public CLI or output formats.
 
-**Security / Tooling Hardening**
+**Security / Tooling Hardening (`b429200`)**
 
 - `pip-audit` wired into pre-commit (manual stage) and CI (`continue-on-error: true`) for advisory dependency CVE scanning
 - `ruff` mccabe cyclomatic-complexity ceiling added: `max-complexity = 10` (`[tool.ruff.lint.mccabe]`)
@@ -65,13 +65,13 @@ Four hardening gates, one CVE remediation gate, and one mypy cleanup gate comple
 - 8 security surface regression tests added in `tests/unit/security/test_security_surface.py` locking path validation, loader rejection, network-off default, and `api_key=None` default
 - `SECURITY.md` extended with "Path, output, and network stance" and "Security tooling" sections documenting `DQT_ALLOW_NETWORK`, output scope, bandit/ruff-S/pip-audit coverage
 
-**Performance & Memory Baseline**
+**Performance & Memory Baseline (`37dea11`)**
 
 - Benchmark harness added at `benchmarks/baseline.py`: wall-clock (`time.perf_counter`), tracemalloc peak, and RSS delta for `load → profile → preprocess` across 10k×5, 100k×5, 100k×100, and 1M×5 shapes
 - Baseline captured on 2026-05-22: 1M×5 profile = 13.3 s (nunique-bound on high-cardinality id column); 100k×100 preprocess = 2.24 s; full-file read regardless of `SAMPLE_SIZE` confirmed; `max_rows_in_memory` unenforced
 - Findings and behavior reference documented in `benchmarks/README.md`
 
-**Complexity / Profiling Performance Refactor**
+**Complexity / Profiling Performance Refactor (`052ab1f`)**
 
 - `column_profiler.profile_columns`: replaced per-column `isna().sum()` / `nunique()` loop with single vectorised `df.isna().sum()` / `df.nunique(dropna=True)` bulk reductions (21–29% profiling wall-time reduction across tested shapes)
 - `iqr_outlier_summary`: merged two `series.quantile()` calls into `series.quantile([0.25, 0.75])` (one sort instead of two)
@@ -79,21 +79,21 @@ Four hardening gates, one CVE remediation gate, and one mypy cleanup gate comple
 - Preprocessing wall time reduced 21–34%; profiling 21–29%; memory (`py_peak_mb`) unchanged
 - No behavior changes; all output keys, semantics, and public signatures preserved; 19/19 targeted tests green
 
-**Memory / Loader Hardening**
+**Memory / Loader Hardening (`0f26948`)**
 
 - **Behavior change**: `SAMPLE_SIZE` env now uses `nrows` in `pd.read_csv` — only the first N rows are loaded, eliminating full-file materialization. Previously the full file was read before in-memory random sampling. Sampling is now first-N (deterministic by position, not random seed).
 - `max_rows_in_memory` enforced: `csv_loader` raises `ValueError` with row counts if `len(df) > settings.max_rows_in_memory`. Previously this setting was configured (`DEFAULT_MAX_ROWS_IN_MEMORY = 1_000_000`) but never read in any code path.
 - Default full-load path unchanged when `SAMPLE_SIZE` is not set.
 - 11 targeted tests added in `tests/unit/loader/test_csv_loader_memory_hardening.py`
 
-**CVE Remediation**
+**CVE Remediation (`6718b05`)**
 
 - `python-dotenv` minimum version raised to `>=1.2.2`
 - `pytest` minimum version raised to `>=9.0.3`
 - `black` minimum version raised to `>=26.3.1`
 - pip-audit advisory count reduced from 31 CVEs across 17 packages to 4 remaining deferred advisories (87% reduction)
 
-**Lineage/Manifest Mypy Cleanup**
+**Lineage/Manifest Mypy Cleanup (`d83a08a`)**
 
 - Declared `serde_impl`, `json_writer`, `lineage_schema_version`, and `manifest_file` fields in `Settings` with safe defaults, resolving 5 pre-existing `attr-defined` mypy errors in `lineage/manifest/serializer.py` and `lineage/manifest/builder.py`
 - Targeted `lineage/manifest/` mypy errors: 5 → 0

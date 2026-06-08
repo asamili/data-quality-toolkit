@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,15 @@ from data_quality_toolkit.adapters.ui.eda import (
     _plan_preprocessing,
 )
 from data_quality_toolkit.api import assess_csv as _assess_csv
+
+_MIME_CSV = "text/csv"
+
+_LARGE_MODE_BANNER: str = (
+    "**Large-file mode (profile-only):** "
+    "Approximate profile via chunked streaming — no full-DataFrame load. "
+    "Assessment, EDA, export, preprocessing plan, unique counts, "
+    "outlier detection, and correlation are disabled."
+)
 
 
 def _load_run_history(
@@ -55,16 +65,103 @@ def _run_assess_csv(path_str: str) -> tuple[dict[str, Any] | None, str | None]:
         return None, str(exc)
 
 
-def _load_csv(path_str: str) -> tuple[pd.DataFrame | None, str | None]:
-    """Load a CSV into a DataFrame. Returns (df, None) or (None, error_message)."""
-    p = Path(path_str.strip())
-    if not p.exists():
-        return None, f"File not found: {p}"
+def _load_profile_chunked(
+    path_str: str,
+    chunksize: int,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Call profile_csv(chunksize=N) and return (envelope, None) or (None, error).
+
+    No full-DataFrame load — stores only the returned profile envelope.
+    """
     try:
-        df = pd.read_csv(p)
-    except (OSError, ValueError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
+        from data_quality_toolkit.api import profile_csv as _profile_csv_fn
+
+        return _profile_csv_fn(path_str.strip(), chunksize=chunksize), None
+    except Exception as exc:
         return None, str(exc)
-    return df, None
+
+
+def _run_kpi_validate(config_path: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Call kpi_validate workflow. Returns (result, None) or (None, error_message)."""
+    try:
+        from data_quality_toolkit.application.workflow.kpi import validate_kpi_catalog
+
+        return validate_kpi_catalog(config_path.strip()), None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def _generate_dim_time_csv(
+    start_date: str,
+    end_date: str,
+    week_start: int = 1,
+    fiscal_year_start: int | None = None,
+) -> tuple[str | None, int | None, str | None]:
+    """Generate dim_time CSV string in memory (no disk writes).
+
+    Returns (csv_str, row_count, None) or (None, None, error_message).
+    """
+    try:
+        from data_quality_toolkit.adapters.exporters.time.dim_time_generator import (
+            generate_dim_time,
+        )
+
+        df = generate_dim_time(
+            start_date=start_date,
+            end_date=end_date,
+            week_start=week_start,
+            fiscal_year_start=fiscal_year_start,
+        )
+        return df.to_csv(index=False), len(df), None
+    except Exception as exc:
+        return None, None, str(exc)
+
+
+def _kpi_emit_to_bytes(
+    config_path: str,
+) -> tuple[bytes | None, bytes | None, str | None]:
+    """Emit DAX and TMSL to a temp dir, read back bytes, discard temp files.
+
+    Returns (dax_bytes, tmsl_bytes, None) or (None, None, error_message).
+    No persistent writes — temp dir is deleted on context exit.
+    """
+    try:
+        from data_quality_toolkit.application.workflow.kpi import emit_kpi_artifacts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            emit_kpi_artifacts(
+                config_path,
+                tmp_path / "measures.dax",
+                tmp_path / "model.tmsl.json",
+            )
+            dax_bytes = (tmp_path / "measures.dax").read_bytes()
+            tmsl_bytes = (tmp_path / "model.tmsl.json").read_bytes()
+        return dax_bytes, tmsl_bytes, None
+    except Exception as exc:
+        return None, None, str(exc)
+
+
+def _kpi_graph_to_str(
+    config_path: str,
+    graph_format: str = "mermaid",
+) -> tuple[str | None, str | None]:
+    """Export KPI graph to a temp file, read back as string, discard temp file.
+
+    Returns (graph_content, None) or (None, error_message).
+    No persistent writes — temp dir is deleted on context exit.
+    """
+    try:
+        from data_quality_toolkit.application.workflow.kpi import export_kpi_graph
+
+        ext = ".dot" if graph_format == "graphviz" else ".mmd"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / f"graph{ext}"
+            export_kpi_graph(config_path, out, graph_format=graph_format)  # type: ignore[arg-type]
+            content = out.read_text(encoding="utf-8")
+        return content, None
+    except Exception as exc:
+        return None, str(exc)
 
 
 def _render_eda_univariate(st: Any, df: pd.DataFrame) -> None:
@@ -165,20 +262,97 @@ def _render_preprocessing_plan(st: Any, df: pd.DataFrame) -> None:
     if not plan:
         st.info("No columns to analyse.")
         return
-    st.dataframe(pd.DataFrame(plan))
+    plan_df = pd.DataFrame(plan)
+    st.dataframe(plan_df)
+    st.download_button(
+        "Download recommendations as CSV",
+        data=plan_df.to_csv(index=False),
+        file_name="preprocessing_recommendations.csv",
+        mime=_MIME_CSV,
+    )
+
+
+def _render_large_data_profile_overview(st: Any, envelope: dict[str, Any]) -> None:
+    """Render profile-only view for large-data mode.
+
+    No DataFrame, no EDA, no assessment, no preprocessing plan.
+    Shows: persistent warning banner, row/col counts, null table, dtype table.
+    """
+    st.warning(_LARGE_MODE_BANNER)
+    profile = envelope.get("profile") or {}
+    st.write(
+        f"**Dataset Profile (approximate):** "
+        f"{profile.get('rows', '?')} rows × {profile.get('cols', '?')} columns"
+    )
+    overview = _build_overview_table(profile)
+    if not overview:
+        st.info("No column data available.")
+        return
+    st.subheader("Column Analysis")
+    overview_df = pd.DataFrame(overview)
+    st.dataframe(overview_df)
+    st.download_button(
+        "Download column analysis as CSV",
+        data=overview_df.to_csv(index=False),
+        file_name="column_analysis.csv",
+        mime=_MIME_CSV,
+    )
+    null_df = pd.DataFrame(
+        {"null_pct": [r["null_pct"] for r in overview]},
+        index=[r["column"] for r in overview],
+    )
+    if null_df["null_pct"].sum() > 0:
+        st.caption("Null % by column")
+        st.bar_chart(null_df)
+    unsupported = envelope.get("unsupported_metrics") or []
+    if unsupported:
+        st.caption(f"Metrics unavailable in large-file mode: {', '.join(unsupported)}")
+
+
+def _render_data_overview_large_mode(st: Any, csv_path: str) -> None:
+    """Large-data mode branch: chunked profile-only, no full-DataFrame load."""
+    chunksize = int(
+        st.number_input(
+            "Chunk size (rows per chunk)",
+            min_value=1_000,
+            max_value=1_000_000,
+            value=100_000,
+            step=10_000,
+        )
+    )
+    envelope, err = _load_profile_chunked(csv_path, chunksize)
+    if err is not None:
+        st.error(f"⚠️ Profile Error: {err}")
+        return
+    if envelope is None:
+        return
+    _render_large_data_profile_overview(st, envelope)
 
 
 def _render_data_overview(st: Any) -> None:
     """Render the Data Overview section: shape, per-column table, stats, duplicates."""
     st.header("Data Overview")
-    overview_csv = st.text_input("CSV path for data overview", placeholder="path/to/data.csv")
+    st.caption("Perform automated quality assessment on a CSV file.")
+    overview_csv = st.text_input("CSV path", placeholder="e.g., ./data/my_dataset.csv")
     if not overview_csv:
-        st.info("Enter a CSV path to see a data overview.")
+        st.info("💡 Enter a CSV path above to start profiling.")
+        return
+
+    large_mode = st.checkbox(
+        "Large-data mode (profile-only, chunked streaming)",
+        help=(
+            "Enable for files too large to load into memory. "
+            "Uses chunked streaming — no full-DataFrame load. "
+            "Assessment, EDA, export, and preprocessing plan are disabled."
+        ),
+    )
+    if large_mode:
+        _render_data_overview_large_mode(st, overview_csv)
         return
 
     df, out, err = _load_df_and_assess(overview_csv)
     if err is not None:
-        st.error(f"CSV error: {err}")
+        st.error(f"⚠️ Assessment Error: {err}")
         return
     if df is None or out is None:
         return
@@ -187,16 +361,39 @@ def _render_data_overview(st: Any) -> None:
     assessment = out["assessment"]
     score = float(assessment["score"])
     issues = list(assessment.get("issues") or [])
-    st.metric("Quality Score", f"{score:.2%}")
-    st.caption(f"Issues flagged: {len(issues)}")
-    if issues:
-        st.dataframe(pd.DataFrame(issues))
 
-    st.write(f"Shape: {profile['rows']} rows x {profile['cols']} columns")
-    st.write(f"Memory: {profile['memory_mb']:.2f} MB")
-    st.subheader("Columns")
+    st.divider()
+    metric_col1, metric_col2 = st.columns(2)
+    with metric_col1:
+        st.metric("Quality Score", f"{score:.2%}")
+    with metric_col2:
+        st.metric("Issues Flagged", len(issues))
+
+    if issues:
+        issues_df = pd.DataFrame(issues)
+        with st.expander("View Flagged Issues"):
+            st.dataframe(issues_df)
+            st.download_button(
+                "Download issues as CSV",
+                data=issues_df.to_csv(index=False),
+                file_name="flagged_issues.csv",
+                mime=_MIME_CSV,
+            )
+
+    st.write(
+        f"**Dataset Profile**: {profile['rows']} rows × {profile['cols']} columns | {profile['memory_mb']:.2f} MB"
+    )
+
+    st.subheader("Column Analysis")
     overview = _build_overview_table(profile)
-    st.table(overview)
+    overview_df = pd.DataFrame(overview)
+    st.dataframe(overview_df)
+    st.download_button(
+        "Download column analysis as CSV",
+        data=overview_df.to_csv(index=False),
+        file_name="column_analysis.csv",
+        mime=_MIME_CSV,
+    )
     null_df = pd.DataFrame(
         {"null_pct": [r["null_pct"] for r in overview]},
         index=[r["column"] for r in overview],
@@ -217,26 +414,24 @@ def _render_data_overview(st: Any) -> None:
     _render_preprocessing_plan(st, df)
 
 
-def main() -> None:
-    try:
-        import streamlit as st
-    except ImportError as exc:
-        raise RuntimeError(
-            "Streamlit is not installed. "
-            "Install the UI extra when available: pip install data-quality-toolkit[ui]"
-        ) from exc
-
-    st.title("Data Quality Toolkit Dashboard")
-    st.caption("Phase 4 dashboard")
-
-    _render_data_overview(st)
-
+def _render_run_history(st: Any) -> None:
+    """Render the Run History section: trend chart and latest issues breakdown."""
     st.header("Run History")
-    db_path_str = st.text_input("Database path", placeholder="path/to/dqt.db")
-    dataset_id = st.text_input("Dataset ID", placeholder="my_dataset")
+    st.caption("Load historical audit data from the DQT database.")
+    st.info(
+        "**How to generate run history:** run `dqt export <file.csv> --outdir <dir>` at least once. "
+        "This writes `<dir>/dqt.db` and `<dir>/star/quality_report.json`. "
+        "The **Dataset ID** is the `dataset_id` field inside `quality_report.json` "
+        "(example: `sha1:a3f2...`). Run export again to accumulate trend data."
+    )
+    db_path_str = st.text_input("Database path", placeholder="e.g., ./dist/dqt.db")
+    dataset_id = st.text_input(
+        "Dataset ID",
+        placeholder="e.g., sha1:a3f2… (from dist/star/quality_report.json)",
+    )
 
     if not db_path_str or not dataset_id:
-        st.info("Enter a database path and dataset ID to load run history.")
+        st.info("💡 Enter a database path and dataset ID above to load run history.")
         return
 
     records, err = _load_run_history(db_path_str, dataset_id)
@@ -269,6 +464,256 @@ def main() -> None:
             st.table(cat)
 
     st.dataframe(records)
+
+
+def _export_csv_to_dir(
+    csv_path: str,
+    output_dir: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Validate output_dir with path guard, then call export_csv. Returns (result, None) or (None, error)."""
+    try:
+        from data_quality_toolkit.shared.path_guard import ensure_safe_output_dir
+
+        safe_dir = ensure_safe_output_dir(output_dir.strip(), create=True)
+    except Exception as exc:
+        return None, str(exc)
+    try:
+        from data_quality_toolkit.api import export_csv
+
+        result = export_csv(csv_path.strip(), output_dir=safe_dir)
+        return result, None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def _render_export(st: Any) -> None:
+    """Render the Export tab — CLI/API guidance and optional server-side write."""
+    st.header("Export")
+    st.caption("Run the full pipeline and export star schema artifacts.")
+    st.markdown(
+        "Use the CLI or Python API to run the full profile → assess → star schema pipeline "
+        "and write artifacts to disk."
+    )
+    st.subheader("CLI")
+    st.code("dqt export data.csv --outdir ./dist", language="bash")
+    st.subheader("Python API")
+    st.code(
+        "from data_quality_toolkit import export_csv\n"
+        'result = export_csv("data.csv", output_dir="./dist")',
+        language="python",
+    )
+    st.markdown(
+        "**Artifacts written to `./dist/`:**\n"
+        "- `dqt.db` — run history database\n"
+        "- `star/` — star schema CSV files\n"
+        "- `star/quality_report.json` — latest run summary\n"
+        "- `star/quality_history.jsonl` — full run history (used by `compare_runs`)"
+    )
+    st.info(
+        "Use the **Data Overview** tab for browser-download quality reports. "
+        "The server-write section below requires an absolute output directory path."
+    )
+
+    st.divider()
+    st.subheader("Write Export Files to Server Directory")
+    st.warning(
+        "**Server-side write:** Files will be written to the server/local filesystem. "
+        "Ensure the output directory is a safe absolute path and you have write permission."
+    )
+    export_csv_path = st.text_input(
+        "CSV file path to export",
+        placeholder="e.g., /data/dataset.csv",
+        key="export_csv_path",
+    )
+    export_out_dir = st.text_input(
+        "Output directory (absolute path)",
+        placeholder="e.g., /home/user/exports/dist",
+        key="export_out_dir",
+    )
+    confirmed = st.checkbox("I confirm: write export files to the directory above")
+    if st.button("Run export and write to directory", key="export_run_btn"):
+        if not export_csv_path or not export_out_dir:
+            st.error("Both CSV file path and output directory are required.")
+        elif not confirmed:
+            st.error("Check the confirmation box to enable server-side writes.")
+        else:
+            result, err = _export_csv_to_dir(export_csv_path, export_out_dir)
+            if err:
+                st.error(f"Export failed: {err}")
+            else:
+                export_paths = (result or {}).get("export_paths") or {}
+                st.success(
+                    f"✓ Export complete — {len(export_paths)} file(s) written to {export_out_dir}"
+                )
+                if export_paths:
+                    st.dataframe(
+                        pd.DataFrame([{"artifact": k, "path": v} for k, v in export_paths.items()])
+                    )
+
+
+def _render_kpi_artifacts(st: Any, config_path: str, kpi_count: int) -> None:
+    """Render DAX/TMSL/graph download buttons for a validated KPI catalog."""
+    st.divider()
+    st.subheader("Download Artifacts")
+
+    dax_bytes, tmsl_bytes, emit_err = _kpi_emit_to_bytes(config_path)
+    if emit_err:
+        st.warning(f"DAX/TMSL generation unavailable: {emit_err}")
+        st.code(
+            "dqt kpi-emit --config config/kpi_catalog.yaml "
+            "--dax-out measures.dax --tmsl-out model.tmsl.json",
+            language="bash",
+        )
+    else:
+        dl_col1, dl_col2 = st.columns(2)
+        with dl_col1:
+            st.download_button(
+                "Download DAX measures",
+                data=dax_bytes,
+                file_name="measures.dax",
+                mime="text/plain",
+            )
+        with dl_col2:
+            st.download_button(
+                "Download TMSL model",
+                data=tmsl_bytes,
+                file_name="model.tmsl.json",
+                mime="application/json",
+            )
+
+    graph_content, graph_err = _kpi_graph_to_str(config_path, graph_format="mermaid")
+    if graph_err:
+        st.warning(f"Graph generation unavailable: {graph_err}")
+        st.code(
+            "dqt kpi-graph --config config/kpi_catalog.yaml --out kpi_graph.mmd",
+            language="bash",
+        )
+    else:
+        st.download_button(
+            "Download Mermaid graph",
+            data=(graph_content or "").encode(),
+            file_name="kpi_graph.mmd",
+            mime="text/plain",
+        )
+        if kpi_count <= 20 and graph_content:
+            with st.expander("Preview graph"):
+                preview_lines = (graph_content or "").splitlines()[:30]
+                st.code("\n".join(preview_lines), language="text")
+
+
+def _render_kpi_catalog(st: Any) -> None:
+    """Render the KPI Catalog tab — validate catalog and download generated artifacts."""
+    st.header("KPI Catalog")
+    st.caption("Validate a KPI catalog YAML and download DAX, TMSL, and dependency graph.")
+
+    config_path = st.text_input(
+        "KPI catalog YAML path",
+        placeholder="e.g., config/kpi_catalog.yaml",
+    )
+    if not config_path:
+        st.info("💡 Enter a KPI catalog path above to validate.")
+        return
+
+    result, err = _run_kpi_validate(config_path)
+    if err is not None:
+        st.error(f"⚠️ Validation error: {err}")
+        return
+
+    if result is None:
+        return
+
+    if result.get("status") == "invalid":
+        st.error(f"✗ Catalog invalid — reason: {result.get('reason')}")
+        cycles = result.get("cycles") or []
+        if cycles:
+            st.subheader("Dependency Cycles")
+            for cycle in cycles:
+                st.write(" → ".join(str(c) for c in cycle))
+        return
+
+    kpi_count = result.get("kpis", 0)
+    dep_count = result.get("dependencies", 0)
+    st.success(f"✓ Catalog valid — {kpi_count} KPIs, {dep_count} dependencies")
+
+    by_grain = result.get("by_grain") or {}
+    if by_grain:
+        st.subheader("KPIs by Grain")
+        grain_df = pd.DataFrame([{"grain": g, "kpi_count": c} for g, c in by_grain.items()])
+        st.dataframe(grain_df)
+
+    _render_kpi_artifacts(st, config_path, kpi_count)
+
+
+def _render_dim_time(st: Any) -> None:
+    """Render the Dim Time tab — generate and download time dimension CSV in memory."""
+    st.header("Dim Time")
+    st.caption("Generate a time dimension table and download as CSV.")
+
+    start_date = st.text_input("Start date (YYYY-MM-DD)", value="2018-01-01")
+    end_date = st.text_input("End date (YYYY-MM-DD)", value="2030-12-31")
+    week_start = st.number_input(
+        "Week start day (1=Mon … 7=Sun)", min_value=1, max_value=7, value=1, step=1
+    )
+
+    use_fiscal = st.checkbox("Custom fiscal year start month")
+    fiscal_year_start: int | None = None
+    if use_fiscal:
+        fiscal_year_start = st.number_input(
+            "Fiscal year start month (1–12)", min_value=1, max_value=12, value=7, step=1
+        )
+
+    if not start_date or not end_date:
+        st.info("💡 Enter start and end dates above.")
+        return
+
+    csv_str, row_count, err = _generate_dim_time_csv(
+        start_date=start_date,
+        end_date=end_date,
+        week_start=int(week_start),
+        fiscal_year_start=int(fiscal_year_start) if fiscal_year_start is not None else None,
+    )
+    if err:
+        st.error(f"⚠️ Generation error: {err}")
+        return
+
+    st.success(f"✓ {row_count:,} rows — {start_date} to {end_date}")
+    st.download_button(
+        "Download dim_time.csv",
+        data=(csv_str or "").encode(),
+        file_name="dim_time.csv",
+        mime=_MIME_CSV,
+    )
+
+
+def main() -> None:
+    try:
+        import streamlit as st
+    except ImportError as exc:
+        raise RuntimeError(
+            "Streamlit is not installed. "
+            "Install the UI extra when available: pip install data-quality-toolkit[ui]"
+        ) from exc
+
+    st.title("Data Quality Toolkit Dashboard")
+
+    tab_overview, tab_history, tab_export, tab_kpi, tab_time = st.tabs(
+        ["Data Overview", "Run History", "Export", "KPI Catalog", "Dim Time"]
+    )
+
+    with tab_overview:
+        _render_data_overview(st)
+
+    with tab_history:
+        _render_run_history(st)
+
+    with tab_export:
+        _render_export(st)
+
+    with tab_kpi:
+        _render_kpi_catalog(st)
+
+    with tab_time:
+        _render_dim_time(st)
 
 
 if __name__ == "__main__":

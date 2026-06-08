@@ -84,7 +84,7 @@ def _copy_model(template_dir: Path, output_dir: Path, files_created: list[str]) 
         "No model.pbit template was found.\n\n"
         "Power BI expects .pbit to be a ZIP package exported from Power BI Desktop.\n"
         "Create one with a BaseFolder parameter and drop it at:\n"
-        "  src/data_quality_toolkit/exporters/bi/templates/model.pbit\n",
+        "  src/data_quality_toolkit/adapters/exporters/bi/templates/model.pbit\n",
         encoding="utf-8",
     )
     files_created.append(str(readme))

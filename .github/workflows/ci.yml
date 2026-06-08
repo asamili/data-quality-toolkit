@@ -46,6 +46,10 @@ jobs:
       - name: MyPy
         run: mypy
 
+      # Architecture boundary contracts (import-linter installed via [dev,test])
+      - name: Architecture boundary contracts (import-linter)
+        run: lint-imports
+
       # Dependency CVE scan — blocking gate: build fails on known CVEs
       - name: pip-audit (dependency CVEs)
         run: pip-audit --desc

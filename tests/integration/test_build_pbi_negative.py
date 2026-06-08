@@ -45,7 +45,7 @@ def _make_star(tmp_path: Path) -> Path:
     test_csv.write_text("id,name,score\n1,Alice,95\n", encoding="utf-8")
 
     try:
-        pl = importlib.import_module("data_quality_toolkit.workflow.pipeline")
+        pl = importlib.import_module("data_quality_toolkit.application.workflow.pipeline")
     except Exception:
         pl = None
 

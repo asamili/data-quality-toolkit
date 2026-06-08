@@ -91,7 +91,7 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     cmd = [
         sys.executable,
         "-m",
-        "data_quality_toolkit.cli.main",
+        "data_quality_toolkit.adapters.cli.main",
         "--log-level",
         "ERROR",  # suppress INFO logs so stdout is pure JSON
         "--log-format",

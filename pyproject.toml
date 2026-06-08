@@ -132,7 +132,7 @@ fixable = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B018", "S101", "S108"]  # Allow asserts, expressions, and /tmp paths in tests
-"src/data_quality_toolkit/adapters/cli/main.py" = ["B018"]
+"src/data_quality_toolkit/cli/main.py" = ["B018"]
 "scripts/*" = ["S101"]  # Allow asserts in scripts
 
 # mccabe: give the already-selected C90 rule an enforced ceiling
@@ -313,5 +313,5 @@ ignore_imports = [
     "data_quality_toolkit.adapters.ui.eda -> data_quality_toolkit.application.workflow.preprocessing",
     # ui/app uses storage reader directly (adapter → adapter, permitted)
     "data_quality_toolkit.adapters.ui.app -> data_quality_toolkit.adapters.storage.connection",
-    "data_quality_toolkit.adapters.ui.app -> data_quality_toolkit.adapters.reader",
+    "data_quality_toolkit.adapters.ui.app -> data_quality_toolkit.adapters.storage.reader",
 ]

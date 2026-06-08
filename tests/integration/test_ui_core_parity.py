@@ -1,19 +1,12 @@
 """UI <-> core profiling parity guardrail.
 
-The Streamlit dashboard profiles a CSV via:
-    ui.app._load_csv (raw pandas.read_csv) -> profiling_orchestrator.run_profiling
-
-The core pipeline profiles the same CSV via:
-    workflow.pipeline.run_profile (loaders.load_csv -> run_profiling)
-
-Both ultimately call run_profiling, so for a plain, well-formed CSV their
-profile MATH must agree. This test pins that agreement on stable fields, and
-documents the known by-design differences (dataset_id, input-option handling,
-and the absence of an assessment/score on the UI path) without touching
-production code.
+Both the Streamlit dashboard (_run_assess_csv) and the core Python API
+(api.assess_csv) route through the same hardened load_csv -> run_profiling ->
+assess pipeline. This test pins that agreement on stable fields and confirms
+assessment output (score, issues) matches between surfaces.
 
 Assertions are limited to deterministic fields. Volatile fields (run_id, ts)
-and loader-policy fields (dataset_id) are intentionally excluded.
+are intentionally excluded.
 """
 
 from __future__ import annotations

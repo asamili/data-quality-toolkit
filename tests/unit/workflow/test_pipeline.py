@@ -28,12 +28,12 @@ def _make_assessment(**kw):
 _META = {"dataset_id": "ds-1", "source_path": "a.csv"}
 
 
-@patch("data_quality_toolkit.workflow.pipeline.persist_export_run")
-@patch("data_quality_toolkit.workflow.pipeline.connect")
-@patch("data_quality_toolkit.workflow.pipeline.ensure_db")
-@patch("data_quality_toolkit.workflow.pipeline.assess")
-@patch("data_quality_toolkit.workflow.pipeline.run_profiling")
-@patch("data_quality_toolkit.workflow.pipeline.load_csv")
+@patch("data_quality_toolkit.application.workflow.pipeline.persist_export_run")
+@patch("data_quality_toolkit.application.workflow.pipeline.connect")
+@patch("data_quality_toolkit.application.workflow.pipeline.ensure_db")
+@patch("data_quality_toolkit.application.workflow.pipeline.assess")
+@patch("data_quality_toolkit.application.workflow.pipeline.run_profiling")
+@patch("data_quality_toolkit.application.workflow.pipeline.load_csv")
 def test_run_assessment_without_db_path_does_not_persist(
     mock_load, mock_profile, mock_assess, mock_ensure, mock_connect, mock_persist
 ):
@@ -51,12 +51,12 @@ def test_run_assessment_without_db_path_does_not_persist(
     assert "duration_secs" in out
 
 
-@patch("data_quality_toolkit.workflow.pipeline.persist_export_run")
-@patch("data_quality_toolkit.workflow.pipeline.connect")
-@patch("data_quality_toolkit.workflow.pipeline.ensure_db")
-@patch("data_quality_toolkit.workflow.pipeline.assess")
-@patch("data_quality_toolkit.workflow.pipeline.run_profiling")
-@patch("data_quality_toolkit.workflow.pipeline.load_csv")
+@patch("data_quality_toolkit.application.workflow.pipeline.persist_export_run")
+@patch("data_quality_toolkit.application.workflow.pipeline.connect")
+@patch("data_quality_toolkit.application.workflow.pipeline.ensure_db")
+@patch("data_quality_toolkit.application.workflow.pipeline.assess")
+@patch("data_quality_toolkit.application.workflow.pipeline.run_profiling")
+@patch("data_quality_toolkit.application.workflow.pipeline.load_csv")
 def test_run_assessment_with_db_path_calls_persist(
     mock_load, mock_profile, mock_assess, mock_ensure, mock_connect, mock_persist, tmp_path
 ):
@@ -77,12 +77,12 @@ def test_run_assessment_with_db_path_calls_persist(
     mock_con.close.assert_called_once()
 
 
-@patch("data_quality_toolkit.workflow.pipeline.persist_export_run")
-@patch("data_quality_toolkit.workflow.pipeline.connect")
-@patch("data_quality_toolkit.workflow.pipeline.ensure_db")
-@patch("data_quality_toolkit.workflow.pipeline.assess")
-@patch("data_quality_toolkit.workflow.pipeline.run_profiling")
-@patch("data_quality_toolkit.workflow.pipeline.load_csv")
+@patch("data_quality_toolkit.application.workflow.pipeline.persist_export_run")
+@patch("data_quality_toolkit.application.workflow.pipeline.connect")
+@patch("data_quality_toolkit.application.workflow.pipeline.ensure_db")
+@patch("data_quality_toolkit.application.workflow.pipeline.assess")
+@patch("data_quality_toolkit.application.workflow.pipeline.run_profiling")
+@patch("data_quality_toolkit.application.workflow.pipeline.load_csv")
 def test_run_assessment_persist_payload_fields(
     mock_load, mock_profile, mock_assess, mock_ensure, mock_connect, mock_persist, tmp_path
 ):
@@ -110,9 +110,9 @@ def test_run_assessment_persist_payload_fields(
     assert "duration_secs" in kwargs
 
 
-@patch("data_quality_toolkit.workflow.pipeline.assess")
-@patch("data_quality_toolkit.workflow.pipeline.run_profiling")
-@patch("data_quality_toolkit.workflow.pipeline.load_csv")
+@patch("data_quality_toolkit.application.workflow.pipeline.assess")
+@patch("data_quality_toolkit.application.workflow.pipeline.run_profiling")
+@patch("data_quality_toolkit.application.workflow.pipeline.load_csv")
 def test_run_assessment_output_includes_duration_secs(mock_load, mock_profile, mock_assess):
     mock_load.return_value = (MagicMock(), _META)
     mock_profile.return_value = _make_prof()

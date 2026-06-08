@@ -39,7 +39,7 @@ Do not modify these unless explicitly approved:
 ## Setup
 
 ```bash
-git clone https://github.com/asamili/data-quality-toolkit
+git clone <repo-url>
 cd data-quality-toolkit
 <path-to-python> -m pip install -e ".[dev]"
 <path-to-python> -m pre_commit install

@@ -1,8 +1,8 @@
 # Data Quality Toolkit (DQT)
 
-[![Python](https://img.shields.io/badge/Python-3.12+-green)](https://github.com/asamili/data-quality-toolkit)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](https://github.com/asamili/data-quality-toolkit/blob/main/LICENSE)
-[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue)](https://github.com/asamili/data-quality-toolkit/actions)
+[![Python](https://img.shields.io/badge/Python-3.12+-green)]()
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)]()
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue)]()
 
 **CLI-first data quality toolkit for CSV validation, issue detection, and BI-ready export artifacts.**
 
@@ -87,7 +87,7 @@ The next productization steps are expected to focus on:
 
 ```bash
 # Clone the repository
-git clone https://github.com/asamili/data-quality-toolkit
+git clone <repo-url>
 cd data-quality-toolkit
 
 # Create virtual environment
@@ -410,12 +410,12 @@ data-quality-toolkit/
 │   │   ├── loaders/           # CSV loading and validation
 │   │   ├── exporters/         # Star-schema CSV, quality_report, Power BI, dim_time
 │   │   └── storage/           # SQLite-backed run history
-│   ├── shared/                # Cross-cutting constants, settings, exceptions
-│   └── utils/                 # Helpers, logging, validators
-├── tests/                     # Test suites (unit/, integration/, e2e/)
+│   ├── api.py                 # Public Python API (profile_csv, assess_csv, export_csv, compare_runs, plan_csv)
+│   └── shared/                # Cross-cutting constants, settings, exceptions
+├── tests/                     # Test suites (unit/, integration/)
 ├── docs/                      # Documentation and demo stories
 ├── examples/                  # Demo packages and sample data
-└── config/                    # KPI catalog and rule contract examples
+└── scripts/                   # Automation scripts
 ```
 
 ## 🧪 Testing
@@ -430,7 +430,6 @@ pytest --cov=data_quality_toolkit --cov-report=html
 # Run specific test categories
 pytest tests/unit/
 pytest tests/integration/
-pytest tests/e2e/
 ```
 
 ## 📚 Documentation
@@ -463,7 +462,7 @@ make test
 - **CLI-first:** no REST API in this release; an optional local Streamlit dashboard is available via `dqt dashboard` — install with `pip install data-quality-toolkit[ui]`. The dashboard is a local viewer, not a hosted/multi-user web product
 - **CSV input only:** other file formats are not supported
 - **Minimal config:** CLI flags drive all behavior; an optional `dqt.yaml` sets defaults for `null_threshold`, `fail_under`, and `outdir` only
-- **No streaming / chunking:** large files are loaded fully into memory via pandas
+- **Chunked/streaming support (partial):** `profile_csv(chunksize=N)` / `dqt profile --chunksize N` stream large files without a full in-memory load. `assess_csv(chunksize=N)` / `dqt assess --chunksize N` support *partial* chunked assessment — honest `completeness_score` and a subset of rules (null/completeness, all-null, required-column, dtype-mismatch, column-name hygiene); does not produce a full `quality_score` and skips rules that need unique counts or a full DataFrame (constant-column, high-cardinality, outliers, accepted-values, uniqueness). The UI dashboard has an opt-in large-data/profile-only mode that routes to chunked profiling and disables full-data EDA, full assessment, export, and preprocessing plan. Export/star-schema and compare still require full in-memory load. Unique/distinct counts, outlier detection, accepted-values and uniqueness checks, and full EDA remain unavailable in chunked mode
 - **No PII detection or masking**
 
 ## 📄 License
@@ -476,8 +475,8 @@ Built with pandas, rich, pydantic, and other open-source libraries.
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/asamili/data-quality-toolkit/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/asamili/data-quality-toolkit/discussions)
+- **Issues**: [GitHub Issues](../../issues)
+- **Discussions**: [GitHub Discussions](../../discussions)
 
 ---
 

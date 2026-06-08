@@ -2,7 +2,7 @@
 
 Proves that the SAME CSV produces matching assessment output through:
   * the public Python API (data_quality_toolkit.assess_csv)
-  * the CLI subprocess path (python -m data_quality_toolkit.cli.main assess)
+  * the CLI subprocess path (python -m data_quality_toolkit.adapters.cli.main assess)
 
 Both interfaces delegate to workflow.pipeline.run_assessment, so their core
 results must agree. This test is the guardrail that catches silent drift if
@@ -63,7 +63,7 @@ def _run_cli_assess(csv: Path) -> dict[str, Any]:
     cmd = [
         sys.executable,
         "-m",
-        "data_quality_toolkit.cli.main",
+        "data_quality_toolkit.adapters.cli.main",
         "--log-level",
         "ERROR",
         "--log-format",

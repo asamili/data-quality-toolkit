@@ -1,4 +1,4 @@
-"""Unit tests for data_quality_toolkit.workflow.preprocessing."""
+"""Unit tests for data_quality_toolkit.application.workflow.preprocessing."""
 
 from __future__ import annotations
 
