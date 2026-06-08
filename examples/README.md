@@ -13,7 +13,7 @@ Use these examples when you want to:
 
 Start with the full demo package:
 
-- [Demo package — Uber pickups case study](demo/README.md)
+- [Demo package — sample orders dataset](demo/README.md)
 
 That guide shows the standard happy-path workflow and links to the issue-showcase demo.
 
@@ -27,7 +27,6 @@ examples/
   01_quickstart.ipynb
   demo/
     README.md
-    Uber_Data.csv
     sample_orders.csv
     issue_showcase/
       README.md
@@ -47,8 +46,7 @@ examples/
 
 | File | Description | Best for |
 |---|---|---|
-| `examples/demo/Uber_Data.csv` | Uber NYC pickup dataset used by the main demo package | Happy-path profiling, assessment, and export |
-| `examples/demo/sample_orders.csv` | Synthetic business orders dataset with mixed regions, statuses, and nullable fields | Business-domain quality checks and issue discovery |
+| `examples/demo/sample_orders.csv` | Synthetic business orders dataset — multi-region, mixed statuses, nullable fields | Primary demo, business-domain quality checks |
 | `examples/demo/issue_showcase/issue_demo.csv` | Tiny crafted dataset designed to trigger quality rules | Demonstrating issue detection |
 | `examples/tiny.csv` | Minimal three-row CSV | Fast smoke checks |
 | `examples/demo.csv` | Small simple CSV with a missing value | Basic CLI testing |
@@ -60,19 +58,19 @@ Run these commands from the repository root.
 ### Profile a dataset
 
 ```bash
-python -m data_quality_toolkit.cli.main profile examples/demo/Uber_Data.csv
+python -m data_quality_toolkit.adapters.cli.main profile examples/demo/sample_orders.csv
 ```
 
 ### Assess quality
 
 ```bash
-python -m data_quality_toolkit.cli.main assess examples/demo/Uber_Data.csv
+python -m data_quality_toolkit.adapters.cli.main assess examples/demo/sample_orders.csv
 ```
 
 ### Export quality artifacts
 
 ```bash
-python -m data_quality_toolkit.cli.main export examples/demo/Uber_Data.csv --outdir dist/demo
+python -m data_quality_toolkit.adapters.cli.main export examples/demo/sample_orders.csv --outdir dist/demo
 ```
 
 The export command writes star-schema quality artifacts under `dist/demo/`.

@@ -29,7 +29,7 @@ Quality score: **0.66** (66%).
 
 > **Windows note:** If `dqt` is not on your PATH, replace `dqt` with your
 > full interpreter path — for example:
-> `<path-to-python> -m data_quality_toolkit.cli.main assess ...`
+> `<path-to-python> -m data_quality_toolkit.adapters.cli.main assess ...`
 > See [Windows-safe invocation](../../README.md#windows-safe-invocation).
 
 ### 1. Strict gate — expected to fail (exit 2)

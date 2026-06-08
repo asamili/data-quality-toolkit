@@ -101,5 +101,5 @@ runs and build up the score trend.
 
 > **Windows note:** if `dqt` is not on your PATH, invoke the CLI via the
 > interpreter, for example:
-> `<path-to-python> -m data_quality_toolkit.cli.main export data\orders.csv --outdir dist`.
+> `<path-to-python> -m data_quality_toolkit.adapters.cli.main export data\orders.csv --outdir dist`.
 > See [Windows-safe invocation](../../README.md#windows-safe-invocation).

@@ -1,6 +1,6 @@
 # Demo Package — Issue Showcase
 
-This demo is the issue-focused counterpart to the Uber happy-path demo.
+This demo is the issue-focused counterpart to the happy-path demo.
 It uses a tiny crafted CSV that deterministically triggers multiple quality rules
 so you can see DQT's detection in action without needing real data.
 
@@ -33,7 +33,7 @@ so you can see DQT's detection in action without needing real data.
 ### Step 1 — Profile
 
 ```bash
-<path-to-python> -m data_quality_toolkit.cli.main profile examples/demo/issue_showcase/issue_demo.csv
+<path-to-python> -m data_quality_toolkit.adapters.cli.main profile examples/demo/issue_showcase/issue_demo.csv
 ```
 
 You will see per-column stats including null counts and distinct-value counts.
@@ -42,7 +42,7 @@ Notice `status` has `unique: 1` and `score` has `nulls: 4`.
 ### Step 2 — Assess (default null threshold = 0.20)
 
 ```bash
-<path-to-python> -m data_quality_toolkit.cli.main assess examples/demo/issue_showcase/issue_demo.csv
+<path-to-python> -m data_quality_toolkit.adapters.cli.main assess examples/demo/issue_showcase/issue_demo.csv
 ```
 
 Expected issues:
@@ -59,7 +59,7 @@ The overall quality score will be well below 1.0.
 ### Step 3 — Export star schema artifacts
 
 ```bash
-<path-to-python> -m data_quality_toolkit.cli.main export examples/demo/issue_showcase/issue_demo.csv --outdir dist/issue_showcase
+<path-to-python> -m data_quality_toolkit.adapters.cli.main export examples/demo/issue_showcase/issue_demo.csv --outdir dist/issue_showcase
 ```
 
 Produces the following artifacts under `dist/issue_showcase/`:
@@ -87,14 +87,14 @@ Default is `0.20` (20%). Lower it to catch smaller gaps:
 
 ```bash
 # Flag any column with ≥ 5% missing values
-<path-to-python> -m data_quality_toolkit.cli.main assess examples/demo/issue_showcase/issue_demo.csv --null-threshold 0.05
+<path-to-python> -m data_quality_toolkit.adapters.cli.main assess examples/demo/issue_showcase/issue_demo.csv --null-threshold 0.05
 ```
 
 Raise it to suppress low-severity missing-data noise on messy real-world data:
 
 ```bash
 # Only flag columns with ≥ 50% missing values
-<path-to-python> -m data_quality_toolkit.cli.main assess examples/demo/issue_showcase/issue_demo.csv --null-threshold 0.50
+<path-to-python> -m data_quality_toolkit.adapters.cli.main assess examples/demo/issue_showcase/issue_demo.csv --null-threshold 0.50
 ```
 
 ---
@@ -104,7 +104,7 @@ Raise it to suppress low-severity missing-data noise on messy real-world data:
 `compare` works here too. After two or more `export` runs against this dataset:
 
 ```bash
-<path-to-python> -m data_quality_toolkit.cli.main compare examples/demo/issue_showcase/issue_demo.csv --outdir dist/issue_showcase
+<path-to-python> -m data_quality_toolkit.adapters.cli.main compare examples/demo/issue_showcase/issue_demo.csv --outdir dist/issue_showcase
 ```
 
 The first compare will return `not_enough_runs` if only one export run exists.
@@ -120,5 +120,5 @@ The `dist/` directory is git-ignored. Do not commit anything under `dist/`.
 
 ## Further reading
 
-- [Uber happy-path demo](../README.md) — clean data, no issues, full export walkthrough
+- [Happy-path demo](../README.md) — clean data, no issues, full export walkthrough
 - [Full CLI reference](../../../README.md)

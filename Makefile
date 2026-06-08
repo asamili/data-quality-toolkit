@@ -10,7 +10,7 @@ RUFF := $(PYTHON) -m ruff
 BLACK := $(PYTHON) -m black
 ISORT := $(PYTHON) -m isort
 MYPY := $(PYTHON) -m mypy
-CLI := $(PYTHON) -m data_quality_toolkit.cli.main
+CLI := $(PYTHON) -m data_quality_toolkit.adapters.cli.main
 
 .PHONY: help install install-dev dev lint format type check \
         test test-unit test-assessment test-cli test-workflow test-exporters \
@@ -86,15 +86,15 @@ test-exporters:
 	$(PYTEST) tests/unit/exporters/ -v --no-cov
 
 demo-happy:
-	$(CLI) export examples/demo/Uber_Data.csv --outdir dist/demo
+	$(CLI) export examples/demo/sample_orders.csv --outdir dist/demo
 
 demo-issues:
 	$(CLI) export examples/demo/issue_showcase/issue_demo.csv --outdir dist/issue_showcase
 
 compare-demo:
-	$(CLI) export examples/demo/Uber_Data.csv --outdir dist/demo
-	$(CLI) export examples/demo/Uber_Data.csv --outdir dist/demo
-	$(CLI) compare examples/demo/Uber_Data.csv --outdir dist/demo
+	$(CLI) export examples/demo/sample_orders.csv --outdir dist/demo
+	$(CLI) export examples/demo/sample_orders.csv --outdir dist/demo
+	$(CLI) compare examples/demo/sample_orders.csv --outdir dist/demo
 
 clean:
 	@echo Cleaning generated artifacts...

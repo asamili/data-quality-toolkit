@@ -38,7 +38,7 @@ paste output here
 
 ## Dataset / Demo Path
 
-<!-- e.g. examples/demo/Uber_Data.csv, or describe the CSV structure -->
+<!-- e.g. examples/demo/sample_orders.csv, or describe the CSV structure -->
 
 ## Expected Behavior
 

@@ -41,24 +41,23 @@ The format is inspired by Keep a Changelog and adapted for this project.
 ## [2.0.0] - 2026-05-29
 
 ### Added
-- Harden JSONL history writes with atomic-like append and fsync (DQT-ETL-001)
-- Add warning when malformed lines are skipped during history import (DQT-ETL-001)
-- Add CI performance regression guard (DQT-PERF-001)
-- Document v2 `dqt.yaml` rule contract with `config/v2_rules.yaml` example (DQT-VALUE-005)
+- Harden JSONL history writes with atomic-like append and fsync
+- Add warning when malformed lines are skipped during history import
+- Add CI performance regression guard
+- Document v2 `dqt.yaml` rule contract with `config/v2_rules.yaml` example
 
 ### Changed
 
-
-- Apply v2 per-column weights to completeness scoring and critical-column penalty multiplier to quality_score (DQT-VALUE-004)
-- Wire v2.0 `dqt.yaml` rule contract into issue detection (null, high-cardinality, and outlier thresholds, plus required columns) (DQT-VALUE-003)
-- Implement v2.0 `dqt.yaml` rule contract parser with support for `dataset` and `columns` sections (DQT-VALUE-002)
-- Remove unused `typer` dependency and stale references (DQT-DEP-001)
-- Remove obsolete `Initialize-Phase0.ps1` bootstrap script (DQT-SCRIPT-001)
-- Implement dependency reproducibility with `constraints.txt` and wired CI installs (DQT-DEP-002)
+- Apply v2 per-column weights to completeness scoring and critical-column penalty multiplier to quality_score
+- Wire v2.0 `dqt.yaml` rule contract into issue detection (null, high-cardinality, and outlier thresholds, plus required columns)
+- Implement v2.0 `dqt.yaml` rule contract parser with support for `dataset` and `columns` sections
+- Remove unused `typer` dependency and stale references
+- Remove obsolete `Initialize-Phase0.ps1` bootstrap script
+- Implement dependency reproducibility with `constraints.txt` and wired CI installs
 
 ### Security
 
-- Promote pip-audit CI step from advisory (`continue-on-error: true`) to blocking gate; build now fails on known CVEs (DQT-SEC-001)
+- Promote pip-audit CI step from advisory (`continue-on-error: true`) to blocking gate; build now fails on known CVEs
 
 ---
 
