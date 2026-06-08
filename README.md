@@ -480,4 +480,4 @@ Built with pandas, rich, pydantic, and other open-source libraries.
 
 ---
 
-**Version**: v2.0.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`), optional project config (`dqt.yaml`), and an optional local Streamlit dashboard (run history, data overview, EDA, preprocessing recommendations)
+**Version**: v2.1.0 | **Status**: Active development — CLI-first, CSV-first, SQLite-backed run history, pipeline quality gate (`--fail-under`), optional project config (`dqt.yaml`), and an optional local Streamlit dashboard (run history, data overview, EDA, preprocessing recommendations)

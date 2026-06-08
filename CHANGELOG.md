@@ -6,6 +6,38 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-06-08
+
+### Added
+
+- **Chunked streaming profiling**: `dqt profile --chunked` streams large CSV files in configurable chunks without loading the full dataset into memory.
+- **Chunked streaming assessment**: `dqt assess --chunked` supports partial quality assessment on large datasets using the chunked iterator.
+- `load_chunks` iterator for memory-efficient CSV processing.
+- Chunked aggregation primitives for per-chunk statistic accumulation and final aggregation.
+- `run_profile_chunked` and `run_assessment_chunked` workflow entry points.
+- Application ports abstraction for cleaner pipeline-to-loader interface decoupling.
+- KPI workflow API with CLI decoupled from domain coupling.
+- UI large-data chunked profile mode.
+- UI tabbed navigation, advanced workflow panels, improved onboarding, and empty states.
+- Guarded server-side export writes in the UI.
+- Scalability benchmark harness coverage.
+- Architecture boundary contracts verified with `import-linter`.
+- Path guard utility.
+
+### Changed
+
+- `SAMPLE_SIZE` runtime mutation replaced with explicit parameter threading.
+- Benchmark imports updated for the layered architecture layout.
+- README aligned with current CLI, API, and UI surfaces.
+- README clarified chunked V2 limitations and large-file guidance.
+
+### Fixed
+
+- Benchmark module import paths corrected after layered restructure.
+- v2 column rule contract key enforcement tightened in assessment integration.
+
+---
+
 ## [2.0.0] - 2026-05-29
 
 ### Added
