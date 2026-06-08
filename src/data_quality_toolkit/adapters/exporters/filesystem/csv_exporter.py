@@ -1,4 +1,4 @@
-"""Phase 1: Export star schema to CSV files."""
+"""Export star schema to CSV files."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from ...utils.helpers import ensure_dir
-from ...utils.logging import get_logger
+from data_quality_toolkit.utils.helpers import ensure_dir
+from data_quality_toolkit.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
