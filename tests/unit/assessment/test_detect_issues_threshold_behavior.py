@@ -7,7 +7,10 @@ import pandas as pd
 import pytest
 
 from data_quality_toolkit.domain.assessment.issue_detector import detect_advanced_issues
-from data_quality_toolkit.domain.assessment.quality_checker import detect_issues
+from data_quality_toolkit.domain.assessment.quality_checker import (
+    assess,
+    detect_issues,
+)
 
 
 def _ts() -> str:
@@ -100,3 +103,46 @@ def test_high_cardinality_above_threshold_flagged():
     cardinality_issues = [i for i in issues if i["type"] == "high_cardinality"]
     assert len(cardinality_issues) == 1
     assert cardinality_issues[0]["column"] == "cat"
+
+
+# ---------------------------------------------------------------------------
+# Column-level fail_under boundary behavior
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_column_gate_not_fired_when_absent():
+    # No fail_under in config → no column_quality_gate_failed issue
+    prof = _profile(10, [{"name": "a", "dtype": "float", "nulls": 5}])  # 50% complete
+    result = assess(prof, config={"columns": {}})
+    gate_issues = [i for i in result["issues"] if i["type"] == "column_quality_gate_failed"]
+    assert gate_issues == []
+
+
+@pytest.mark.unit
+def test_column_gate_not_fired_at_exact_boundary():
+    # 2/10 null → completeness = 0.8 exactly; gate = 0.8 → 0.8 < 0.8 is False → no issue
+    prof = _profile(10, [{"name": "a", "dtype": "float", "nulls": 2}])
+    result = assess(prof, config={"columns": {"a": {"fail_under": 0.8}}})
+    gate_issues = [i for i in result["issues"] if i["type"] == "column_quality_gate_failed"]
+    assert gate_issues == []
+
+
+@pytest.mark.unit
+def test_column_gate_fired_just_below_boundary():
+    # 3/10 null → completeness = 0.7; gate = 0.8 → 0.7 < 0.8 → issue
+    prof = _profile(10, [{"name": "a", "dtype": "float", "nulls": 3}])
+    result = assess(prof, config={"columns": {"a": {"fail_under": 0.8}}})
+    gate_issues = [i for i in result["issues"] if i["type"] == "column_quality_gate_failed"]
+    assert len(gate_issues) == 1
+    assert gate_issues[0]["column"] == "a"
+    assert gate_issues[0]["severity"] == "critical"
+    assert gate_issues[0]["category"] == "Completeness"
+
+
+@pytest.mark.unit
+def test_column_gate_issue_type_is_column_quality_gate_failed():
+    prof = _profile(10, [{"name": "b", "dtype": "int64", "nulls": 5}])
+    result = assess(prof, config={"columns": {"b": {"fail_under": 0.9}}})
+    types = [i["type"] for i in result["issues"]]
+    assert "column_quality_gate_failed" in types

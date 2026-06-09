@@ -30,6 +30,7 @@ SUPPORTED_COLUMN_RULE_KEYS: frozenset[str] = frozenset(
         "null_threshold",
         "high_cardinality_threshold",
         "outlier_threshold",
+        "fail_under",
         "unique",
         "dtype",
         "accepted_values",

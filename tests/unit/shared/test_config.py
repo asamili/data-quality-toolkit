@@ -211,3 +211,39 @@ def test_column_rules_not_mapping_raises(tmp_path):
     p = _write(tmp_path, "columns:\n  id: not_a_mapping\n")
     with pytest.raises(ConfigError, match="must be a mapping"):
         load_dqt_config(p)
+
+
+# ---------------------------------------------------------------------------
+# Column-level fail_under
+# ---------------------------------------------------------------------------
+
+
+def test_column_fail_under_parsed_as_float(tmp_path):
+    p = _write(tmp_path, "columns:\n  revenue:\n    fail_under: 0.95\n")
+    result = load_dqt_config(p)
+    assert result["columns"]["revenue"]["fail_under"] == pytest.approx(0.95)
+    assert isinstance(result["columns"]["revenue"]["fail_under"], float)
+
+
+def test_column_fail_under_zero_accepted(tmp_path):
+    p = _write(tmp_path, "columns:\n  col:\n    fail_under: 0.0\n")
+    result = load_dqt_config(p)
+    assert result["columns"]["col"]["fail_under"] == pytest.approx(0.0)
+
+
+def test_column_fail_under_one_accepted(tmp_path):
+    p = _write(tmp_path, "columns:\n  col:\n    fail_under: 1.0\n")
+    result = load_dqt_config(p)
+    assert result["columns"]["col"]["fail_under"] == pytest.approx(1.0)
+
+
+def test_column_fail_under_out_of_range_raises(tmp_path):
+    p = _write(tmp_path, "columns:\n  col:\n    fail_under: 1.1\n")
+    with pytest.raises(ConfigError, match="must be between 0.0 and 1.0"):
+        load_dqt_config(p)
+
+
+def test_column_fail_under_negative_raises(tmp_path):
+    p = _write(tmp_path, "columns:\n  col:\n    fail_under: -0.1\n")
+    with pytest.raises(ConfigError, match="must be between 0.0 and 1.0"):
+        load_dqt_config(p)

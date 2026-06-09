@@ -11,6 +11,7 @@ columns:
     critical: true
   order_amount:
     null_threshold: 0.05
+    fail_under: 0.95     # column must be at least 95% complete; triggers column_quality_gate_failed if not
     weight: 2.0
   order_date:
     outlier_threshold: 0.01

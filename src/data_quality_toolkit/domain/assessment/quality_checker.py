@@ -127,6 +127,38 @@ def detect_issues(
     return issues
 
 
+def _detect_column_quality_gates(
+    profile: dict[str, Any],
+    config: dict[str, Any] | None = None,
+) -> list[Issue]:
+    """Generate column_quality_gate_failed issues for columns below their fail_under floor."""
+    rows = max(int(profile.get("rows", 1) or 1), 1)
+    column_rules = (config or {}).get("columns", {})
+    issues: list[Issue] = []
+    for column in profile.get("columns", []):
+        name = column["name"]
+        rules = column_rules.get(name, {})
+        gate = rules.get("fail_under")
+        if gate is None:
+            continue
+        nulls = int(column.get("nulls", 0) or 0)
+        completeness = max(0.0, 1.0 - nulls / rows)
+        if completeness < gate:
+            col_issue: dict[str, Any] = {
+                "type": "column_quality_gate_failed",
+                "column": name,
+                "pct": round(completeness, 6),
+                "severity": "critical",
+                "category": "Completeness",
+                "message": (
+                    f"Column '{name}' completeness {round(completeness * 100, 1)}% "
+                    f"is below configured fail_under {round(gate * 100, 1)}%"
+                ),
+            }
+            issues.append(cast(Issue, col_issue))
+    return issues
+
+
 def assess(
     profile: dict[str, Any],
     null_threshold: float = DEFAULT_NULL_THRESHOLD,
@@ -159,7 +191,8 @@ def assess(
         if df is not None
         else []
     )
-    all_issues = null_issues + schema_issues + advanced_issues
+    gate_issues: list[Issue] = _detect_column_quality_gates(profile, config=config)
+    all_issues = null_issues + schema_issues + advanced_issues + gate_issues
     quality_score = compute_quality_score(score, all_issues, config=config)
 
     result: AssessmentResult = {
