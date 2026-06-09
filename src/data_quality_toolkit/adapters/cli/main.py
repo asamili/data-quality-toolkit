@@ -721,6 +721,30 @@ def cmd_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_chart(args: argparse.Namespace) -> int:
+    """Generate a terminal-based profiling chart for a column."""
+    from data_quality_toolkit.adapters.cli.charts import render_univariate_chart
+    from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
+    from data_quality_toolkit.domain.profiling.charts import compute_univariate_chart_data
+
+    try:
+        df, meta = load_csv(
+            args.csv, sample_size=_get_sample_size(args), **_csv_kwargs_from_args(args)
+        )
+        chart_data = compute_univariate_chart_data(df, args.column)
+
+        # We don't use tick/[OK] here because the chart is the main output
+        render_univariate_chart(chart_data)
+
+        if not getattr(args, "no_json", False):
+            # Also emit JSON to stdout if requested
+            print(_json_dump(chart_data))
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
 def cmd_dashboard(args: argparse.Namespace) -> int:
     try:
         import streamlit  # noqa: F401
@@ -1008,6 +1032,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp_plan.add_argument("csv", help=CSV_PATH_HELP)
     _add_csv_options(sp_plan)
     sp_plan.set_defaults(func=cmd_plan)
+
+    # chart
+    sp_chart = sub.add_parser(
+        "chart",
+        help="Generate a terminal-based profiling chart for a column",
+    )
+    sp_chart.add_argument("csv", help=CSV_PATH_HELP)
+    sp_chart.add_argument("--column", required=True, help="Column name to chart")
+    _add_csv_options(sp_chart)
+    sp_chart.set_defaults(func=cmd_chart)
 
     # dashboard (Phase 4)
     sp_dash = sub.add_parser(
