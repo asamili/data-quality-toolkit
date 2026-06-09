@@ -11,7 +11,7 @@ __pycache__/
 .Python
 *.egg-info/
 *.egg
-MANIFEST
+/MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 

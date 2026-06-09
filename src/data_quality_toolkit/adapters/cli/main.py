@@ -164,6 +164,13 @@ def kpi_export_graph(config_path: str, out: str, graph_format: str = "mermaid") 
     return export_kpi_graph(config_path, out, graph_format=graph_format)  # type: ignore[arg-type]
 
 
+def manifest_create(run_id: str, sessions_root: str) -> Any:
+    """Proxy to lineage manifest builder (lazy import for monkeypatching)."""
+    from data_quality_toolkit.lineage.manifest.builder import build_manifest
+
+    return build_manifest(run_id=run_id, sessions_root=sessions_root)
+
+
 def _extract_null_threshold(args: argparse.Namespace) -> float | None:
     """Validate and return --null-threshold if provided; None otherwise."""
     nt = getattr(args, "null_threshold", None)
@@ -244,6 +251,16 @@ def cmd_log_demo(args: argparse.Namespace) -> int:
             raise ZeroDivisionError("Test division error")
         except ZeroDivisionError:
             logger.exception("captured exception with stack")
+    return 0
+
+
+def cmd_manifest_create(args: argparse.Namespace) -> int:
+    """Create a lineage manifest for a run."""
+    manifest = manifest_create(args.run_id, args.sessions_root)
+    tick = _safe_text("✓", "[OK]")
+    print(f"{tick} Manifest created  [run_id={args.run_id}]", file=sys.stderr)
+    if not getattr(args, "no_json", False):
+        print(_json_dump(manifest))
     return 0
 
 
@@ -749,6 +766,26 @@ def build_parser() -> argparse.ArgumentParser:
     ssp = sp.add_subparsers(dest="subcommand", required=True)
     ssp_show = ssp.add_parser("show", help="Show resolved settings")
     ssp_show.set_defaults(func=cmd_settings_show)
+
+    # manifest
+    sp_manifest = sub.add_parser("manifest", help="Manifest commands")
+    ssp_manifest = sp_manifest.add_subparsers(dest="subcommand", required=True)
+    ssp_manifest_create = ssp_manifest.add_parser("create", help="Build lineage manifest for a run")
+    ssp_manifest_create.add_argument(
+        "--run-id",
+        dest="run_id",
+        required=True,
+        metavar="ID",
+        help="Run identifier",
+    )
+    ssp_manifest_create.add_argument(
+        "--sessions-root",
+        dest="sessions_root",
+        required=True,
+        metavar="PATH",
+        help="Root directory containing session folders",
+    )
+    ssp_manifest_create.set_defaults(func=cmd_manifest_create)
 
     # version
     sp_ver = sub.add_parser("version", help="Print package version")
