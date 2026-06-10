@@ -158,7 +158,7 @@ These feed directly into Power BI via `dqt build-pbi` or any BI tool that reads 
 | Detects real quality issues | 3 issues found: missing data (discount_pct, notes) and constant-column flag (currency) |
 | Produces structured, queryable output | `fact_issues.csv` and `fact_quality_metrics.csv` are BI-ready |
 | Produces a single-file summary | `quality_report.json` (nested: meta/profile/assessment/star/export_paths) is self-contained and CI-friendly |
-| Fast | Full run on 29k rows completes in seconds |
+| Fast | Full run completes in under a second |
 | One command | No config files, no setup steps beyond `pip install -e .` |
 
 ---

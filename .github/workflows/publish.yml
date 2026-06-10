@@ -1,0 +1,101 @@
+name: Publish to devpi (Python)
+
+# Manual-only: trigger via Actions → "Publish to devpi (Python)" → Run workflow.
+# Requires DEVPI_URL, DEVPI_USER, and DEVPI_PASSWORD secrets set to a
+# network-accessible devpi server. Localhost/127.0.0.1 URLs are rejected.
+# GitHub Releases are created automatically by release.yml on tag push.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v2.0.0). Must match an existing tag.'
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-publish:
+    # Skip publish for internal milestone tags (e.g. v1.0.1-internal)
+    if: "!contains(github.event.inputs.tag, '-internal')"
+    # Requires a network-accessible devpi server.
+    # For local-only devpi, use [self-hosted, devpi, windows] (or linux) instead.
+    runs-on: ubuntu-latest
+
+    env:
+      DEVPI_URL: ${{ secrets.DEVPI_URL }}
+      DEVPI_USER: ${{ secrets.DEVPI_USER }}
+      DEVPI_PASSWORD: ${{ secrets.DEVPI_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate devpi configuration
+        run: |
+          if [ -z "${DEVPI_URL:-}" ]; then
+            echo "ERROR: DEVPI_URL secret is not set. Configure it to a network-accessible devpi URL before running."
+            exit 1
+          fi
+          if echo "${DEVPI_URL}" | grep -qE '(127\.0\.0\.1|localhost)'; then
+            echo "ERROR: DEVPI_URL points to a localhost address (unreachable from GitHub-hosted runners)."
+            echo "Set DEVPI_URL to a network-accessible HTTPS URL, or use a self-hosted runner with local devpi access."
+            exit 1
+          fi
+          if [ -z "${DEVPI_USER:-}" ]; then
+            echo "ERROR: DEVPI_USER secret is not set."
+            exit 1
+          fi
+          if [ -z "${DEVPI_PASSWORD:-}" ]; then
+            echo "ERROR: DEVPI_PASSWORD secret is not set."
+            exit 1
+          fi
+          echo "devpi configuration validated."
+
+      - name: Clean previous builds
+        run: rm -rf dist build *.egg-info **/*.egg-info
+
+      - name: Build sdist & wheel
+        run: |
+          python -m pip install --upgrade pip
+          pip install -c constraints.txt build twine
+          python -m build  # produces dist/*.whl and dist/*.tar.gz
+
+      - name: Upload to devpi (twine)
+        env:
+          TWINE_USERNAME: ${{ env.DEVPI_USER }}
+          TWINE_PASSWORD: ${{ env.DEVPI_PASSWORD }}
+        run: |
+          twine upload --skip-existing \
+            --repository-url "${DEVPI_URL}/" \
+            dist/*
+
+      - name: Smoke-install from devpi
+        env:
+          DEVPI_URL: ${{ env.DEVPI_URL }}
+          DEVPI_USER: ${{ env.DEVPI_USER }}
+          DEVPI_PASSWORD: ${{ env.DEVPI_PASSWORD }}
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+
+          # Build PIP_INDEX_URL dynamically (no GitHub expression tricks)
+          if [ -n "${DEVPI_USER:-}" ] && [ -n "${DEVPI_PASSWORD:-}" ]; then
+            host_and_path="${DEVPI_URL#*://}"
+            export PIP_INDEX_URL="https://${DEVPI_USER}:${DEVPI_PASSWORD}@${host_and_path}/+simple/"
+          else
+            export PIP_INDEX_URL="${DEVPI_URL}/+simple/"
+          fi
+          export PIP_EXTRA_INDEX_URL="https://pypi.org/simple"
+
+          VERSION="${{ github.event.inputs.tag }}"
+          VERSION="${VERSION#v}"
+          pip install "data-quality-toolkit==${VERSION}"

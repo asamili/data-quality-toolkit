@@ -47,7 +47,7 @@ examples/
 | File | Description | Best for |
 |---|---|---|
 | `examples/demo/sample_orders.csv` | Synthetic business orders dataset — multi-region, mixed statuses, nullable fields | Primary demo, business-domain quality checks |
-| `examples/demo/issue_showcase/issue_demo.csv` | Tiny crafted dataset designed to trigger quality rules | Demonstrating issue detection |
+| `examples/demo/issue_showcase/issue_demo.csv` | Tiny crafted dataset designed to trigger quality rules | Focused issue detection demo |
 | `examples/tiny.csv` | Minimal three-row CSV | Fast smoke checks |
 | `examples/demo.csv` | Small simple CSV with a missing value | Basic CLI testing |
 

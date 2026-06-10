@@ -1,7 +1,8 @@
-"""Unit tests for Streamlit-coupled render functions in data_quality_toolkit.adapters.ui.app.
+"""Unit tests for Streamlit-coupled render functions in the dashboard page modules.
 
 FakeSt records all Streamlit-like calls so tests assert expected UI interactions
-without importing real Streamlit.
+without importing real Streamlit. Render functions moved from app.py into
+adapters/ui/pages during the G1 UI restructure; imports point at their pages.
 """
 
 from __future__ import annotations
@@ -11,19 +12,20 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from data_quality_toolkit.adapters.ui.app import (
+from data_quality_toolkit.adapters.ui.pages.data_overview import _render_data_overview
+from data_quality_toolkit.adapters.ui.pages.dim_time import _render_dim_time
+from data_quality_toolkit.adapters.ui.pages.eda_explorer import (
     _render_cat_cat,
-    _render_data_overview,
-    _render_dim_time,
     _render_eda_bivariate,
+    _render_eda_explorer,
     _render_eda_univariate,
-    _render_export,
-    _render_kpi_catalog,
     _render_num_cat,
     _render_num_num,
     _render_preprocessing_plan,
-    _render_run_history,
 )
+from data_quality_toolkit.adapters.ui.pages.export import _render_export
+from data_quality_toolkit.adapters.ui.pages.kpi_catalog import _render_kpi_catalog
+from data_quality_toolkit.adapters.ui.pages.run_history import _render_run_history
 
 
 class FakeSt:
@@ -397,7 +399,7 @@ def test_render_preprocessing_plan_numeric_with_nulls_included() -> None:
 
 # ── _render_data_overview ─────────────────────────────────────────────────────
 
-_MOCK_PATH = "data_quality_toolkit.adapters.ui.app._load_df_and_assess"
+_MOCK_PATH = "data_quality_toolkit.adapters.ui.pages.data_overview._load_df_and_assess"
 
 _FAKE_DF = pd.DataFrame({"n": [1.0, 2.0, 3.0], "c": ["a", "b", "a"]})
 _FAKE_PROFILE: dict[str, Any] = {
@@ -469,18 +471,50 @@ def test_render_data_overview_with_issues_calls_dataframe() -> None:
     assert st.called("dataframe")
 
 
-def test_render_data_overview_happy_path_triggers_nested_eda_renders() -> None:
+def test_render_data_overview_does_not_render_eda_sections() -> None:
+    """EDA moved to its own page in the G1 restructure — overview must not render it."""
     st = FakeSt()
     st.set_text_input("CSV path", "data.csv")
     with patch(_MOCK_PATH, return_value=(_FAKE_DF, _FAKE_RESULT, None)):
         _render_data_overview(st)
+    assert not st.called("selectbox")
+    assert not st.called("scatter_chart")
+
+
+# ── _render_eda_explorer ──────────────────────────────────────────────────────
+
+_MOCK_EDA_LOAD = "data_quality_toolkit.adapters.ui.pages.eda_explorer._load_df_and_assess"
+
+
+def test_render_eda_explorer_empty_path_shows_info_and_returns() -> None:
+    st = FakeSt()
+    _render_eda_explorer(st)
+    assert st.called("header")
+    assert st.called("info")
+    assert not st.called("selectbox")
+
+
+def test_render_eda_explorer_load_error_shows_error() -> None:
+    st = FakeSt()
+    st.set_text_input("CSV path", "bad.csv")
+    with patch(_MOCK_EDA_LOAD, return_value=(None, None, "file not found")):
+        _render_eda_explorer(st)
+    assert st.called("error")
+    assert not st.called("selectbox")
+
+
+def test_render_eda_explorer_happy_path_triggers_eda_renders() -> None:
+    st = FakeSt()
+    st.set_text_input("CSV path", "data.csv")
+    with patch(_MOCK_EDA_LOAD, return_value=(_FAKE_DF, _FAKE_RESULT, None)):
+        _render_eda_explorer(st)
     assert st.called("selectbox")
     assert st.call_count("subheader") >= 2
 
 
 # ── _render_run_history ───────────────────────────────────────────────────────
 
-_MOCK_LOAD_HISTORY = "data_quality_toolkit.adapters.ui.app._load_run_history"
+_MOCK_LOAD_HISTORY = "data_quality_toolkit.adapters.ui.pages.run_history._load_run_history"
 
 
 def test_render_run_history_empty_inputs_shows_info() -> None:
@@ -547,9 +581,9 @@ def test_render_export_shows_header_and_code() -> None:
 
 # ── _render_kpi_catalog ───────────────────────────────────────────────────────
 
-_MOCK_KPI_VALIDATE = "data_quality_toolkit.adapters.ui.app._run_kpi_validate"
-_MOCK_KPI_EMIT = "data_quality_toolkit.adapters.ui.app._kpi_emit_to_bytes"
-_MOCK_KPI_GRAPH = "data_quality_toolkit.adapters.ui.app._kpi_graph_to_str"
+_MOCK_KPI_VALIDATE = "data_quality_toolkit.adapters.ui.pages.kpi_catalog._run_kpi_validate"
+_MOCK_KPI_EMIT = "data_quality_toolkit.adapters.ui.pages.kpi_catalog._kpi_emit_to_bytes"
+_MOCK_KPI_GRAPH = "data_quality_toolkit.adapters.ui.pages.kpi_catalog._kpi_graph_to_str"
 
 _FAKE_KPI_VALID = {
     "status": "valid",
@@ -624,7 +658,7 @@ def test_render_kpi_catalog_emit_error_shows_warning_and_code() -> None:
 
 # ── _render_dim_time ──────────────────────────────────────────────────────────
 
-_MOCK_GEN_DIM = "data_quality_toolkit.adapters.ui.app._generate_dim_time_csv"
+_MOCK_GEN_DIM = "data_quality_toolkit.adapters.ui.pages.dim_time._generate_dim_time_csv"
 
 
 def test_render_dim_time_shows_header() -> None:
@@ -655,7 +689,7 @@ def test_render_dim_time_generate_error_shows_error() -> None:
 
 # ── _render_export (server-write section) ─────────────────────────────────────
 
-_MOCK_EXPORT_CSV_TO_DIR = "data_quality_toolkit.adapters.ui.app._export_csv_to_dir"
+_MOCK_EXPORT_CSV_TO_DIR = "data_quality_toolkit.adapters.ui.pages.export._export_csv_to_dir"
 
 
 def test_render_export_shows_warning_and_confirmation_controls() -> None:

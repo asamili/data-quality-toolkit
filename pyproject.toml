@@ -78,7 +78,7 @@ powerbi = [
 ]
 
 ui = [
-    "streamlit>=1.30",  # Phase 4 dashboard (pip install data-quality-toolkit[ui])
+    "streamlit>=1.36",  # Phase 4 dashboard; >=1.36 for st.navigation/st.Page (pip install data-quality-toolkit[ui])
 ]
 
 [project.urls]
@@ -313,9 +313,4 @@ ignore_imports = [
     "data_quality_toolkit.application.workflow.compare -> data_quality_toolkit.adapters.storage.reader",
     # api.py (application seam at root) calls adapter-layer loaders for dataset_id
     "data_quality_toolkit.api -> data_quality_toolkit.adapters.loaders.file.csv_loader",
-    # ui/eda pulls preprocessing from workflow (adapter → application, permitted)
-    "data_quality_toolkit.adapters.ui.eda -> data_quality_toolkit.application.workflow.preprocessing",
-    # ui/app uses storage reader directly (adapter → adapter, permitted)
-    "data_quality_toolkit.adapters.ui.app -> data_quality_toolkit.adapters.storage.connection",
-    "data_quality_toolkit.adapters.ui.app -> data_quality_toolkit.adapters.storage.reader",
 ]

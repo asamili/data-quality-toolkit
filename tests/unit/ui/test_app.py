@@ -1,4 +1,9 @@
-"""Unit tests for data_quality_toolkit.adapters.ui.app — no live Streamlit required."""
+"""Unit tests for the dashboard UI helpers (eda + services) and the app shell.
+
+No live Streamlit required. Helper functions moved from app.py into
+adapters/ui/services during the G1 UI restructure; imports point at their
+canonical homes.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ import pandas as pd
 import pytest
 
 from data_quality_toolkit.adapters.storage.connection import StorageError
-from data_quality_toolkit.adapters.ui.app import (
+from data_quality_toolkit.adapters.ui.eda import (
     _bivariate_categorical_categorical,
     _bivariate_numeric_categorical,
     _bivariate_numeric_numeric,
@@ -20,20 +25,24 @@ from data_quality_toolkit.adapters.ui.app import (
     _build_trend_df,
     _categorical_top_values,
     _duplicate_row_count,
-    _export_csv_to_dir,
     _extract_latest_issues,
     _extract_trend_data,
-    _generate_dim_time_csv,
     _high_cardinality_flags,
     _iqr_outlier_summary,
-    _kpi_emit_to_bytes,
-    _kpi_graph_to_str,
     _load_df_and_assess,
-    _load_run_history,
     _numeric_distribution,
     _numeric_summary,
     _plan_preprocessing,
+)
+from data_quality_toolkit.adapters.ui.services.assessment import (
+    _load_run_history,
     _run_assess_csv,
+)
+from data_quality_toolkit.adapters.ui.services.export import _export_csv_to_dir
+from data_quality_toolkit.adapters.ui.services.kpi import (
+    _generate_dim_time_csv,
+    _kpi_emit_to_bytes,
+    _kpi_graph_to_str,
     _run_kpi_validate,
 )
 
@@ -70,7 +79,7 @@ def test_load_run_history_missing_db_returns_empty(tmp_path: Path) -> None:
 
 def test_load_run_history_storage_error_returns_message(tmp_path: Path) -> None:
     with patch(
-        "data_quality_toolkit.adapters.ui.app.read_run_history",
+        "data_quality_toolkit.adapters.ui.services.assessment.read_run_history",
         side_effect=StorageError("db corrupt"),
     ):
         records, err = _load_run_history(str(tmp_path / "some.db"), "ds1")
@@ -212,10 +221,9 @@ def test_app_has_script_entrypoint() -> None:
         )
         for node in tree.body
     )
-    assert has_guard, (
-        "app.py is missing if __name__ == '__main__': main() — "
-        "streamlit run will show a blank page"
-    )
+    assert (
+        has_guard
+    ), "app.py is missing if __name__ == '__main__': main() — streamlit run will show a blank page"
 
 
 def test_build_overview_table_includes_all_fields() -> None:
@@ -544,7 +552,10 @@ _FAKE_ASSESS_OUT: dict = {
 
 
 def test_run_assess_csv_success() -> None:
-    with patch("data_quality_toolkit.adapters.ui.app._assess_csv", return_value=_FAKE_ASSESS_OUT):
+    with patch(
+        "data_quality_toolkit.adapters.ui.services.assessment._assess_csv",
+        return_value=_FAKE_ASSESS_OUT,
+    ):
         out, err = _run_assess_csv("data.csv")
     assert err is None
     assert out is not None
@@ -554,7 +565,7 @@ def test_run_assess_csv_success() -> None:
 
 def test_run_assess_csv_file_not_found() -> None:
     with patch(
-        "data_quality_toolkit.adapters.ui.app._assess_csv",
+        "data_quality_toolkit.adapters.ui.services.assessment._assess_csv",
         side_effect=FileNotFoundError("data.csv not found"),
     ):
         out, err = _run_assess_csv("data.csv")
@@ -565,7 +576,7 @@ def test_run_assess_csv_file_not_found() -> None:
 
 def test_run_assess_csv_value_error() -> None:
     with patch(
-        "data_quality_toolkit.adapters.ui.app._assess_csv",
+        "data_quality_toolkit.adapters.ui.services.assessment._assess_csv",
         side_effect=ValueError("empty or has no columns"),
     ):
         out, err = _run_assess_csv("empty.csv")
@@ -576,7 +587,8 @@ def test_run_assess_csv_value_error() -> None:
 
 def test_run_assess_csv_strips_whitespace() -> None:
     with patch(
-        "data_quality_toolkit.adapters.ui.app._assess_csv", return_value=_FAKE_ASSESS_OUT
+        "data_quality_toolkit.adapters.ui.services.assessment._assess_csv",
+        return_value=_FAKE_ASSESS_OUT,
     ) as mock:
         _run_assess_csv("  data.csv  ")
     mock.assert_called_once_with("data.csv")

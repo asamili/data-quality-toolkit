@@ -1,6 +1,8 @@
 from data_quality_toolkit.api import (
     assess_csv,
     compare_runs,
+    create_elt_pipeline,
+    create_manifest,
     export_csv,
     generate_dim_time,
     kpi_emit,
@@ -18,6 +20,8 @@ __all__ = [
     "assess_csv",
     "export_csv",
     "compare_runs",
+    "create_manifest",
+    "create_elt_pipeline",
     "plan_csv",
     "kpi_validate",
     "kpi_emit",

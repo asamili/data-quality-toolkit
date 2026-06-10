@@ -12,12 +12,12 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from data_quality_toolkit.adapters.ui.app import (
+from data_quality_toolkit.adapters.ui.pages.data_overview import (
     _LARGE_MODE_BANNER,
-    _load_profile_chunked,
     _render_data_overview,
     _render_large_data_profile_overview,
 )
+from data_quality_toolkit.adapters.ui.services.assessment import _load_profile_chunked
 
 # ---------------------------------------------------------------------------
 # Minimal Streamlit test double
@@ -161,8 +161,8 @@ _FAKE_ENVELOPE: dict[str, Any] = {
 _LARGE_CHECKBOX_LABEL = "Large-data mode (profile-only, chunked streaming)"
 _CHUNK_INPUT_LABEL = "Chunk size (rows per chunk)"
 
-_MOCK_LOAD_CHUNKED = "data_quality_toolkit.adapters.ui.app._load_profile_chunked"
-_MOCK_LOAD_DF = "data_quality_toolkit.adapters.ui.app._load_df_and_assess"
+_MOCK_LOAD_CHUNKED = "data_quality_toolkit.adapters.ui.pages.data_overview._load_profile_chunked"
+_MOCK_LOAD_DF = "data_quality_toolkit.adapters.ui.pages.data_overview._load_df_and_assess"
 
 
 # ---------------------------------------------------------------------------

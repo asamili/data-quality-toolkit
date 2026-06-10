@@ -1,6 +1,6 @@
 # Demo Package — Issue Showcase
 
-This demo is the issue-focused counterpart to the happy-path demo.
+This demo is the issue-focused counterpart to the Uber happy-path demo.
 It uses a tiny crafted CSV that deterministically triggers multiple quality rules
 so you can see DQT's detection in action without needing real data.
 
@@ -120,5 +120,5 @@ The `dist/` directory is git-ignored. Do not commit anything under `dist/`.
 
 ## Further reading
 
-- [Happy-path demo](../README.md) — clean data, no issues, full export walkthrough
+- [Uber happy-path demo](../README.md) — clean data, no issues, full export walkthrough
 - [Full CLI reference](../../../README.md)

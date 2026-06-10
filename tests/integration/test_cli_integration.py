@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pandas as pd
 import pytest
+
+# Ensure subprocess picks up our src/ rather than any other editable install
+_SRC = str(Path(__file__).resolve().parents[2] / "src")
+_SUBPROCESS_ENV = {**os.environ, "PYTHONPATH": _SRC + os.pathsep + os.environ.get("PYTHONPATH", "")}
 
 pytestmark = pytest.mark.integration  # only runs when you include -m integration
 
@@ -46,6 +51,7 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         "log-demo",
         "build-pbi",
         "plan",
+        "pipeline",
     }
     allowed_flags = {
         "--outdir",
@@ -62,6 +68,13 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         "--out",
         "--fiscal",
         "--score-field",
+        "--run-id",
+        "--sessions-root",
+        "--extract",
+        "--transform",
+        "--load",
+        "--assess",
+        "--manifest",
     }
 
     if args:
@@ -84,6 +97,11 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
                 "--star",
                 "--out",
                 "--fiscal",
+                "--run-id",
+                "--sessions-root",
+                "--extract",
+                "--transform",
+                "--load",
             }:
                 i += 1  # skip the value
         i += 1
@@ -99,7 +117,7 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         *args,
     ]
     # Args are validated above; shell=False; executable is sys.executable (trusted).
-    return subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
+    return subprocess.run(cmd, capture_output=True, text=True, env=_SUBPROCESS_ENV)  # noqa: S603
 
 
 def test_cli_profile_assess_export_star(tmp_path: Path):
@@ -181,3 +199,22 @@ def test_cli_profile_with_sep_encoding_na_values(tmp_path: Path):
     # Find column profile for 'age' and validate that NA was parsed as missing
     age = next(c for c in out["profile"]["columns"] if c["name"] == "age")
     assert age["nulls"] == 1
+
+
+def test_cli_pipeline_run_smoke(tmp_path: Path):
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    r = _run_cli(
+        "pipeline",
+        "run",
+        "--run-id",
+        "smoke",
+        "--sessions-root",
+        str(sessions),
+    )
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["run_id"] == "smoke"
+    assert out["status"] == "success"
+    assert out["steps_executed"] == []
+    assert out["manifest"] is None

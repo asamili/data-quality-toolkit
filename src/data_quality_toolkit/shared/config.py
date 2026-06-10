@@ -38,6 +38,14 @@ SUPPORTED_COLUMN_RULE_KEYS: frozenset[str] = frozenset(
     }
 )
 
+PIPELINE_CONFIG_KEYS: frozenset[str] = frozenset(
+    {"run_id", "sessions_root", "extract", "transform", "load", "assess", "manifest"}
+)
+_PIPELINE_STR_KEYS: frozenset[str] = frozenset(
+    {"run_id", "sessions_root", "extract", "transform", "load"}
+)
+_PIPELINE_BOOL_KEYS: frozenset[str] = frozenset({"assess", "manifest"})
+
 _THRESHOLD_KEYS: frozenset[str] = frozenset(
     {"null_threshold", "high_cardinality_threshold", "outlier_threshold", "fail_under"}
 )
@@ -183,4 +191,43 @@ def _validate_list(config_path: Path, ctx: str, value: Any) -> list[Any]:
     return value
 
 
-__all__ = ["CONFIG_FILENAME", "SUPPORTED_KEYS", "load_dqt_config"]
+def load_pipeline_config(path: str | Path) -> dict[str, Any]:
+    """Load a pipeline.yaml explicitly given by --config. Raises ConfigError when absent or invalid."""
+    config_path = Path(path)
+    if not config_path.is_file():
+        raise ConfigError(f"Pipeline config not found: {config_path}")
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as err:
+        raise ConfigError(f"Invalid YAML in {config_path}: {err}") from err
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ConfigError(f"{config_path} must be a mapping, got {type(data).__name__}")
+    unknown = sorted(k for k in data if k not in PIPELINE_CONFIG_KEYS)
+    if unknown:
+        supported = ", ".join(sorted(PIPELINE_CONFIG_KEYS))
+        raise ConfigError(
+            f"{config_path} has unknown key(s): {', '.join(unknown)}. Supported: {supported}"
+        )
+    for k in _PIPELINE_STR_KEYS:
+        if k in data and not isinstance(data[k], str):
+            raise ConfigError(
+                f"{config_path}: '{k}' must be a string, got {type(data[k]).__name__}"
+            )
+    for k in _PIPELINE_BOOL_KEYS:
+        if k in data and not isinstance(data[k], bool):
+            raise ConfigError(
+                f"{config_path}: '{k}' must be a boolean, got {type(data[k]).__name__}"
+            )
+    return data
+
+
+__all__ = [
+    "CONFIG_FILENAME",
+    "SUPPORTED_KEYS",
+    "PIPELINE_CONFIG_KEYS",
+    "load_dqt_config",
+    "load_pipeline_config",
+]

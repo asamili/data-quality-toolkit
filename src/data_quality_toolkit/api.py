@@ -4,10 +4,15 @@ Thin wrappers over workflow.pipeline and workflow.compare.
 CLI behavior is unchanged — these functions call the same internal implementations.
 """
 
+# mypy: warn_unused_ignores = false
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from data_quality_toolkit.application.workflow.elt_pipeline import ELTPipeline
 
 
 def _build_csv_kwargs(
@@ -109,6 +114,17 @@ def export_csv(
     return run_export_star(str(path), output_dir=out_dir, sample_size=sample_size, **kw)
 
 
+def create_manifest(run_id: str, sessions_root: str | Path) -> dict[str, Any]:
+    """Build a lineage manifest for a specific run.
+
+    Reuses existing lineage manifest builder. Returns a plain dictionary.
+    """
+    from data_quality_toolkit.lineage.manifest.builder import build_manifest
+
+    manifest = build_manifest(run_id=run_id, sessions_root=Path(sessions_root))
+    return manifest.model_dump(mode="json", by_alias=True)  # type: ignore
+
+
 def compare_runs(
     path: str | Path,
     *,
@@ -195,3 +211,12 @@ def generate_dim_time(
         fiscal_year_start=fiscal_year_start,
         output_dir=output_dir,
     )
+
+
+def create_elt_pipeline(run_id: str, sessions_root: str | Path) -> ELTPipeline:
+    """Create a new ELT pipeline for orchestration."""
+    from data_quality_toolkit.application.workflow.elt_pipeline import (
+        create_elt_pipeline as _create,
+    )
+
+    return _create(run_id, sessions_root)
