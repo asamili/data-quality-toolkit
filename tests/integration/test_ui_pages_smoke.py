@@ -7,12 +7,18 @@ launching a live Streamlit server.
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from unittest.mock import MagicMock
 
 import pytest
 
-pytestmark = pytest.mark.integration
+_HAS_STREAMLIT = importlib.util.find_spec("streamlit") is not None
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(not _HAS_STREAMLIT, reason="streamlit [ui] extra not installed"),
+]
 
 _EXPECTED_PAGE_TITLES = {
     "Data Overview",
