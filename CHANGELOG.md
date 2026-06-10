@@ -6,6 +6,28 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-06-09
+
+### Added
+- Column-level `fail_under` quality gates:
+  - Configure minimum completeness thresholds per column in `dqt.yaml`
+  - Example: `columns.order_amount.fail_under: 0.95` ensures critical columns meet specific trust floors
+- Terminal Profiling Charts (`dqt chart <csv> --column <name>`):
+  - High-signal terminal histograms for numeric distributions
+  - Top-N horizontal bar charts for categorical columns
+  - Accelerates visual profiling directly in the terminal without external dependencies
+- Lineage Manifest CLI (`dqt manifest create --run-id <ID> --sessions-root <PATH>`):
+  - Generates structured lineage metadata for an export run
+  - Improves traceability and impact analysis for downstream data consumers
+- Metadata overrides for optional backends (`orjson`, `msgspec`) in lineage serialization
+- Git hygiene: Anchored `MANIFEST` pattern to root in `.gitignore` to prevent package tracking conflicts
+
+### Fixed
+- Lineage builder: Corrected type hints for optional serializer settings
+
+### Notes
+- Additive release focused on Trust (Column Gates), Visibility (Charts), and Traceability (Lineage)
+
 ## [2.1.0] - 2026-06-08
 
 ### Added
