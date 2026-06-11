@@ -44,4 +44,4 @@ dqt export data/orders.csv --outdir dist/
 - [Demo Story](docs/demo_story.md)
 
 ---
-**Version**: v2.2.0 | **Status**: Active development
+**Version**: v2.2.1 | **Status**: Active development

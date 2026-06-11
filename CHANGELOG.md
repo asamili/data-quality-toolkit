@@ -6,6 +6,14 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-06-11
+
+### Fixed
+- Updated Streamlit-dependent UI smoke tests to skip cleanly when the optional `streamlit` `[ui]` extra is not installed.
+
+### Notes
+- Patch release to ensure release workflow coverage passes without requiring optional UI dependencies.
+
 ## [2.2.0] - 2026-06-09
 
 ### Added
