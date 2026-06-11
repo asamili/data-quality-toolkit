@@ -15,7 +15,9 @@ from typing import Any, NoReturn, cast
 
 from data_quality_toolkit.shared.config import load_dqt_config, load_pipeline_config
 from data_quality_toolkit.shared.constants import VERSION
+from data_quality_toolkit.shared.error_contract import to_error_info
 from data_quality_toolkit.shared.exceptions import ConfigError
+from data_quality_toolkit.shared.models import ErrorInfo
 from data_quality_toolkit.shared.settings import load_settings
 from data_quality_toolkit.utils.logging import setup_logging
 
@@ -835,6 +837,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Suppress machine JSON on stdout (human summaries on stderr are unaffected)",
     )
+    p.add_argument(
+        "--json-errors",
+        dest="json_errors",
+        action="store_true",
+        default=False,
+        help="Emit error information as JSON to stderr instead of human-readable text",
+    )
     sub = p.add_subparsers(dest="command", required=True)
 
     # settings
@@ -1153,6 +1162,21 @@ def build_parser() -> argparse.ArgumentParser:
 _SUPPORTED_CSV_EXTENSIONS: frozenset[str] = frozenset({".csv"})
 
 
+def _print_error_info(info: ErrorInfo, *, json_errors: bool = False) -> None:
+    """Print structured ErrorInfo to stderr."""
+    if json_errors:
+        sys.stderr.write(_json_dump({"error": info}) + "\n")
+        return
+    print(f"Error: {info['message']}", file=sys.stderr)
+    if hint := info.get("hint"):
+        lines = hint.splitlines()
+        print(f"  Hint: {lines[0]}", file=sys.stderr)
+        for line in lines[1:]:
+            print(f"  {line}", file=sys.stderr)
+    if detail := (info.get("metadata") or {}).get("detail"):
+        print(detail, file=sys.stderr)
+
+
 def _print_csv_hint(args: Any) -> None:
     """Print a CSV-specific hint to stderr when the failing command takes a csv arg."""
     if getattr(args, "csv", None) is not None:
@@ -1185,8 +1209,23 @@ def _validate_csv_extension(args: Any) -> str | None:
     return None
 
 
-def _handle_value_error(e: ValueError, args: Any) -> int:
+def _handle_value_error(e: ValueError, args: Any, *, json_errors: bool = False) -> int:
     """Handle ValueError from pipeline, with a specific branch for ParserError."""
+    if json_errors:
+        if type(e).__name__ == "ParserError":
+            info: ErrorInfo = {
+                "code": "VALUE_ERROR",
+                "message": f"CSV could not be parsed: {e}",
+                "exc_type": type(e).__name__,
+                "hint": (
+                    "check that all rows have the same number of columns"
+                    " and the correct delimiter (try --sep)."
+                ),
+            }
+        else:
+            info = to_error_info(e)
+        sys.stderr.write(_json_dump({"error": info}) + "\n")
+        return 1
     # pd.errors.ParserError is a ValueError subclass — give a targeted message
     if type(e).__name__ == "ParserError":
         print(f"Error: CSV could not be parsed: {e}", file=sys.stderr)
@@ -1196,7 +1235,8 @@ def _handle_value_error(e: ValueError, args: Any) -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"Error: {e}", file=sys.stderr)
+    info = to_error_info(e)
+    print(f"Error: {info['message']}", file=sys.stderr)
     _print_csv_hint(args)
     return 1
 
@@ -1243,23 +1283,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         return handler(args)
     except FileNotFoundError as e:
-        missing = e.filename or str(e)
-        print(f"Error: file not found: '{missing}'", file=sys.stderr)
-        print("  Hint: check the path and make sure the file exists.", file=sys.stderr)
-        print("  Example: dqt profile data/my_file.csv", file=sys.stderr)
+        _print_error_info(to_error_info(e), json_errors=getattr(args, "json_errors", False))
         return 2
     except PermissionError as e:
-        print(f"Error: permission denied: {e}", file=sys.stderr)
+        _print_error_info(to_error_info(e), json_errors=getattr(args, "json_errors", False))
         return 13
     except UnicodeDecodeError as e:
-        print(
-            "Error: decoding failed (try --encoding utf-8 or the correct encoding).",
-            file=sys.stderr,
-        )
-        print(str(e), file=sys.stderr)
+        _print_error_info(to_error_info(e), json_errors=getattr(args, "json_errors", False))
         return 22
     except ValueError as e:
-        code = _handle_value_error(e, args)
+        code = _handle_value_error(e, args, json_errors=getattr(args, "json_errors", False))
         return code
 
 

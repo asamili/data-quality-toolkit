@@ -6,6 +6,7 @@ import streamlit.
 """
 
 from . import assessment as assessment
+from . import compare as compare
 from . import diagnostics as diagnostics
 from . import export as export
 from . import kpi as kpi

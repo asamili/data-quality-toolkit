@@ -1,8 +1,8 @@
 # Data Quality Toolkit (DQT)
 
-[![Python](https://img.shields.io/badge/Python-3.12+-green)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
-[![CI](https://github.com/asamili/data-quality-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/asamili/data-quality-toolkit/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/Python-3.12+-green)]()
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)]()
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue)]()
 
 **CLI-first data quality toolkit for CSV validation, issue detection, and BI-ready export artifacts.**
 
@@ -22,9 +22,6 @@ DQT is a portfolio-grade Python CLI project designed for practical, automated da
 - Analytics reliability
 
 ## Quick Start
-
-> Not published on public PyPI. Install from source (below) or download wheel/sdist from the [latest release](https://github.com/asamili/data-quality-toolkit/releases/latest).
-
 ```bash
 # Clone and install
 git clone https://github.com/asamili/data-quality-toolkit
@@ -47,4 +44,4 @@ dqt export data/orders.csv --outdir dist/
 - [Demo Story](docs/demo_story.md)
 
 ---
-**Version**: v2.2.1 | **Status**: Active development | [Latest release](https://github.com/asamili/data-quality-toolkit/releases/latest)
+**Version**: v2.3.0 | **Status**: Active development

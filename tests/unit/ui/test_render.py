@@ -25,6 +25,7 @@ from data_quality_toolkit.adapters.ui.pages.eda_explorer import (
 )
 from data_quality_toolkit.adapters.ui.pages.export import _render_export
 from data_quality_toolkit.adapters.ui.pages.kpi_catalog import _render_kpi_catalog
+from data_quality_toolkit.adapters.ui.pages.manifest_viewer import _render_manifest_viewer
 from data_quality_toolkit.adapters.ui.pages.run_history import _render_run_history
 
 
@@ -750,3 +751,101 @@ def test_render_export_click_confirmed_export_error_shows_error() -> None:
         _render_export(st)
     assert st.called("error")
     assert not st.called("success")
+
+
+# ── _render_manifest_viewer ───────────────────────────────────────────────────
+
+_MOCK_CREATE_MANIFEST = "data_quality_toolkit.adapters.ui.pages.manifest_viewer.create_manifest"
+
+
+def test_render_manifest_viewer_no_button_click_shows_header_no_error() -> None:
+    st = FakeSt()
+    _render_manifest_viewer(st)
+    assert st.called("header")
+    assert not st.called("error")
+
+
+def test_render_manifest_viewer_error_uses_show_error_format() -> None:
+    """Exception from create_manifest must produce '⚠️ Manifest load failed: ...' via show_error."""
+    st = FakeSt()
+    st.set_text_input("Run ID", "run-123")
+    st.set_text_input("Sessions Root", ".")
+    st.set_button_clicked("Load Manifest")
+    with patch(_MOCK_CREATE_MANIFEST, side_effect=FileNotFoundError("session not found")):
+        _render_manifest_viewer(st)
+    assert st.called("error")
+    error_msgs = [c[1][0] for c in st.calls if c[0] == "error"]
+    assert any("⚠️ Manifest load failed:" in str(m) for m in error_msgs)
+
+
+def test_render_manifest_viewer_empty_run_id_shows_validation_error() -> None:
+    st = FakeSt()
+    st.set_text_input("Run ID", "")
+    st.set_text_input("Sessions Root", ".")
+    st.set_button_clicked("Load Manifest")
+    _render_manifest_viewer(st)
+    assert st.called("error")
+    error_msgs = [c[1][0] for c in st.calls if c[0] == "error"]
+    assert any("Run ID" in str(m) or "Sessions Root" in str(m) for m in error_msgs)
+
+
+# ── _render_run_history (compare section) ────────────────────────────────────
+
+_MOCK_RUN_COMPARE = "data_quality_toolkit.adapters.ui.pages.run_history._run_compare"
+
+_TWO_RECORDS = [
+    {"ts": "2025-01-01T00:00:00", "score": 0.8, "issues_by_severity": {}, "issues_by_category": {}},
+    {"ts": "2025-01-02T00:00:00", "score": 0.9, "issues_by_severity": {}, "issues_by_category": {}},
+]
+
+_COMPARE_RESULT: dict[str, Any] = {
+    "dataset_id": "sha1:abc",
+    "current_score": 0.9,
+    "previous_score": 0.8,
+    "score_delta": 0.1,
+    "current_issues_total": 2,
+    "previous_issues_total": 5,
+    "issues_delta": -3.0,
+    "issues_by_severity_delta": None,
+    "issues_by_category_delta": None,
+}
+
+
+def test_render_run_history_two_records_shows_compare_section() -> None:
+    st = FakeSt()
+    st.set_text_input("Database path", "./dist/dqt.db")
+    st.set_text_input("Dataset ID", "sha1:abc")
+    with patch(_MOCK_LOAD_HISTORY, return_value=(_TWO_RECORDS, None)):
+        with patch(_MOCK_RUN_COMPARE, return_value=(_COMPARE_RESULT, None)):
+            _render_run_history(st)
+    assert st.called("divider")
+    assert st.called("dataframe")
+
+
+def test_render_run_history_single_record_no_compare_section() -> None:
+    one_record = [
+        {
+            "ts": "2025-01-01T00:00:00",
+            "score": 0.8,
+            "issues_by_severity": {},
+            "issues_by_category": {},
+        }
+    ]
+    st = FakeSt()
+    st.set_text_input("Database path", "./dist/dqt.db")
+    st.set_text_input("Dataset ID", "sha1:abc")
+    with patch(_MOCK_LOAD_HISTORY, return_value=(one_record, None)):
+        _render_run_history(st)
+    assert not st.called("divider")
+    assert st.called("dataframe")
+
+
+def test_render_run_history_compare_insufficient_shows_info_not_error() -> None:
+    st = FakeSt()
+    st.set_text_input("Database path", "./dist/dqt.db")
+    st.set_text_input("Dataset ID", "sha1:abc")
+    with patch(_MOCK_LOAD_HISTORY, return_value=(_TWO_RECORDS, None)):
+        with patch(_MOCK_RUN_COMPARE, return_value=(None, "Need at least 2 completed runs")):
+            _render_run_history(st)
+    assert st.called("info")
+    assert not st.called("error")

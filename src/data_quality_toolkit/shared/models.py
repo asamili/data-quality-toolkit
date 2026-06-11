@@ -60,3 +60,13 @@ class AssessmentResult(TypedDict):
     quality_score: float
     issues: list[Issue]
     ts: str
+
+
+class ErrorInfo(TypedDict):
+    """Structured error descriptor returned by to_error_info."""
+
+    code: str
+    message: str
+    exc_type: str
+    hint: NotRequired[str | None]
+    metadata: NotRequired[dict[str, Any] | None]

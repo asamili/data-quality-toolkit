@@ -101,3 +101,53 @@ def test_ui_core_profiling_parity(tmp_path: Path) -> None:
     # --- dataset_id now matches: both use sha1 hash from load_csv ---
     assert ui_out["dataset_id"] == core_out["dataset_id"]
     assert ui_out["dataset_id"].startswith("sha1:")
+
+
+def test_compare_ui_service_matches_workflow(tmp_path: Path) -> None:
+    """UI _run_compare service and workflow compare_last_two_runs agree on the same history."""
+    import json
+
+    star_dir = tmp_path / "star"
+    star_dir.mkdir()
+    history_path = star_dir / "quality_history.jsonl"
+
+    run1 = {
+        "run_id": "r1",
+        "dataset_id": "sha1:abc",
+        "score": 0.8,
+        "issues_total": 5,
+        "issues_by_severity": {"warn": 3, "error": 2},
+        "issues_by_category": {"nulls": 5},
+        "completeness_score": 0.8,
+        "quality_score": 0.8,
+        "ts": "2025-01-01T00:00:00",
+    }
+    run2 = {
+        "run_id": "r2",
+        "dataset_id": "sha1:abc",
+        "score": 0.9,
+        "issues_total": 2,
+        "issues_by_severity": {"warn": 1, "error": 1},
+        "issues_by_category": {"nulls": 2},
+        "completeness_score": 0.9,
+        "quality_score": 0.9,
+        "ts": "2025-01-02T00:00:00",
+    }
+    history_path.write_text(json.dumps(run1) + "\n" + json.dumps(run2) + "\n", encoding="utf-8")
+
+    # dqt.db does not exist — compare_last_two_runs falls back to JSONL
+    fake_db = str(tmp_path / "dqt.db")
+
+    from data_quality_toolkit.adapters.ui.services.compare import _run_compare
+    from data_quality_toolkit.application.workflow.compare import compare_last_two_runs
+
+    ui_result, ui_err = _run_compare(fake_db, "sha1:abc")
+    core_result = compare_last_two_runs("sha1:abc", history_path)
+
+    assert ui_err is None, f"UI compare failed: {ui_err}"
+    assert ui_result is not None
+    assert ui_result["score_delta"] == pytest.approx(core_result["score_delta"])
+    assert ui_result["issues_delta"] == core_result["issues_delta"]
+    assert ui_result["dataset_id"] == core_result["dataset_id"]
+    assert ui_result["current_score"] == core_result["current_score"]
+    assert ui_result["previous_score"] == core_result["previous_score"]

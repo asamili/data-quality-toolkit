@@ -6,6 +6,18 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-06-11
+
+### Added
+- Added shared error contract used across CLI and UI error paths.
+- Added opt-in CLI `--json-errors` output for machine-readable error reporting.
+- Added Run-to-Run Comparison surface in the dashboard Run History page.
+- Added UI compare service wrapper for compare workflow parity.
+- Fixed CLI structured error output to preserve the `Hint:` label.
+- Fixed Manifest Viewer error rendering to use the shared UI error path.
+- Documented manifest and ELT pipeline API helpers.
+- Expanded dashboard README into a full UI user guide.
+
 ## [2.2.1] - 2026-06-11
 
 ### Fixed
@@ -36,7 +48,8 @@ The format is inspired by Keep a Changelog and adapted for this project.
 ### Notes
 - Additive release focused on Trust (Column Gates), Visibility (Charts), and Traceability (Lineage)
 
-## [2.1.0] - 2026-06-08
+## [2.1.0] - 2026-06-03
+
 
 ### Added
 

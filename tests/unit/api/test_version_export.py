@@ -23,4 +23,4 @@ def test_version_matches_metadata() -> None:
 def test_version_is_2_2_1() -> None:
     import data_quality_toolkit as d
 
-    assert d.__version__ == "2.2.1"
+    assert d.__version__ == "2.3.0"

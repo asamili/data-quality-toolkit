@@ -1,4 +1,4 @@
-"""Run History page: score trend and latest-run issues from the DQT database."""
+"""Run History page: score trend, latest-run issues, and run-to-run comparison."""
 
 from __future__ import annotations
 
@@ -10,10 +10,50 @@ from data_quality_toolkit.adapters.ui.eda import (
     _extract_trend_data,
 )
 from data_quality_toolkit.adapters.ui.services.assessment import _load_run_history
+from data_quality_toolkit.adapters.ui.services.compare import _run_compare
+
+
+def _render_compare_section(st: Any, db_path_str: str, dataset_id: str) -> None:
+    """Render the run-to-run delta below the trend section."""
+    st.divider()
+    st.subheader("Run-to-Run Comparison")
+    result, err = _run_compare(db_path_str, dataset_id)
+    if err is not None:
+        st.info(f"Compare unavailable: {err}")
+        return
+
+    if result is None:
+        return
+
+    score_delta = result.get("score_delta")
+    issues_delta = result.get("issues_delta")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        delta_str = f"{score_delta:+.4f}" if score_delta is not None else None
+        st.metric("Score (current)", f"{result.get('current_score', 0):.2f}", delta=delta_str)
+    with col2:
+        issues_delta_str = str(int(issues_delta)) if issues_delta is not None else None
+        st.metric(
+            "Issues (current)", str(result.get("current_issues_total", 0)), delta=issues_delta_str
+        )
+
+    sev_delta = result.get("issues_by_severity_delta")
+    cat_delta = result.get("issues_by_category_delta")
+    if sev_delta or cat_delta:
+        col3, col4 = st.columns(2)
+        if sev_delta:
+            with col3:
+                st.caption("Issues delta by severity")
+                st.table(sev_delta)
+        if cat_delta:
+            with col4:
+                st.caption("Issues delta by category")
+                st.table(cat_delta)
 
 
 def _render_run_history(st: Any) -> None:
-    """Render the Run History section: trend chart and latest issues breakdown."""
+    """Render the Run History section: trend chart, latest issues breakdown, and run comparison."""
     st.header("Run History")
     st.caption("Load historical audit data from the DQT database.")
     st.info(
@@ -62,6 +102,9 @@ def _render_run_history(st: Any) -> None:
             st.table(cat)
 
     st.dataframe(records)
+
+    if len(records) >= 2:
+        _render_compare_section(st, db_path_str, dataset_id)
 
 
 def render() -> None:

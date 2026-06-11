@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class DQTError(Exception):
     """Base error for the Data Quality Toolkit."""
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        hint: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.hint = hint
+        self.metadata = metadata
 
 
 class LoaderError(DQTError):

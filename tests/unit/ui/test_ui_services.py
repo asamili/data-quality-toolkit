@@ -15,12 +15,20 @@ from unittest.mock import patch
 
 import pytest
 
-from data_quality_toolkit.adapters.ui.services import assessment, diagnostics, export, kpi, pipeline
+from data_quality_toolkit.adapters.ui.services import (
+    assessment,
+    compare,
+    diagnostics,
+    export,
+    kpi,
+    pipeline,
+)
 from data_quality_toolkit.adapters.ui.services.assessment import (
     _load_profile_chunked,
     _load_run_history,
     _run_assess_csv,
 )
+from data_quality_toolkit.adapters.ui.services.compare import _run_compare
 from data_quality_toolkit.adapters.ui.services.diagnostics import (
     _collect_import_diagnostics,
     _collect_settings_snapshot,
@@ -42,7 +50,7 @@ from data_quality_toolkit.adapters.ui.services.pipeline import (
 # ── structural rule: services must not import streamlit ──────────────────────
 
 
-@pytest.mark.parametrize("module", [assessment, export, kpi, pipeline, diagnostics])
+@pytest.mark.parametrize("module", [assessment, compare, export, kpi, pipeline, diagnostics])
 def test_service_module_does_not_import_streamlit(module: object) -> None:
     src = inspect.getsource(module)  # type: ignore[arg-type]
     assert "import streamlit" not in src, f"{module} must stay streamlit-free"
@@ -185,3 +193,38 @@ def test_probe_writable_dir_missing() -> None:
 def test_diagnostics_returns_non_empty() -> None:
     assert _collect_versions()
     assert _collect_import_diagnostics()
+
+
+# ── compare service tuple contract ───────────────────────────────────────────
+
+_MOCK_COMPARE_WORKFLOW = "data_quality_toolkit.application.workflow.compare.compare_last_two_runs"
+
+
+def test_run_compare_success_returns_result() -> None:
+    fake = {"dataset_id": "sha1:abc", "score_delta": 0.1, "issues_delta": -3.0}
+    with patch(_MOCK_COMPARE_WORKFLOW, return_value=fake):
+        result, err = _run_compare("./dist/dqt.db", "sha1:abc")
+    assert err is None
+    assert result == fake
+
+
+def test_run_compare_not_enough_runs_returns_error_message() -> None:
+    not_enough = {
+        "error": "not_enough_runs",
+        "message": "Found 1 run(s) for dataset 'sha1:abc'. Need at least 2.",
+        "dataset_id": "sha1:abc",
+        "runs_found": 1,
+    }
+    with patch(_MOCK_COMPARE_WORKFLOW, return_value=not_enough):
+        result, err = _run_compare("./dist/dqt.db", "sha1:abc")
+    assert result is None
+    assert err is not None
+    assert "Found 1 run(s)" in err
+
+
+def test_run_compare_exception_returns_error() -> None:
+    with patch(_MOCK_COMPARE_WORKFLOW, side_effect=RuntimeError("boom")):
+        result, err = _run_compare("./dist/dqt.db", "sha1:abc")
+    assert result is None
+    assert err is not None
+    assert "boom" in err

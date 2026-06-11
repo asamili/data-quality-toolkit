@@ -8,6 +8,7 @@ from typing import Any
 from data_quality_toolkit.adapters.storage.connection import StorageError
 from data_quality_toolkit.adapters.storage.reader import read_run_history
 from data_quality_toolkit.api import assess_csv as _assess_csv
+from data_quality_toolkit.shared.error_contract import to_error_info
 
 
 def _load_run_history(
@@ -18,7 +19,7 @@ def _load_run_history(
         records = read_run_history(Path(db_path_str.strip()), dataset_id.strip())
         return records, None
     except StorageError as exc:
-        return None, str(exc)
+        return None, to_error_info(exc)["message"]
 
 
 def _run_assess_csv(path_str: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -33,7 +34,7 @@ def _run_assess_csv(path_str: str) -> tuple[dict[str, Any] | None, str | None]:
         result = _assess_csv(path_str.strip())
         return result, None
     except Exception as exc:
-        return None, str(exc)
+        return None, to_error_info(exc)["message"]
 
 
 def _load_profile_chunked(
@@ -49,4 +50,4 @@ def _load_profile_chunked(
 
         return _profile_csv_fn(path_str.strip(), chunksize=chunksize), None
     except Exception as exc:
-        return None, str(exc)
+        return None, to_error_info(exc)["message"]

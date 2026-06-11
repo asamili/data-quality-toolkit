@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from data_quality_toolkit import create_manifest
+from data_quality_toolkit.adapters.ui.components.errors import show_error
+from data_quality_toolkit.shared.error_contract import to_error_info
 
 
 def render_summary(manifest: dict[str, Any]) -> None:
@@ -44,14 +46,12 @@ def render_raw_json(manifest: dict[str, Any]) -> None:
     st.json(manifest, expanded=False)
 
 
-def render_manifest_viewer() -> None:
-    import streamlit as st
-
+def _render_manifest_viewer(st: Any) -> None:
+    """Testable render logic for the Manifest Viewer page."""
     st.header("Lineage Manifest Viewer")
 
-    col1, col2 = st.columns(2)
-    run_id = col1.text_input("Run ID")
-    sessions_root = col2.text_input("Sessions Root", value=".")
+    run_id = st.text_input("Run ID")
+    sessions_root = st.text_input("Sessions Root", value=".")
 
     if st.button("Load Manifest"):
         if not run_id or not sessions_root:
@@ -65,5 +65,11 @@ def render_manifest_viewer() -> None:
             render_artifacts(manifest)
             render_gate_failures(manifest)
             render_raw_json(manifest)
-        except Exception as e:
-            st.error(f"Error loading manifest: {e}")
+        except Exception as exc:
+            show_error(st, "Manifest load failed", to_error_info(exc)["message"])
+
+
+def render_manifest_viewer() -> None:
+    import streamlit as st
+
+    _render_manifest_viewer(st)

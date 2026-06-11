@@ -6,6 +6,7 @@ Install once (`pip install -e .`), then import directly — no CLI required.
 from data_quality_toolkit import (
     profile_csv, assess_csv, export_csv, compare_runs, plan_csv,
     kpi_validate, kpi_emit, kpi_graph, generate_dim_time,
+    create_manifest, create_elt_pipeline,
 )
 
 # Profile: returns shape and per-column stats. No disk writes.
@@ -56,6 +57,18 @@ print(result["graph"])                        # path to written .mmd file
 # Time dimension: generate dim_time.csv (optional output_dir writes to disk).
 result = generate_dim_time("2018-01-01", "2030-12-31", output_dir="dist/time")
 print(result["rows"], result["path"])
+
+# Manifest: build a lineage manifest (artifacts, gates, sessions) for a specific run.
+manifest = create_manifest(run_id="20240101-123456", sessions_root="dist/sessions/")
+print(manifest["run_id"], len(manifest["artifacts"]))
+
+# ELT Pipeline: create an orchestration object for complex extract/transform/load workflows.
+pipeline = create_elt_pipeline(run_id="manual-run-001", sessions_root="dist/sessions/")
+pipeline.extract("data/raw.csv")
+pipeline.load("data/silver.csv")
+pipeline.assess()
+result = pipeline.run()
+print(result.status)
 ```
 
 Optional CSV-parsing kwargs (`sep`, `encoding`, `na_values`, `sample_size`) are accepted by all CSV functions.
