@@ -85,5 +85,5 @@ The repository enforces security and complexity checks in pre-commit and CI:
 
 | Version | Supported          |
 |---------|--------------------|
-| 2.1.x   | Yes                |
-| < 2.1   | Not actively supported |
+| 2.2.x   | Yes                |
+| < 2.2   | Not actively supported |
