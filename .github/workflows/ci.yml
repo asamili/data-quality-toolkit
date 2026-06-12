@@ -73,3 +73,62 @@ jobs:
         run: |
           pip install -c constraints.txt pre-commit
           pre-commit run --all-files
+
+  # Validates the optional [stats] extra in a minimal environment: scipy must
+  # install cleanly and the real-scipy drift tests must run (not skip).
+  stats-extra:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-stats-${{ hashFiles('pyproject.toml', 'constraints.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-stats-
+
+      - name: Install project (test+stats extras only)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -c constraints.txt -e ".[test,stats]"
+
+      # Fail loudly if scipy is missing, so importorskip cannot silently skip
+      - name: Assert scipy installed
+        run: python -c "import scipy; print('scipy', scipy.__version__)"
+
+      # Coverage gate (fail_under) targets the full suite; disable for this subset
+      - name: Drift tests with real scipy
+        run: |
+          pytest tests/unit/statistics/test_drift.py \
+                 tests/unit/api/test_drift_api.py \
+                 tests/unit/cli/test_cli_drift.py \
+                 tests/unit/adapters/cli/test_drift_cli.py \
+                 -v --no-cov
+
+      # E2E smoke: shifted data must be detected as drift (exit 2 with --fail-on-drift)
+      - name: E2E smoke (dqt drift)
+        run: |
+          python - <<'EOF'
+          import csv
+          import random
+
+          random.seed(7)
+          for path, mean in (("ref.csv", 30.0), ("cur.csv", 60.0)):
+              with open(path, "w", newline="") as f:
+                  writer = csv.writer(f)
+                  writer.writerow(["id", "age"])
+                  for i in range(60):
+                      writer.writerow([i, round(random.gauss(mean, 2.0), 2)])
+          EOF
+          set +e
+          dqt drift ref.csv cur.csv --fail-on-drift
+          code=$?
+          set -e
+          test "$code" -eq 2

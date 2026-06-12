@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "data-quality-toolkit"
-version = "2.3.0"
+version = "2.4.0"
 description = "CSV-first data quality toolkit for BI and reporting workflows: profile, assess, export, and compare run-to-run quality trends."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -79,6 +79,10 @@ powerbi = [
 
 ui = [
     "streamlit>=1.36",  # Phase 4 dashboard; >=1.36 for st.navigation/st.Page (pip install data-quality-toolkit[ui])
+]
+
+stats = [
+    "scipy>=1.11,<2.0",  # Statistical drift detection (KS / chi-square); >=1.11 for attribute-style chi2_contingency result
 ]
 
 [project.urls]
@@ -183,7 +187,8 @@ module = [
     "numpy.*",
     "jinja2.*",
     "yaml.*",
-    "openpyxl.*"
+    "openpyxl.*",
+    "scipy.*"
 ]
 ignore_missing_imports = true
 
@@ -233,7 +238,7 @@ output = "coverage.xml"
 # Restructure complete (001C-A through 001C-G). All paths reflect the final layout.
 #
 # Layer model (final — Option B pragmatic layering, not strict hexagonal):
-#   domain:       domain.profiling, domain.assessment, domain.semantics
+#   domain:       domain.profiling, domain.assessment, domain.semantics, domain.statistics
 #   application:  application.workflow  (api.py stays at package root per H4)
 #   adapters:     adapters.loaders, adapters.exporters, adapters.storage, adapters.ui, adapters.cli
 #   shared:       shared, utils  (cross-cutting, stays at package root)
@@ -248,6 +253,7 @@ source_modules = [
     "data_quality_toolkit.domain.assessment",
     "data_quality_toolkit.domain.profiling",
     "data_quality_toolkit.domain.semantics",
+    "data_quality_toolkit.domain.statistics",
 ]
 forbidden_modules = [
     "data_quality_toolkit.adapters.loaders",
@@ -270,6 +276,7 @@ forbidden_modules = [
     "data_quality_toolkit.domain.assessment",
     "data_quality_toolkit.domain.profiling",
     "data_quality_toolkit.domain.semantics",
+    "data_quality_toolkit.domain.statistics",
     "data_quality_toolkit.adapters.loaders",
     "data_quality_toolkit.adapters.exporters",
     "data_quality_toolkit.adapters.storage",
@@ -292,6 +299,7 @@ source_modules = [
     "data_quality_toolkit.domain.assessment",
     "data_quality_toolkit.domain.profiling",
     "data_quality_toolkit.domain.semantics",
+    "data_quality_toolkit.domain.statistics",
     "data_quality_toolkit.shared",
     "data_quality_toolkit.utils",
 ]

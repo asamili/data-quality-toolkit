@@ -4,7 +4,23 @@ All notable changes to the Data Quality Toolkit project are documented in this f
 
 The format is inspired by Keep a Changelog and adapted for this project.
 
+## [2.4.0] - 2026-06-12
+
+### Added
+- Added `--history <path>` option to `dqt drift`, appending one compact `drift_history_record` JSON line per run to an append-only JSONL file; shares the evidence report's `run_id` when `--output` is also given. Default behavior is unchanged (no file written without the flag).
+- Added `history_path` keyword to the `detect_drift` Python API for the same opt-in history record.
+- Added `--output <path>` option to `dqt drift`, writing the drift result to a JSON evidence report wrapped in a versioned envelope (`schema_version`, `run_id`, `created_at`); default behavior is unchanged (no file written without the flag).
+- Added `output_path` keyword to the `detect_drift` Python API for the same opt-in evidence report.
+- Added `--fail-on-drift` option to `dqt drift` command, which causes the CLI to exit with code 2 if statistical drift is detected.
+- Added statistical drift detection for comparing baseline and current CSV datasets.
+- Added numeric Kolmogorov-Smirnov (KS) test for drift detection in numerical columns (requires `scipy`).
+- Added Chi-square test of homogeneity for drift detection in categorical columns (requires `scipy`).
+- Added `dqt drift <baseline.csv> <current.csv>` CLI command with support for `--alpha`, `--min-samples`, and `--max-categories` tuning.
+- Added `[stats]` optional dependency extra (`pip install "data-quality-toolkit[stats]"`) for drift detection capabilities.
+- Added README usage documentation and examples for the `dqt drift` command.
+
 ## [Unreleased]
+
 
 ## [2.3.0] - 2026-06-11
 

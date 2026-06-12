@@ -11,9 +11,11 @@ Use these examples when you want to:
 
 ## Recommended starting point
 
-Start with the full demo package:
+**Python API quickstart (notebook):** [01_quickstart.ipynb](01_quickstart.ipynb)
 
-- [Demo package — sample orders dataset](demo/README.md)
+Walks through `profile_csv`, `assess_csv`, `plan_csv`, and `compute_univariate_chart_data` on `demo/sample_orders.csv`. Open in Jupyter or VS Code (requires `pip install data-quality-toolkit ipykernel`).
+
+**CLI demo guide:** [Demo package — sample orders dataset](demo/README.md)
 
 That guide shows the standard happy-path workflow and links to the issue-showcase demo.
 

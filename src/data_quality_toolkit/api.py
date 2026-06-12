@@ -97,6 +97,7 @@ def export_csv(
     encoding: str | None = None,
     na_values: list[str] | None = None,
     sample_size: int | None = None,
+    emit_manifest: bool = False,
 ) -> dict[str, Any]:
     """Full pipeline: profile → assess → star schema → write artifacts. Returns run metadata."""
     from data_quality_toolkit.application.workflow.pipeline import run_export_star
@@ -109,9 +110,12 @@ def export_csv(
             output_dir=out_dir,
             null_threshold=null_threshold,
             sample_size=sample_size,
+            emit_manifest=emit_manifest,
             **kw,
         )
-    return run_export_star(str(path), output_dir=out_dir, sample_size=sample_size, **kw)
+    return run_export_star(
+        str(path), output_dir=out_dir, sample_size=sample_size, emit_manifest=emit_manifest, **kw
+    )
 
 
 def create_manifest(run_id: str, sessions_root: str | Path) -> dict[str, Any]:
@@ -137,6 +141,150 @@ def compare_runs(
     dataset_id = dataset_id_from_file(Path(path))
     history_path = Path(output_dir) / "star" / "quality_history.jsonl"
     return compare_last_two_runs(dataset_id, history_path)
+
+
+DRIFT_REPORT_SCHEMA_VERSION = "1"
+DRIFT_HISTORY_SCHEMA_VERSION = "1"
+
+
+def _drift_run_identity() -> dict[str, str]:
+    """Generate the run identity shared by the evidence report and history record."""
+    import uuid
+    from datetime import UTC, datetime
+
+    return {
+        "run_id": uuid.uuid4().hex,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def _write_drift_report(
+    output_path: Path,
+    baseline_path: str,
+    current_path: str,
+    result: dict[str, Any],
+    identity: dict[str, str],
+) -> None:
+    """Atomically write a drift evidence report (versioned envelope around *result*)."""
+    import json
+    import os
+    import tempfile
+
+    envelope = {
+        "schema_version": DRIFT_REPORT_SCHEMA_VERSION,
+        "kind": "drift_report",
+        "run_id": identity["run_id"],
+        "created_at": identity["created_at"],
+        "baseline_path": baseline_path,
+        "current_path": current_path,
+        "result": result,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", delete=False, dir=str(output_path.parent), suffix=".tmp"
+    ) as tmp:
+        json.dump(envelope, tmp, indent=2, sort_keys=True, default=str)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+    os.replace(tmp.name, output_path)
+
+
+def _append_drift_history(
+    history_path: Path,
+    baseline_path: str,
+    current_path: str,
+    result: dict[str, Any],
+    identity: dict[str, str],
+    report_path: str | None,
+) -> None:
+    """Append one compact drift history record (a single JSON line) to *history_path*."""
+    from data_quality_toolkit.adapters.storage.jsonl import append_jsonl_record
+
+    summary = result.get("summary") or {}
+    record = {
+        "schema_version": DRIFT_HISTORY_SCHEMA_VERSION,
+        "kind": "drift_history_record",
+        "run_id": identity["run_id"],
+        "created_at": identity["created_at"],
+        "baseline_path": baseline_path,
+        "current_path": current_path,
+        "baseline_dataset_id": result.get("baseline_dataset_id"),
+        "current_dataset_id": result.get("current_dataset_id"),
+        "status": result.get("status"),
+        "alpha": result.get("alpha"),
+        "columns_tested": summary.get("columns_tested"),
+        "columns_skipped": summary.get("columns_skipped"),
+        "columns_drifted": summary.get("columns_drifted"),
+        "drift_detected": summary.get("drift_detected"),
+        "report_path": report_path,
+    }
+    append_jsonl_record(history_path, record)
+
+
+def detect_drift(
+    baseline_path: str | Path,
+    current_path: str | Path,
+    *,
+    alpha: float = 0.05,
+    min_samples: int = 30,
+    max_categories: int = 20,
+    sep: str | None = None,
+    encoding: str | None = None,
+    na_values: list[str] | None = None,
+    sample_size: int | None = None,
+    output_path: str | Path | None = None,
+    history_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Detect statistical drift between two CSV files. No disk writes unless paths are set.
+
+    Numeric columns: two-sample KS test. Categorical columns: chi-square test.
+    Requires the optional stats extra (scipy); without it the result has
+    status="unavailable" instead of raising.
+
+    When *output_path* is set, the result is written there as a JSON evidence
+    report wrapped in a versioned envelope (schema_version, run_id, created_at,
+    baseline/current paths). The report is written even when scipy is
+    unavailable, and the returned dict gains an "output_path" key.
+
+    When *history_path* is set, one compact history record (JSON line) is
+    appended there, sharing the report's run_id when both paths are given.
+    The record is appended even when scipy is unavailable, and the returned
+    dict gains a "history_path" key.
+    """
+    from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
+    from data_quality_toolkit.domain.statistics.drift import detect_drift_frames
+
+    kw = _build_csv_kwargs(sep, encoding, na_values)
+    ref_df, ref_meta = load_csv(str(baseline_path), sample_size=sample_size, **kw)
+    cur_df, cur_meta = load_csv(str(current_path), sample_size=sample_size, **kw)
+    result = detect_drift_frames(
+        ref_df,
+        cur_df,
+        alpha=alpha,
+        min_samples=min_samples,
+        max_categories=max_categories,
+    )
+    result["baseline_dataset_id"] = ref_meta["dataset_id"]
+    result["current_dataset_id"] = cur_meta["dataset_id"]
+    if output_path is not None or history_path is not None:
+        identity = _drift_run_identity()
+        out: Path | None = None
+        if output_path is not None:
+            out = Path(output_path)
+            _write_drift_report(out, str(baseline_path), str(current_path), result, identity)
+            result["output_path"] = str(out)
+        if history_path is not None:
+            hist = Path(history_path)
+            _append_drift_history(
+                hist,
+                str(baseline_path),
+                str(current_path),
+                result,
+                identity,
+                report_path=str(out) if out is not None else None,
+            )
+            result["history_path"] = str(hist)
+    return result
 
 
 def plan_csv(

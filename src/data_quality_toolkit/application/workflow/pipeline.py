@@ -32,6 +32,8 @@ from data_quality_toolkit.domain.profiling.profiling_orchestrator import (
     run_chunked_profiling,
     run_profiling,
 )
+from data_quality_toolkit.lineage.manifest.builder import build_and_write
+from data_quality_toolkit.lineage.manifest.schemas import Artifact, ArtifactKind, Dataset
 from data_quality_toolkit.shared.constants import ARTIFACT_SCHEMA_VERSION, DEFAULT_NULL_THRESHOLD
 from data_quality_toolkit.shared.models import ProfileResult
 from data_quality_toolkit.shared.settings import load_settings
@@ -366,11 +368,80 @@ def _persist_star_to_sqlite(
         _con.close()
 
 
+_STAR_CSV_NAMES: frozenset[str] = frozenset(
+    {"dim_dataset", "dim_column", "fact_profile_runs", "fact_quality_metrics", "fact_issues"}
+)
+_REPORT_NAMES: frozenset[str] = frozenset({"quality_report", "quality_history"})
+
+
+def _emit_export_manifest(
+    run_id: str,
+    base_out: Path,
+    csv_path: str,
+    prof_rows: int,
+    score: float,
+    paths: dict[str, str],
+) -> str:
+    """Build and write a lineage manifest for an export-star run.
+
+    Returns the absolute path string of the written artifacts.json.
+    Raises on any error; caller must wrap in try/except.
+    """
+    # Dataset: the source CSV
+    src = Path(csv_path)
+    try:
+        src_bytes = src.stat().st_size
+    except OSError:
+        src_bytes = 0
+    datasets = [
+        Dataset(
+            kind="bronze",
+            path=src.as_posix(),
+            rows=prof_rows,
+            bytes=src_bytes,
+            content_hash="",
+        )
+    ]
+
+    # Artifacts: map export_paths entries to Artifact kinds, paths relative to base_out
+    artifacts: list[Artifact] = []
+    for name, abs_path_str in paths.items():
+        abs_p = Path(abs_path_str)
+        try:
+            rel = abs_p.relative_to(base_out).as_posix()
+        except ValueError:
+            rel = abs_p.as_posix()
+        try:
+            art_bytes = abs_p.stat().st_size
+        except OSError:
+            art_bytes = 0
+        kind: ArtifactKind
+        if name in _STAR_CSV_NAMES or name == "relationships":
+            kind = "star"
+        elif name in _REPORT_NAMES:
+            kind = "report"
+        else:
+            kind = "star"
+        artifacts.append(Artifact(kind=kind, path=rel, bytes=art_bytes))
+
+    build_and_write(
+        run_id=run_id,
+        session_dir=base_out,
+        datasets=datasets,
+        artifacts=artifacts,
+        rows_in=prof_rows,
+        rows_out=prof_rows,
+        health=score,
+    )
+    return str(base_out / "artifacts.json")
+
+
 def run_export_star(
     csv_path: str,
     output_dir: str | None = None,
     null_threshold: float = DEFAULT_NULL_THRESHOLD,
     sample_size: int | None = None,
+    emit_manifest: bool = False,
     **read_csv_kwargs: Any,
 ) -> dict[str, Any]:
     """
@@ -497,6 +568,21 @@ def run_export_star(
         )
     except Exception as exc:
         logger.warning("SQLite persistence failed: %s", exc)
+
+    # Emit lineage manifest (additive — failure must not fail export)
+    if emit_manifest:
+        try:
+            manifest_path = _emit_export_manifest(
+                run_id=prof["run_id"],
+                base_out=base_out,
+                csv_path=csv_path,
+                prof_rows=int(prof["rows"]),
+                score=float(assessment["score"]),
+                paths=paths,
+            )
+            paths["manifest"] = manifest_path
+        except Exception as exc:
+            logger.warning("Manifest emission failed: %s", exc)
 
     logger.info(
         "quality_report.json written: score=%.4f issues=%d",
