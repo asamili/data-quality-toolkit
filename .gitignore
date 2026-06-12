@@ -320,6 +320,13 @@ credentials/
 # ===============================
 # AI Tooling and MCP Artifacts
 # ===============================
+# Private agent/governance/control files — must never appear in public repo
+AGENTS.md
+GEMINI.md
+CLAUDE.md
+GADS*
+GADS-LAB*
+
 # MCP configs
 .mcp.json
 .gemini/settings.json
