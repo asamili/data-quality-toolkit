@@ -23,6 +23,9 @@ class FakeStats:
         expected = arr.sum(axis=1, keepdims=True) * arr.sum(axis=0, keepdims=True) / arr.sum()
         return SimpleNamespace(statistic=1.23, pvalue=0.8, dof=1, expected_freq=expected)
 
+    def wasserstein_distance(self, a: Any, b: Any) -> float:
+        return 0.5
+
 
 def _write_csv(path: Path, x_offset: float = 0.0) -> Path:
     lines = ["x,category"]
@@ -112,7 +115,7 @@ def test_detect_drift_output_path_writes_envelope(
     assert result["output_path"] == str(out)
     assert out.exists()
     envelope = json.loads(out.read_text(encoding="utf-8"))
-    assert envelope["schema_version"] == "1"
+    assert envelope["schema_version"] == "3"
     assert envelope["kind"] == "drift_report"
     assert envelope["run_id"]
     assert envelope["created_at"]

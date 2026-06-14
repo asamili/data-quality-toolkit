@@ -25,7 +25,7 @@ assignees: ''
 <!-- Exact command you ran — use the full interpreter path if PATH is unreliable -->
 
 ```
-dqt <subcommand>
+C:\Users\<you>\micromamba\envs\dqt\python.exe -m data_quality_toolkit.adapters.cli.main <subcommand> <args>
 ```
 
 ## CLI Output / stderr
@@ -52,7 +52,7 @@ paste output here
 
 - **OS**: [e.g., Windows 11]
 - **Python Version**: [e.g., 3.12.x]
-- **DQT Version / commit**: [e.g., v2.x.x / commit hash]
+- **DQT Version / commit**: [e.g., v1.0.0-internal or commit hash]
 - **Installation method**: [source / pip]
 
 ## Additional Context

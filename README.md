@@ -4,43 +4,45 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)]()
 [![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue)]()
 
-**CLI-first data quality toolkit for CSV validation, issue detection, and BI-ready export artifacts.**
+**A CLI-first toolkit for CSV data quality: profile datasets, enforce quality gates, detect statistical drift, and export BI-ready artifacts.**
 
-## Quality Position
-DQT is a portfolio-grade Python CLI project designed for practical, automated data-quality workflows.
+DQT runs from the command line with no service to stand up. Point it at a CSV and it profiles columns, scores quality, and fails your pipeline when data falls below threshold. It also detects statistical drift between datasets and turns drift history into SQLite-backed monitoring reports and dashboards.
 
-## Core Business Value
-- **Trust:** Catch data issues before they break reporting or analytics workflows with automated quality gates.
-- **Visibility:** Faster profiling with terminal-based distribution charts and dashboard EDA.
-- **Traceability:** Improve confidence in downstream reporting with structured lineage manifests for impact analysis.
+## Install
 
-## Portfolio Differentiation
-- Python package design
-- CLI product thinking
-- Rigorous testing and release discipline
-- Data-quality automation
-- Analytics reliability
-
-## Quick Start
 ```bash
-# Clone and install
 git clone https://github.com/asamili/data-quality-toolkit
 cd data-quality-toolkit
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
 
-# Basic Usage
+# Optional extras
+pip install "data-quality-toolkit[stats]"   # drift detection (scipy)
+pip install "data-quality-toolkit[ui]"      # Streamlit dashboard
+```
+
+## Core Workflow
+
+```bash
+# Profile a dataset
 dqt profile data/orders.csv
+
+# Score quality and fail the pipeline below a threshold (exit code 2)
 dqt assess data/orders.csv --fail-under 0.90
+
+# Export star-schema artifacts for BI
 dqt export data/orders.csv --outdir dist/
 
 # Detect statistical drift between two datasets
 dqt drift data/baseline.csv data/current.csv --alpha 0.05
 ```
 
-### Statistical Drift Detection
-Compare two CSV datasets for statistical drift using KS (numerical) and Chi-square (categorical) tests.
+`dqt assess --fail-under <score>` is the pipeline gate: it exits `2` when the quality score is below the threshold, so CI/ETL steps can halt and alert. See the [CLI Reference](docs/cli.md) for the full command set.
+
+## Statistical Drift Detection
+
+Compare two CSV datasets for statistical drift using KS tests (numerical) and Chi-square tests (categorical). Requires the `[stats]` extra.
 
 ```bash
 # Basic usage
@@ -59,15 +61,42 @@ dqt drift baseline.csv current.csv --output drift_report.json
 dqt drift baseline.csv current.csv --output drift_report.json --history drift_history.jsonl
 ```
 
-- **Output:** Machine-readable JSON is written to `stdout` (suppress with `--no-json`), while a human-readable summary is written to `stderr`.
-- **Evidence report:** `--output <path>` writes the drift result to a file, wrapped in a versioned envelope (`schema_version`, `kind`, `run_id`, `created_at`, `baseline_path`, `current_path`, `result`). Without the flag, nothing is written to disk. The report is written before the `--fail-on-drift` exit-code check, so CI keeps the evidence even on failure.
-- **Drift history:** `--history <path>` appends one compact JSONL record per run (`schema_version`, `kind: drift_history_record`, `run_id`, `created_at`, dataset ids, `status`, `alpha`, summary counts, `report_path`). When `--output` is also given, the record's `run_id` matches the evidence report's, so history lines can be traced back to full reports. The file is append-only and intended as the trend source for future dashboard/reporting work; a SQLite importer may follow once dashboard requirements are settled (mirroring how `quality_history.jsonl` is imported today).
-- **Dependency:** Requires `scipy`. Install via: `pip install "data-quality-toolkit[stats]"`
-- **V1 Behavior:** Drift detected exits `0`; unavailable `scipy` exits `1`.
-- **Exit Codes:**
-  - `0`: Success (no drift, or drift detected without `--fail-on-drift`).
-  - `1`: Unavailable (missing `scipy`).
-  - `2`: Fail (drift detected with `--fail-on-drift`).
+- **Output:** machine-readable JSON goes to `stdout` (suppress with `--no-json`); a human-readable summary goes to `stderr`.
+- **Evidence report:** `--output <path>` writes the drift result wrapped in a versioned envelope (`schema_version`, `kind`, `run_id`, `created_at`, `baseline_path`, `current_path`, `result`). Written before the `--fail-on-drift` exit check, so CI keeps the evidence even on failure.
+- **Drift history:** `--history <path>` appends one compact JSONL record per run (`run_id`, `created_at`, dataset ids, `status`, `alpha`, summary counts, `report_path`). When `--output` is also given, the record's `run_id` matches the evidence report's, so history lines trace back to full reports. This file is the input to the `dqt drift-history` analytics commands below.
+- **Exit codes:** `0` success (no drift, or drift without `--fail-on-drift`); `1` unavailable (missing `scipy`); `2` drift detected with `--fail-on-drift`.
+
+## Drift History Analytics (v2.5.0)
+
+> These commands ship in **v2.5.0**.
+
+Promote an append-only drift history (`dqt drift --history drift_history.jsonl`) into a SQLite monitoring store, then query trends, inspect column metrics, and render reports and dashboards.
+
+```bash
+# Import a JSONL drift history into a SQLite monitoring DB
+dqt drift-history import history.jsonl --db monitoring.db
+
+# List imported runs
+dqt drift-history list --db monitoring.db
+
+# Trend summary across runs
+dqt drift-history trend --db monitoring.db
+
+# Per-column drift metrics
+dqt drift-history columns --db monitoring.db
+
+# Markdown/HTML report (opt-in column metrics + distribution plots)
+dqt drift-history report --db monitoring.db --output drift-report.md --include-columns --include-plots
+
+# Static, self-contained HTML dashboard
+dqt drift-history dashboard --db monitoring.db --output drift-dashboard.html --include-plots
+```
+
+- **Dependency-free artifacts:** reports and the dashboard render with inline CSS only — **no JavaScript, no CDN, no images, and no matplotlib required**.
+- **Advanced per-column metrics:** PSI (Population Stability Index), Jensen-Shannon distance, and Wasserstein distance.
+- **SQLite-backed artifacts:** import populates the `drift_runs`, `drift_columns`, and `drift_column_distributions` tables.
+- **Opt-in detail:** `--include-columns` appends column-level metrics to the report; `--include-plots` adds distribution plots to the report and dashboard. Both default off, leaving base output unchanged.
+- A missing or empty database still produces valid output and exits `0`.
 
 ## Documentation
 - [Product Brief](docs/product.md)
@@ -77,4 +106,4 @@ dqt drift baseline.csv current.csv --output drift_report.json --history drift_hi
 - [Demo Story](docs/demo_story.md)
 
 ---
-**Version**: v2.4.0 | **Status**: Active development
+**Version**: v2.5.0 | **Status**: Active development

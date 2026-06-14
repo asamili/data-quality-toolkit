@@ -27,7 +27,7 @@ def test_readme_module_path_help() -> None:
 def test_readme_module_path_version() -> None:
     proc = _run("version")
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "2.4.0"
+    assert proc.stdout.strip() == "2.5.0"
 
 
 def test_readme_module_path_profile(tmp_path) -> None:

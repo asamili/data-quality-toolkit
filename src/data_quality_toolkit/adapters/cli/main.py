@@ -93,6 +93,19 @@ def _get_sample_size(args: argparse.Namespace) -> int | None:
     return int(val) if val is not None else None
 
 
+def _parse_bool_flag(value: str) -> bool:
+    """Parse a true|false CLI string into a bool (argparse type callback).
+
+    argparse ``type=bool`` is unusable here because ``bool("false")`` is ``True``.
+    """
+    v = value.strip().lower()
+    if v in {"true", "1", "yes"}:
+        return True
+    if v in {"false", "0", "no"}:
+        return False
+    raise argparse.ArgumentTypeError(f"expected true|false, got {value!r}")
+
+
 # --- Test-friendly, lazy-imported wrappers (so monkeypatch can replace them) ---
 
 
@@ -150,6 +163,93 @@ def run_drift(baseline: str, current: str, **kw: Any) -> dict[str, Any]:
     from data_quality_toolkit.api import detect_drift
 
     return detect_drift(baseline, current, **kw)
+
+
+def read_drift_history(history_path: str) -> list[dict[str, Any]]:
+    """Proxy to api.read_drift_history (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import read_drift_history as _impl
+
+    return _impl(history_path)
+
+
+def import_drift_history_sqlite(db_path: str, history_path: str) -> int:
+    """Proxy to api.import_drift_history_sqlite (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import import_drift_history_sqlite as _impl
+
+    return _impl(db_path, history_path)
+
+
+def ensure_drift_db(db_path: str) -> None:
+    """Proxy to storage.schema.ensure_db (lazy import for monkeypatching)."""
+    from data_quality_toolkit.adapters.storage.schema import ensure_db as _impl
+
+    _impl(Path(db_path))
+
+
+def summarize_drift_trends_sqlite(
+    db_path: str,
+    *,
+    current_dataset_id: str | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Proxy to api.summarize_drift_trends_sqlite (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import summarize_drift_trends_sqlite as _impl
+
+    return _impl(db_path, current_dataset_id=current_dataset_id, limit=limit)
+
+
+def read_drift_runs_sqlite(
+    db_path: str,
+    *,
+    limit: int | None = None,
+    current_dataset_id: str | None = None,
+    drift_detected: bool | int | None = None,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
+    """Proxy to api.read_drift_runs_sqlite (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import read_drift_runs_sqlite as _impl
+
+    return _impl(
+        db_path,
+        limit=limit,
+        current_dataset_id=current_dataset_id,
+        drift_detected=drift_detected,
+        status=status,
+    )
+
+
+def read_drift_columns_sqlite(
+    db_path: str,
+    *,
+    run_id: str | None = None,
+    column_name: str | None = None,
+    drift_detected: bool | int | None = None,
+) -> list[dict[str, Any]]:
+    """Proxy to api.read_drift_columns_sqlite (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import read_drift_columns_sqlite as _impl
+
+    return _impl(
+        db_path,
+        run_id=run_id,
+        column_name=column_name,
+        drift_detected=drift_detected,
+    )
+
+
+def read_drift_distributions_sqlite(
+    db_path: str,
+    *,
+    run_id: str | None = None,
+    column_name: str | None = None,
+) -> list[dict[str, Any]]:
+    """Proxy to api.read_drift_distributions_sqlite (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import read_drift_distributions_sqlite as _impl
+
+    return _impl(
+        db_path,
+        run_id=run_id,
+        column_name=column_name,
+    )
 
 
 def kpi_validate_catalog(config_path: str) -> dict[str, Any]:
@@ -745,6 +845,189 @@ def cmd_drift(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_drift_history(args: argparse.Namespace) -> int:
+    """Read and print drift history records from a JSONL file."""
+    records = read_drift_history(args.history_path)
+    tick = _safe_text("✓", "[OK]")
+    print(f"{tick} Drift history read  [{Path(args.history_path).name}]", file=sys.stderr)
+    print(f"  - Records: {len(records)}", file=sys.stderr)
+    if not getattr(args, "no_json", False):
+        print(_json_dump(records))
+    return 0
+
+
+def cmd_drift_history_import(args: argparse.Namespace) -> int:
+    """Import drift history JSONL records into a SQLite monitoring DB."""
+    ensure_drift_db(args.db)
+    imported_count = import_drift_history_sqlite(args.db, args.history_path)
+    tick = _safe_text("✓", "[OK]")
+    print(
+        f"{tick} Drift history imported  [{Path(args.history_path).name}]",
+        file=sys.stderr,
+    )
+    print(f"  - Imported rows: {imported_count}", file=sys.stderr)
+    if not getattr(args, "no_json", False):
+        print(
+            _json_dump(
+                {
+                    "imported_count": imported_count,
+                    "history_path": str(args.history_path),
+                    "db_path": str(args.db),
+                }
+            )
+        )
+    return 0
+
+
+def cmd_drift_history_list(args: argparse.Namespace) -> int:
+    """List imported drift runs from a SQLite monitoring DB."""
+    runs = read_drift_runs_sqlite(
+        args.db,
+        limit=getattr(args, "limit", None),
+        current_dataset_id=getattr(args, "current_dataset_id", None),
+        drift_detected=getattr(args, "drift_detected", None),
+        status=getattr(args, "status", None),
+    )
+    tick = _safe_text("✓", "[OK]")
+    print(f"{tick} Drift runs listed  [{Path(args.db).name}]", file=sys.stderr)
+    print(f"  - Runs: {len(runs)}", file=sys.stderr)
+    if not getattr(args, "no_json", False):
+        print(_json_dump(runs))
+    return 0
+
+
+def cmd_drift_history_columns(args: argparse.Namespace) -> int:
+    """List imported per-column drift metrics from a SQLite monitoring DB."""
+    rows = read_drift_columns_sqlite(
+        args.db,
+        run_id=getattr(args, "run_id", None),
+        column_name=getattr(args, "column_name", None),
+        drift_detected=getattr(args, "drift_detected", None),
+    )
+    drifted = sum(1 for r in rows if r.get("drift_detected"))
+    tick = _safe_text("✓", "[OK]")
+    print(f"{tick} Drift columns listed  [{Path(args.db).name}]", file=sys.stderr)
+    print(f"  - Columns: {len(rows)}", file=sys.stderr)
+    print(f"  - Drifted columns: {drifted}", file=sys.stderr)
+    if not getattr(args, "no_json", False):
+        print(_json_dump(rows))
+    return 0
+
+
+def cmd_drift_history_trend(args: argparse.Namespace) -> int:
+    """Summarize drift trends from a SQLite monitoring DB."""
+    summary = summarize_drift_trends_sqlite(
+        args.db,
+        current_dataset_id=getattr(args, "current_dataset_id", None),
+        limit=getattr(args, "limit", None),
+    )
+    tick = _safe_text("✓", "[OK]")
+    print(f"{tick} Drift trend summarized  [{Path(args.db).name}]", file=sys.stderr)
+    print(f"  - Total runs: {summary['total_runs']}", file=sys.stderr)
+    print(f"  - Drifted runs: {summary['drifted_runs']}", file=sys.stderr)
+    print(f"  - Drift rate: {summary['drift_rate']}", file=sys.stderr)
+    if not getattr(args, "no_json", False):
+        print(_json_dump(summary))
+    return 0
+
+
+def cmd_drift_history_report(args: argparse.Namespace) -> int:
+    """Generate a drift-history monitoring report from a SQLite monitoring DB."""
+    current_dataset_id = getattr(args, "current_dataset_id", None)
+    limit = getattr(args, "limit", None)
+    summary = summarize_drift_trends_sqlite(
+        args.db,
+        current_dataset_id=current_dataset_id,
+        limit=limit,
+    )
+    runs = read_drift_runs_sqlite(
+        args.db,
+        limit=limit,
+        current_dataset_id=current_dataset_id,
+    )
+    fmt = "html" if getattr(args, "format", None) == "html" else "md"
+
+    columns: list[dict[str, Any]] | None = None
+    if getattr(args, "include_columns", False):
+        columns = read_drift_columns_sqlite(args.db)
+
+    distributions: list[dict[str, Any]] | None = None
+    include_plots = getattr(args, "include_plots", False)
+    if include_plots:
+        distributions = read_drift_distributions_sqlite(args.db)
+
+    from data_quality_toolkit.adapters.reports.drift_history import (
+        render_drift_history_report,
+    )
+
+    text = render_drift_history_report(
+        summary=summary,
+        runs=runs,
+        db_path=args.db,
+        current_dataset_id=current_dataset_id,
+        limit=limit,
+        fmt=fmt,
+        columns=columns,
+        distributions=distributions,
+    )
+    Path(args.output).write_text(text, encoding="utf-8")
+
+    tick = _safe_text("✓", "[OK]")
+    print(f"{tick} Drift report written  [{Path(args.output).name}]", file=sys.stderr)
+    print(f"  - Output: {args.output}", file=sys.stderr)
+    print(f"  - Total runs: {summary['total_runs']}", file=sys.stderr)
+    if include_plots:
+        print(f"  - Distribution rows: {len(distributions or [])}", file=sys.stderr)
+    return 0
+
+
+def cmd_drift_dashboard(args: argparse.Namespace) -> int:
+    """Generate a static HTML drift analytics dashboard from a SQLite DB."""
+    current_dataset_id = getattr(args, "current_dataset_id", None)
+    limit = getattr(args, "limit", None)
+    summary = summarize_drift_trends_sqlite(
+        args.db,
+        current_dataset_id=current_dataset_id,
+        limit=limit,
+    )
+    runs = read_drift_runs_sqlite(
+        args.db,
+        limit=limit,
+        current_dataset_id=current_dataset_id,
+    )
+    columns = read_drift_columns_sqlite(args.db)
+
+    distributions: list[dict[str, Any]] | None = None
+    include_plots = getattr(args, "include_plots", False)
+    if include_plots:
+        distributions = read_drift_distributions_sqlite(args.db)
+
+    from data_quality_toolkit.adapters.reports.drift_dashboard import (
+        render_drift_dashboard,
+    )
+
+    text = render_drift_dashboard(
+        summary=summary,
+        runs=runs,
+        columns=columns,
+        db_path=args.db,
+        current_dataset_id=current_dataset_id,
+        limit=limit,
+        distributions=distributions,
+    )
+    Path(args.output).write_text(text, encoding="utf-8")
+
+    tick = _safe_text("✓", "[OK]")
+    print(f"{tick} Drift dashboard written  [{Path(args.output).name}]", file=sys.stderr)
+    print(f"  - Output: {args.output}", file=sys.stderr)
+    print(f"  - Total runs: {summary['total_runs']}", file=sys.stderr)
+    print(f"  - Drifted runs: {summary['drifted_runs']}", file=sys.stderr)
+    print(f"  - Column rows: {len(columns)}", file=sys.stderr)
+    if include_plots:
+        print(f"  - Distribution rows: {len(distributions or [])}", file=sys.stderr)
+    return 0
+
+
 def cmd_export_star(args: argparse.Namespace) -> int:
     """Export star schema."""
     nt = _extract_null_threshold(args)
@@ -1289,6 +1572,231 @@ def build_parser() -> argparse.ArgumentParser:
     sp_drift.add_argument("--na-values", help="Comma-separated NA values (e.g., 'NA,NaN,null')")
     sp_drift.add_argument("--sample-size", type=int, help="Override SAMPLE_SIZE for this run")
     sp_drift.set_defaults(func=cmd_drift)
+
+    # drift-history
+    sp_dh = sub.add_parser(
+        "drift-history",
+        help="Drift history commands (read JSONL, import to SQLite)",
+    )
+    ssp_dh = sp_dh.add_subparsers(dest="subcommand", required=True)
+
+    ssp_dh_read = ssp_dh.add_parser(
+        "read",
+        help="Read drift history records from a JSONL file written by dqt drift --history",
+    )
+    ssp_dh_read.add_argument(
+        "history_path",
+        metavar="HISTORY_PATH",
+        help="Path to a drift history JSONL file",
+    )
+    ssp_dh_read.set_defaults(func=cmd_drift_history)
+
+    ssp_dh_import = ssp_dh.add_parser(
+        "import",
+        help="Import drift history JSONL records into a SQLite monitoring database",
+    )
+    ssp_dh_import.add_argument(
+        "history_path",
+        metavar="HISTORY_PATH",
+        help="Path to a drift history JSONL file",
+    )
+    ssp_dh_import.add_argument(
+        "--db",
+        dest="db",
+        required=True,
+        metavar="PATH",
+        help="Path to the SQLite monitoring database",
+    )
+    ssp_dh_import.set_defaults(func=cmd_drift_history_import)
+
+    ssp_dh_list = ssp_dh.add_parser(
+        "list",
+        help="List imported drift runs from a SQLite monitoring database",
+    )
+    ssp_dh_list.add_argument(
+        "--db",
+        dest="db",
+        required=True,
+        metavar="PATH",
+        help="Path to the SQLite monitoring database",
+    )
+    ssp_dh_list.add_argument(
+        "--limit",
+        dest="limit",
+        type=int,
+        metavar="N",
+        help="Maximum number of runs to return",
+    )
+    ssp_dh_list.add_argument(
+        "--current-dataset-id",
+        dest="current_dataset_id",
+        metavar="VALUE",
+        help="Filter by current_dataset_id",
+    )
+    ssp_dh_list.add_argument(
+        "--drift-detected",
+        dest="drift_detected",
+        type=_parse_bool_flag,
+        metavar="true|false",
+        help="Filter by drift_detected (true|false)",
+    )
+    ssp_dh_list.add_argument(
+        "--status",
+        dest="status",
+        metavar="VALUE",
+        help="Filter by status",
+    )
+    ssp_dh_list.set_defaults(func=cmd_drift_history_list)
+
+    ssp_dh_columns = ssp_dh.add_parser(
+        "columns",
+        help="List imported per-column drift metrics from a SQLite database",
+    )
+    ssp_dh_columns.add_argument(
+        "--db",
+        dest="db",
+        required=True,
+        metavar="PATH",
+        help="Path to the SQLite monitoring database",
+    )
+    ssp_dh_columns.add_argument(
+        "--run-id",
+        dest="run_id",
+        metavar="VALUE",
+        help="Filter by run_id",
+    )
+    ssp_dh_columns.add_argument(
+        "--column-name",
+        dest="column_name",
+        metavar="VALUE",
+        help="Filter by column_name",
+    )
+    ssp_dh_columns.add_argument(
+        "--drift-detected",
+        dest="drift_detected",
+        type=_parse_bool_flag,
+        metavar="true|false",
+        help="Filter by drift_detected (true|false)",
+    )
+    ssp_dh_columns.set_defaults(func=cmd_drift_history_columns)
+
+    ssp_dh_trend = ssp_dh.add_parser(
+        "trend",
+        help="Summarize drift trends from a SQLite monitoring database",
+    )
+    ssp_dh_trend.add_argument(
+        "--db",
+        dest="db",
+        required=True,
+        metavar="PATH",
+        help="Path to the SQLite monitoring database",
+    )
+    ssp_dh_trend.add_argument(
+        "--current-dataset-id",
+        dest="current_dataset_id",
+        metavar="VALUE",
+        help="Filter by current_dataset_id",
+    )
+    ssp_dh_trend.add_argument(
+        "--limit",
+        dest="limit",
+        type=int,
+        metavar="N",
+        help="Maximum number of runs to aggregate",
+    )
+    ssp_dh_trend.set_defaults(func=cmd_drift_history_trend)
+
+    ssp_dh_report = ssp_dh.add_parser(
+        "report",
+        help="Generate a drift-history monitoring report from a SQLite database",
+    )
+    ssp_dh_report.add_argument(
+        "--db",
+        dest="db",
+        required=True,
+        metavar="PATH",
+        help="Path to the SQLite monitoring database",
+    )
+    ssp_dh_report.add_argument(
+        "--output",
+        dest="output",
+        required=True,
+        metavar="PATH",
+        help="Path to write the report file",
+    )
+    ssp_dh_report.add_argument(
+        "--current-dataset-id",
+        dest="current_dataset_id",
+        metavar="VALUE",
+        help="Filter by current_dataset_id",
+    )
+    ssp_dh_report.add_argument(
+        "--limit",
+        dest="limit",
+        type=int,
+        metavar="N",
+        help="Maximum number of runs to include",
+    )
+    ssp_dh_report.add_argument(
+        "--format",
+        dest="format",
+        choices=["md", "html"],
+        default="md",
+        help="Report output format (md|html, default: md)",
+    )
+    ssp_dh_report.add_argument(
+        "--include-columns",
+        dest="include_columns",
+        action="store_true",
+        help="Include a per-column drift metrics section in the report",
+    )
+    ssp_dh_report.add_argument(
+        "--include-plots",
+        dest="include_plots",
+        action="store_true",
+        help="Include a dependency-free distribution-plots section in the report",
+    )
+    ssp_dh_report.set_defaults(func=cmd_drift_history_report)
+
+    ssp_dh_dashboard = ssp_dh.add_parser(
+        "dashboard",
+        help="Generate a static HTML drift analytics dashboard from a SQLite database",
+    )
+    ssp_dh_dashboard.add_argument(
+        "--db",
+        dest="db",
+        required=True,
+        metavar="PATH",
+        help="Path to the SQLite monitoring database",
+    )
+    ssp_dh_dashboard.add_argument(
+        "--output",
+        dest="output",
+        required=True,
+        metavar="PATH",
+        help="Path to write the dashboard HTML file",
+    )
+    ssp_dh_dashboard.add_argument(
+        "--current-dataset-id",
+        dest="current_dataset_id",
+        metavar="VALUE",
+        help="Filter by current_dataset_id",
+    )
+    ssp_dh_dashboard.add_argument(
+        "--limit",
+        dest="limit",
+        type=int,
+        metavar="N",
+        help="Maximum number of runs to include",
+    )
+    ssp_dh_dashboard.add_argument(
+        "--include-plots",
+        dest="include_plots",
+        action="store_true",
+        help="Include a dependency-free distribution-plots section in the dashboard",
+    )
+    ssp_dh_dashboard.set_defaults(func=cmd_drift_dashboard)
+
     # kpi-validate
     sp_kpi_val = sub.add_parser("kpi-validate", help="Validate KPI catalog for errors")
     sp_kpi_val.add_argument("--config", default=KPI_DEFAULT_CONFIG, help=KPI_CONFIG_HELP)

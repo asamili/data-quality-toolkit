@@ -39,6 +39,10 @@ COLUMN_KEYS = {
     "status",
     "skip_reason",
     "interpretation",
+    "psi",
+    "js_distance",
+    "wasserstein",
+    "distribution",
 }
 
 
@@ -61,6 +65,9 @@ class FakeStats:
         return SimpleNamespace(
             statistic=1.23, pvalue=self.chi2_p, dof=arr.shape[1] - 1, expected_freq=expected
         )
+
+    def wasserstein_distance(self, a: Any, b: Any) -> float:
+        return 0.5
 
 
 def _patch(monkeypatch: pytest.MonkeyPatch, fake: FakeStats | None) -> None:
@@ -302,3 +309,211 @@ class TestRealScipy:
         col = _col(detect_drift_frames(ref, cur), "c")
         assert col["drift_detected"] is True
         assert col["test"] == "chi_square"
+
+
+class TestAdvancedMetrics:
+    """PSI / Jensen-Shannon / Wasserstein added in v2.5.0-G24."""
+
+    # ------------------------------------------------------------------
+    # PSI — dependency-free
+    # ------------------------------------------------------------------
+
+    def test_numeric_psi_present_and_non_negative(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref, cur = _numeric_frames(shift=2.0)
+        col = _col(detect_drift_frames(ref, cur), "x")
+        assert col["psi"] is not None
+        assert col["psi"] >= 0.0
+
+    def test_numeric_psi_zero_for_identical_distributions(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch(monkeypatch, FakeStats())
+        rng = np.random.default_rng(42)
+        values = rng.normal(0, 1, 100)
+        ref = pd.DataFrame({"x": values})
+        cur = pd.DataFrame({"x": values})
+        col = _col(detect_drift_frames(ref, cur), "x")
+        assert col["psi"] is not None
+        assert col["psi"] == pytest.approx(0.0, abs=1e-6)
+
+    def test_categorical_psi_present_and_non_negative(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref = pd.DataFrame({"c": ["a"] * 50 + ["b"] * 50})
+        cur = pd.DataFrame({"c": ["a"] * 80 + ["b"] * 20})
+        col = _col(detect_drift_frames(ref, cur), "c")
+        assert col["psi"] is not None
+        assert col["psi"] >= 0.0
+
+    # ------------------------------------------------------------------
+    # Skipped columns — keys present, values None
+    # ------------------------------------------------------------------
+
+    def test_skipped_column_has_metric_keys_as_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref = pd.DataFrame({"x": [1.0, 2.0]})
+        cur = pd.DataFrame({"x": [1.0, 2.0]})
+        col = _col(detect_drift_frames(ref, cur, min_samples=30), "x")
+        assert col["status"] == "skipped"
+        assert col["psi"] is None
+        assert col["js_distance"] is None
+        assert col["wasserstein"] is None
+
+    def test_missing_column_has_metric_keys_as_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref = pd.DataFrame({"only_ref": range(50)})
+        cur = pd.DataFrame({"only_cur": range(50)})
+        result = detect_drift_frames(ref, cur)
+        for col in result["columns"]:
+            assert "psi" in col
+            assert "js_distance" in col
+            assert "wasserstein" in col
+
+    # ------------------------------------------------------------------
+    # Wasserstein — numeric only
+    # ------------------------------------------------------------------
+
+    def test_wasserstein_none_for_categorical(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref = pd.DataFrame({"c": ["a"] * 50 + ["b"] * 50})
+        cur = pd.DataFrame({"c": ["a"] * 80 + ["b"] * 20})
+        col = _col(detect_drift_frames(ref, cur), "c")
+        assert col["wasserstein"] is None
+
+    def test_wasserstein_present_for_numeric_when_fake_stats(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref, cur = _numeric_frames()
+        col = _col(detect_drift_frames(ref, cur), "x")
+        assert col["wasserstein"] == pytest.approx(0.5)  # FakeStats returns 0.5
+
+    # ------------------------------------------------------------------
+    # No-scipy path — JS and Wasserstein must be None, PSI unaffected
+    # ------------------------------------------------------------------
+
+    def test_no_scipy_all_metrics_none_and_no_columns(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch(monkeypatch, None)
+        ref, cur = _numeric_frames()
+        result = detect_drift_frames(ref, cur)
+        assert result["status"] == "unavailable"
+        assert result["columns"] == []
+
+    # ------------------------------------------------------------------
+    # Real scipy — end-to-end metric values
+    # ------------------------------------------------------------------
+
+    def test_real_scipy_numeric_metrics_all_present(self) -> None:
+        pytest.importorskip("scipy")
+        rng = np.random.default_rng(99)
+        ref = pd.DataFrame({"x": rng.normal(0, 1, 300)})
+        cur = pd.DataFrame({"x": rng.normal(2, 1, 300)})
+        col = _col(detect_drift_frames(ref, cur), "x")
+        assert col["psi"] is not None and col["psi"] >= 0.0
+        assert col["js_distance"] is not None and 0.0 <= col["js_distance"] <= 1.0
+        assert col["wasserstein"] is not None and col["wasserstein"] >= 0.0
+
+    def test_real_scipy_categorical_metrics_present_wasserstein_none(self) -> None:
+        pytest.importorskip("scipy")
+        ref = pd.DataFrame({"c": ["a"] * 200 + ["b"] * 100})
+        cur = pd.DataFrame({"c": ["a"] * 50 + ["b"] * 250})
+        col = _col(detect_drift_frames(ref, cur), "c")
+        assert col["psi"] is not None and col["psi"] >= 0.0
+        assert col["js_distance"] is not None and 0.0 <= col["js_distance"] <= 1.0
+        assert col["wasserstein"] is None
+
+    def test_real_scipy_identical_distributions_low_psi(self) -> None:
+        pytest.importorskip("scipy")
+        rng = np.random.default_rng(7)
+        values = rng.normal(0, 1, 500)
+        ref = pd.DataFrame({"x": values})
+        cur = pd.DataFrame({"x": values})
+        col = _col(detect_drift_frames(ref, cur), "x")
+        assert col["psi"] == pytest.approx(0.0, abs=1e-6)
+        assert col["js_distance"] == pytest.approx(0.0, abs=1e-6)
+        assert col["wasserstein"] == pytest.approx(0.0, abs=1e-10)
+
+
+class TestDistribution:
+    """Per-column distribution bins captured for plotting (v2.5.0-G29)."""
+
+    def _assert_valid_bins(self, dist: dict[str, Any], kind: str) -> None:
+        assert dist["kind"] == kind
+        bins = dist["bins"]
+        assert isinstance(bins, list) and len(bins) >= 1
+        for b in bins:
+            assert set(b) == {"label", "reference", "current"}
+            assert isinstance(b["label"], str) and b["label"]
+            assert isinstance(b["reference"], float) and b["reference"] >= 0.0
+            assert isinstance(b["current"], float) and b["current"] >= 0.0
+        assert sum(b["reference"] for b in bins) == pytest.approx(1.0)
+        assert sum(b["current"] for b in bins) == pytest.approx(1.0)
+
+    def test_numeric_tested_has_distribution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref, cur = _numeric_frames(shift=2.0)
+        col = _col(detect_drift_frames(ref, cur), "x")
+        assert col["status"] == "tested"
+        self._assert_valid_bins(col["distribution"], "numeric")
+
+    def test_numeric_labels_are_half_open_ranges(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref, cur = _numeric_frames(shift=2.0)
+        col = _col(detect_drift_frames(ref, cur), "x")
+        labels = [b["label"] for b in col["distribution"]["bins"]]
+        # Outer edges are ±inf so the first/last bins are unbounded.
+        assert labels[0].startswith("[-inf, ")
+        assert labels[-1].endswith(", inf)")
+        assert all(lbl.startswith("[") and lbl.endswith(")") for lbl in labels)
+
+    def test_categorical_tested_has_distribution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats(chi2_p=0.001))
+        ref = pd.DataFrame({"c": ["a"] * 50 + ["b"] * 50})
+        cur = pd.DataFrame({"c": ["a"] * 80 + ["b"] * 20})
+        col = _col(detect_drift_frames(ref, cur), "c")
+        assert col["status"] == "tested"
+        self._assert_valid_bins(col["distribution"], "categorical")
+        labels = {b["label"] for b in col["distribution"]["bins"]}
+        assert labels == {"a", "b"}
+
+    def test_categorical_other_bucket_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats(chi2_p=0.5))
+        values = ["a"] * 100 + ["b"] * 100 + ["c"] * 100 + [f"rare_{i}" for i in range(30)] * 2
+        ref = pd.DataFrame({"c": values})
+        cur = pd.DataFrame({"c": values})
+        col = _col(detect_drift_frames(ref, cur, max_categories=3), "c")
+        labels = {b["label"] for b in col["distribution"]["bins"]}
+        assert OTHER_BUCKET in labels
+
+    def test_skipped_column_distribution_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref = pd.DataFrame({"x": [1.0, 2.0]})
+        cur = pd.DataFrame({"x": [1.0, 2.0]})
+        col = _col(detect_drift_frames(ref, cur, min_samples=30), "x")
+        assert col["status"] == "skipped"
+        assert col["distribution"] is None
+
+    def test_missing_column_distribution_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref = pd.DataFrame({"only_ref": range(50)})
+        cur = pd.DataFrame({"only_cur": range(50)})
+        result = detect_drift_frames(ref, cur)
+        for col in result["columns"]:
+            assert col["distribution"] is None
+
+    def test_distribution_does_not_change_scalar_metrics(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch(monkeypatch, FakeStats())
+        ref, cur = _numeric_frames(shift=2.0)
+        col = _col(detect_drift_frames(ref, cur), "x")
+        # PSI is derived from the same vectors that build the distribution; the
+        # distribution capture must not perturb the scalar value.
+        bins = col["distribution"]["bins"]
+        ref_p = np.array([b["reference"] for b in bins])
+        cur_p = np.array([b["current"] for b in bins])
+        assert col["psi"] == pytest.approx(drift._psi(ref_p, cur_p))

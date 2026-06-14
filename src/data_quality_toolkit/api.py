@@ -143,7 +143,7 @@ def compare_runs(
     return compare_last_two_runs(dataset_id, history_path)
 
 
-DRIFT_REPORT_SCHEMA_VERSION = "1"
+DRIFT_REPORT_SCHEMA_VERSION = "3"
 DRIFT_HISTORY_SCHEMA_VERSION = "1"
 
 
@@ -368,3 +368,189 @@ def create_elt_pipeline(run_id: str, sessions_root: str | Path) -> ELTPipeline:
     )
 
     return _create(run_id, sessions_root)
+
+
+def read_drift_history(history_path: str | Path) -> list[dict[str, Any]]:
+    """Return all drift history records from a JSONL file written by detect_drift.
+
+    Missing file returns []. Blank and malformed lines are skipped. Preserves append order.
+    Records are filtered to kind == "drift_history_record".
+    """
+    from data_quality_toolkit.adapters.storage.jsonl import read_drift_history as _read
+
+    return _read(Path(history_path))
+
+
+def import_drift_history_sqlite(
+    db_path: str | Path,
+    history_path: str | Path,
+) -> int:
+    """Import drift history JSONL records into SQLite.
+
+    Returns the number of records imported.
+    """
+    from data_quality_toolkit.adapters.storage.connection import connect
+    from data_quality_toolkit.adapters.storage.importer import import_drift_history as _import
+
+    with connect(Path(db_path)) as con:
+        return _import(con, Path(history_path))
+
+
+def read_drift_runs_sqlite(
+    db_path: str | Path,
+    *,
+    limit: int | None = None,
+    current_dataset_id: str | None = None,
+    drift_detected: bool | int | None = None,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return imported drift runs from a SQLite monitoring database.
+
+    Reads rows from the drift_runs table written by import_drift_history_sqlite.
+    Newest first (created_at descending, run_id tie-break). Optional filters:
+    limit, current_dataset_id, drift_detected, status. Missing DB or no matching
+    rows returns []. Raises StorageError on DB read failure.
+    """
+    from data_quality_toolkit.adapters.storage.queries import read_drift_runs as _read
+
+    return _read(
+        Path(db_path),
+        limit=limit,
+        current_dataset_id=current_dataset_id,
+        drift_detected=drift_detected,
+        status=status,
+    )
+
+
+def read_drift_columns_sqlite(
+    db_path: str | Path,
+    *,
+    run_id: str | None = None,
+    column_name: str | None = None,
+    drift_detected: bool | int | None = None,
+) -> list[dict[str, Any]]:
+    """Return imported per-column drift results from a SQLite monitoring database.
+
+    Reads rows from the drift_columns table populated by
+    import_drift_history_sqlite from each drift run's evidence-report columns.
+    Ordered by run_id then column_name. Optional filters: run_id, column_name,
+    drift_detected. Missing DB or no matching rows returns []. Raises
+    StorageError on DB read failure.
+    """
+    from data_quality_toolkit.adapters.storage.queries import read_drift_columns as _read
+
+    return _read(
+        Path(db_path),
+        run_id=run_id,
+        column_name=column_name,
+        drift_detected=drift_detected,
+    )
+
+
+def read_drift_distributions_sqlite(
+    db_path: str | Path,
+    *,
+    run_id: str | None = None,
+    column_name: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return imported per-column distribution bins from a SQLite monitoring database.
+
+    Reads rows from the drift_column_distributions table populated by
+    import_drift_history_sqlite from each drift run's evidence-report
+    ``result.columns[].distribution`` bins. Ordered by run_id, column_name, then
+    bin_index. Optional filters: run_id, column_name. Missing DB or no matching
+    rows returns []. Raises StorageError on DB read failure.
+    """
+    from data_quality_toolkit.adapters.storage.queries import read_drift_distributions as _read
+
+    return _read(
+        Path(db_path),
+        run_id=run_id,
+        column_name=column_name,
+    )
+
+
+def summarize_drift_trends_sqlite(
+    db_path: str | Path,
+    *,
+    current_dataset_id: str | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Summarize drift history from a SQLite monitoring database as a JSON-ready dict.
+
+    Aggregates rows from the drift_runs table (written by import_drift_history_sqlite)
+    using the read_drift_runs query behavior. Returns total_runs, drifted_runs,
+    non_drifted_runs, drift_rate, the latest run's run_id/created_at/drift_detected,
+    and columns_tested/columns_drifted totals and averages. Optional
+    current_dataset_id and limit filters narrow the runs aggregated. A missing DB,
+    an empty table, or no matching rows returns a stable zero-summary. Raises
+    StorageError on DB read failure.
+    """
+    from data_quality_toolkit.adapters.storage.trends import summarize_drift_trends as _summarize
+
+    return _summarize(
+        Path(db_path),
+        current_dataset_id=current_dataset_id,
+        limit=limit,
+    )
+
+
+def drift_history_report(
+    db_path: str | Path,
+    *,
+    current_dataset_id: str | None = None,
+    limit: int | None = None,
+    fmt: str = "md",
+    include_plots: bool = False,
+) -> str:
+    """Render a drift-history monitoring report from a SQLite database.
+
+    Reuses read_drift_runs_sqlite and summarize_drift_trends_sqlite to build a
+    readable report string. fmt is "md" (default Markdown) or "html"
+    (dependency-free). Optional current_dataset_id and limit filters narrow the
+    runs included. When include_plots is True, persisted distribution bins are
+    read via read_drift_distributions_sqlite and rendered as a dependency-free
+    "Distribution plots" section. A missing DB or empty table yields a valid zero
+    report rather than raising. Raises StorageError on DB read failure.
+    """
+    from data_quality_toolkit.adapters.reports.drift_history import (
+        build_drift_history_report as _build,
+    )
+
+    return _build(
+        db_path,
+        current_dataset_id=current_dataset_id,
+        limit=limit,
+        fmt=fmt,
+        include_plots=include_plots,
+    )
+
+
+def drift_dashboard(
+    db_path: str | Path,
+    *,
+    current_dataset_id: str | None = None,
+    limit: int | None = None,
+    include_plots: bool = False,
+) -> str:
+    """Render a static, self-contained drift analytics dashboard from SQLite.
+
+    Reuses read_drift_runs_sqlite, summarize_drift_trends_sqlite, and
+    read_drift_columns_sqlite to build a dependency-free HTML string (inline CSS,
+    no JavaScript, no external assets). Optional current_dataset_id and limit
+    filters narrow the runs included. When include_plots is True, persisted
+    distribution bins are read via read_drift_distributions_sqlite and rendered as
+    a dependency-free "Distribution plots" section. A missing DB or empty table
+    yields a valid zero dashboard rather than raising. Raises StorageError on DB
+    read failure.
+    """
+    from data_quality_toolkit.adapters.reports.drift_dashboard import (
+        build_drift_dashboard as _build,
+    )
+
+    return _build(
+        db_path,
+        current_dataset_id=current_dataset_id,
+        limit=limit,
+        include_plots=include_plots,
+    )

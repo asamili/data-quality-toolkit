@@ -19,7 +19,7 @@ assignees: ''
 <!-- Describe your proposed solution. Include the CLI usage if applicable: -->
 
 ```sh
-dqt <subcommand> --new-option value
+python -m data_quality_toolkit.adapters.cli.main <subcommand> --new-option value
 ```
 
 ## Affected Component

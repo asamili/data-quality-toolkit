@@ -51,6 +51,49 @@ CREATE TABLE IF NOT EXISTS schema_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS drift_runs (
+    run_id               TEXT PRIMARY KEY,
+    created_at           TEXT,
+    baseline_path        TEXT,
+    current_path         TEXT,
+    baseline_dataset_id  TEXT,
+    current_dataset_id   TEXT,
+    status               TEXT,
+    alpha                REAL,
+    columns_tested       INTEGER,
+    columns_skipped      INTEGER,
+    columns_drifted      INTEGER,
+    drift_detected       INTEGER,
+    report_path          TEXT,
+    schema_version       TEXT
+);
+CREATE TABLE IF NOT EXISTS drift_columns (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          TEXT NOT NULL,
+    column_name     TEXT NOT NULL,
+    kind            TEXT,
+    test            TEXT,
+    statistic       REAL,
+    p_value         REAL,
+    drift_detected  INTEGER,
+    reference_n     INTEGER,
+    current_n       INTEGER,
+    status          TEXT,
+    skip_reason     TEXT,
+    psi             REAL,
+    js_distance     REAL,
+    wasserstein     REAL
+);
+CREATE TABLE IF NOT EXISTS drift_column_distributions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          TEXT NOT NULL,
+    column_name     TEXT NOT NULL,
+    kind            TEXT,
+    bin_index       INTEGER NOT NULL,
+    bin_label       TEXT,
+    reference_prob  REAL,
+    current_prob    REAL
+);
 """
 
 _CREATE_INDEXES = """\
@@ -58,6 +101,9 @@ CREATE INDEX IF NOT EXISTS idx_runs_dataset ON runs(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_columns_dataset ON columns(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_run ON quality_metrics(run_id);
 CREATE INDEX IF NOT EXISTS idx_issues_run ON issues(run_id);
+CREATE INDEX IF NOT EXISTS idx_drift_runs_current_dataset ON drift_runs(current_dataset_id);
+CREATE INDEX IF NOT EXISTS idx_drift_columns_run ON drift_columns(run_id);
+CREATE INDEX IF NOT EXISTS idx_drift_col_dist_run ON drift_column_distributions(run_id);
 """
 
 
@@ -69,6 +115,12 @@ def ensure_db(db_path: Path) -> None:
         con.executescript(_CREATE_INDEXES)
         con.execute("PRAGMA journal_mode = WAL")
         con.execute("INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '1')")
+        con.execute(
+            "INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('drift_schema_version', '3')"
+        )
+        # Guarded, idempotent upgrade: existing DBs created at drift_schema_version
+        # '1'/'2' are moved to '3' now that the drift_column_distributions table exists.
+        con.execute("UPDATE schema_meta SET value = '3' WHERE key = 'drift_schema_version'")
         for _col, _typ in [("completeness_score", "REAL"), ("quality_score", "REAL")]:
             try:
                 con.execute(f"ALTER TABLE runs ADD COLUMN {_col} {_typ}")

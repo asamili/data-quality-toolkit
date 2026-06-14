@@ -44,6 +44,37 @@ Exit codes:
 - `1`: Error (file not found, invalid input)
 - `2`: Dataset scored below `--fail-under` threshold
 
+## Drift History Analytics (v2.5.0)
+Promote append-only drift history (written by `dqt drift --history drift_history.jsonl`) into a SQLite
+monitoring database, then query, report, and visualize drift over time. These commands ship in v2.5.0.
+
+```bash
+# Import a JSONL drift history into a SQLite monitoring DB
+dqt drift-history import history.jsonl --db monitoring.db
+
+# List imported runs
+dqt drift-history list --db monitoring.db
+
+# Trend summary across runs
+dqt drift-history trend --db monitoring.db
+
+# Per-column drift metrics
+dqt drift-history columns --db monitoring.db
+
+# Markdown/HTML report (opt-in column metrics + distribution plots)
+dqt drift-history report --db monitoring.db --output drift-report.md --include-columns --include-plots
+
+# Static, self-contained HTML dashboard
+dqt drift-history dashboard --db monitoring.db --output drift-dashboard.html --include-plots
+```
+
+- **Subcommands:** `read`, `import`, `list`, `trend`, `columns`, `report`, `dashboard`.
+- **Dependency-free artifacts:** reports and dashboard use inline CSS only — no JavaScript, no CDN, no images, no matplotlib required.
+- **Advanced per-column metrics:** PSI, Jensen-Shannon distance, Wasserstein distance.
+- **SQLite-backed tables:** `drift_runs`, `drift_columns`, `drift_column_distributions`.
+- **Opt-in flags:** `--include-columns` adds column-level metrics to the report; `--include-plots` adds dependency-free distribution plots to report and dashboard. Both default off.
+- A missing or empty database produces valid output and exits `0`.
+
 ## Project Configuration (`dqt.yaml`)
 DQT runs entirely from CLI flags by default. Optionally, place a `dqt.yaml` file in your project directory to set default values.
 
