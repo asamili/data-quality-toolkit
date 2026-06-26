@@ -4,14 +4,33 @@ from __future__ import annotations
 
 from typing import Any
 
-import pandas as pd
-
+from data_quality_toolkit.adapters.ui.components.artifacts import render_artifact_center
+from data_quality_toolkit.adapters.ui.components.storylens import render_storylens_card
+from data_quality_toolkit.adapters.ui.services.artifacts import (
+    artifact_rows_from_mapping,
+    redact_path_to_basename,
+)
 from data_quality_toolkit.adapters.ui.services.export import _export_csv_to_dir
 from data_quality_toolkit.adapters.ui.state.keys import (
     EXPORT_CSV_PATH,
     EXPORT_OUT_DIR,
     EXPORT_RUN_BTN,
 )
+from data_quality_toolkit.application.explanation import explain_export_artifacts
+
+
+def _render_export_storylens(st: Any, export_paths: dict[str, Any], outdir: str) -> None:
+    """Render deterministic StoryLens card after a successful export. Never raises."""
+    try:
+        basenames = tuple(redact_path_to_basename(v) for v in export_paths.values() if v)
+        basenames = tuple(name for name in basenames if name)
+        outdir_bn = redact_path_to_basename(outdir)
+        if basenames:
+            render_storylens_card(
+                st, [explain_export_artifacts(artifact_basenames=basenames, outdir_name=outdir_bn)]
+            )
+    except Exception:  # noqa: S110
+        return
 
 
 def _render_export(st: Any) -> None:
@@ -70,13 +89,21 @@ def _render_export(st: Any) -> None:
                 st.error(f"Export failed: {err}")
             else:
                 export_paths = (result or {}).get("export_paths") or {}
+                outdir_name = redact_path_to_basename(export_out_dir) or "selected directory"
                 st.success(
-                    f"✓ Export complete — {len(export_paths)} file(s) written to {export_out_dir}"
+                    f"✓ Export complete — {len(export_paths)} file(s) written to `{outdir_name}`"
                 )
-                if export_paths:
-                    st.dataframe(
-                        pd.DataFrame([{"artifact": k, "path": v} for k, v in export_paths.items()])
-                    )
+                st.caption(
+                    "Full local paths are kept out of the primary UI. Review generated files "
+                    "before sharing them outside this machine."
+                )
+                rows = artifact_rows_from_mapping(
+                    export_paths,
+                    source="Export page",
+                    write_mode="server-side write",
+                )
+                render_artifact_center(st, rows, title="Artifact Center")
+                _render_export_storylens(st, export_paths, export_out_dir)
 
 
 def render() -> None:

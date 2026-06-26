@@ -50,10 +50,10 @@ def test_generate_dim_time_json(monkeypatch, capsys, tmp_path: Path):
 
 
 def test_generate_dim_time_error(monkeypatch, capsys):
-    import data_quality_toolkit.adapters.exporters.time.dim_time_generator as gen
+    import data_quality_toolkit.api as api
 
     monkeypatch.setattr(
-        gen, "write_dim_time", lambda *a, **k: (_ for _ in ()).throw(ValueError("boom"))
+        api, "generate_dim_time", lambda *a, **k: (_ for _ in ()).throw(ValueError("boom"))
     )
 
     # Import the canonical package CLI (not scripts.*)

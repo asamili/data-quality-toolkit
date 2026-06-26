@@ -5,8 +5,10 @@ import sqlite3
 from pathlib import Path
 from typing import Protocol
 
+from data_quality_toolkit.shared.exceptions import DQTError
 
-class StorageError(Exception):
+
+class StorageError(DQTError):
     pass
 
 

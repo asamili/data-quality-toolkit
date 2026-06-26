@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 
 def _export_csv_to_dir(
@@ -20,6 +20,6 @@ def _export_csv_to_dir(
         from data_quality_toolkit.api import export_csv
 
         result = export_csv(csv_path.strip(), output_dir=safe_dir)
-        return result, None
+        return cast(dict[str, Any], result), None
     except Exception as exc:
         return None, str(exc)

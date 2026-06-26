@@ -22,7 +22,7 @@ CSV-based workflows often fail late. Data issues are discovered only after manua
 - Produces a per-run `quality_report.json` summary for automation and review
 - Supports semantic KPI / DAX generation for BI-oriented workflows
 - Tracks run-to-run quality trends from SQLite-backed run history
-- Provides an optional local Streamlit dashboard for run-history trends, data overview, exploratory data analysis (EDA) charts, and per-column preprocessing recommendations
+- Provides an optional local Streamlit dashboard organized as an 11-step product spine: load and validate a dataset, data overview, EDA charts, a Statistics Lab (descriptive statistics plus scipy-guarded inferential tests and A/B comparison), an explainable quality score, a Preprocess Studio recipe workflow with before/after validation and JSON/CSV recipe export, a Pipeline Runner dry-run/evidence preview (legacy write-capable execution gated behind explicit confirmation), drift monitoring, an Artifact Center for outputs, and a Settings / Governance diagnostics area
 
 ### Current product positioning
 DQT is best positioned today as:

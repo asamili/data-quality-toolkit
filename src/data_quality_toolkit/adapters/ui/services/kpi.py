@@ -10,9 +10,9 @@ from typing import Any
 def _run_kpi_validate(config_path: str) -> tuple[dict[str, Any] | None, str | None]:
     """Call kpi_validate workflow. Returns (result, None) or (None, error_message)."""
     try:
-        from data_quality_toolkit.application.workflow.kpi import validate_kpi_catalog
+        from data_quality_toolkit.api import kpi_validate as _kpi_validate
 
-        return validate_kpi_catalog(config_path.strip()), None
+        return _kpi_validate(config_path.strip()), None
     except Exception as exc:
         return None, str(exc)
 
@@ -52,11 +52,11 @@ def _kpi_emit_to_bytes(
     No persistent writes — temp dir is deleted on context exit.
     """
     try:
-        from data_quality_toolkit.application.workflow.kpi import emit_kpi_artifacts
+        from data_quality_toolkit.api import kpi_emit as _kpi_emit
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            emit_kpi_artifacts(
+            _kpi_emit(
                 config_path,
                 tmp_path / "measures.dax",
                 tmp_path / "model.tmsl.json",
@@ -78,12 +78,12 @@ def _kpi_graph_to_str(
     No persistent writes — temp dir is deleted on context exit.
     """
     try:
-        from data_quality_toolkit.application.workflow.kpi import export_kpi_graph
+        from data_quality_toolkit.api import kpi_graph as _kpi_graph
 
         ext = ".dot" if graph_format == "graphviz" else ".mmd"
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / f"graph{ext}"
-            export_kpi_graph(config_path, out, graph_format=graph_format)  # type: ignore[arg-type]
+            _kpi_graph(config_path, out, graph_format=graph_format)  # type: ignore[arg-type]
             content = out.read_text(encoding="utf-8")
         return content, None
     except Exception as exc:

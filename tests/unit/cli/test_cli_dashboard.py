@@ -20,7 +20,8 @@ def test_cmd_dashboard_missing_streamlit_returns_1(capsys: object) -> None:
         rc = cli.cmd_dashboard(argparse.Namespace())
     assert rc == 1
     captured = capsys.readouterr()  # type: ignore[attr-defined]
-    assert "pip install data-quality-toolkit[ui]" in captured.err
+    # dashboard + ui now share one launcher, which emits the quoted install hint.
+    assert 'pip install "data-quality-toolkit[ui]"' in captured.err
 
 
 def test_cmd_dashboard_calls_subprocess_with_app_file(monkeypatch: object) -> None:

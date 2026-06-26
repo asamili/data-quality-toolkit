@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -40,7 +41,7 @@ def _orders_csv(tmp_path: Path) -> Path:
     return p
 
 
-def _issue_identities(assessment: dict[str, Any]) -> list[tuple[str, str, str, str]]:
+def _issue_identities(assessment: Mapping[str, Any]) -> list[tuple[str, str, str, str]]:
     """Stable, order-independent identity for each issue (no volatile fields)."""
     identities = [
         (
@@ -109,3 +110,39 @@ def test_assess_parity_api_vs_cli(tmp_path: Path) -> None:
 
     # --- the fixture must actually exercise the issue path (guards a vacuous pass) ---
     assert len(api_asmt["issues"]) > 0
+
+
+def test_export_xlsx_seam_present_on_both_interfaces() -> None:
+    """The .xlsx export seam exists on both the public API and the CLI proxy."""
+    import data_quality_toolkit.adapters.cli.main as cli
+    from data_quality_toolkit import api
+
+    assert callable(api.export_drift_history_xlsx)
+    assert callable(cli.export_drift_history_xlsx)
+
+
+def test_export_plots_seam_present_on_both_interfaces() -> None:
+    """The drift-plots export seam exists on both the public API and the CLI proxy."""
+    import data_quality_toolkit.adapters.cli.main as cli
+    from data_quality_toolkit import api
+
+    assert callable(api.export_drift_plots)
+    assert callable(cli.export_drift_plots)
+
+
+def test_notify_seam_present_on_both_interfaces() -> None:
+    """The webhook-notify seam exists on both the public API and the CLI proxy."""
+    import data_quality_toolkit.adapters.cli.main as cli
+    from data_quality_toolkit import api
+
+    assert callable(api.send_drift_notification)
+    assert callable(cli.send_drift_notification)
+
+
+def test_export_duckdb_seam_present_on_both_interfaces() -> None:
+    """The DuckDB export/mirror seam exists on both the public API and the CLI proxy."""
+    import data_quality_toolkit.adapters.cli.main as cli
+    from data_quality_toolkit import api
+
+    assert callable(api.export_monitoring_duckdb)
+    assert callable(cli.export_monitoring_duckdb)

@@ -20,7 +20,9 @@ def test_version_matches_metadata() -> None:
     assert d.__version__ == meta_version
 
 
-def test_version_is_2_2_1() -> None:
+def test_version_matches_pyproject() -> None:
+    """Version reflects installed package metadata, not a hardcoded literal."""
     import data_quality_toolkit as d
 
-    assert d.__version__ == "2.5.0"
+    meta_version = importlib.metadata.version("data-quality-toolkit")
+    assert d.__version__ == meta_version

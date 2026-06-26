@@ -6,6 +6,145 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-06-21
+
+### Added
+
+- Added optional local AI adapter for StoryLens (`storylens-ai` extra); disabled by default via `DQT_STORYLENS_AI_ENABLED` flag. No model download or inference occurs unless explicitly enabled.
+- Added `StoryLensFacts` builder for the Data Overview panel; wired to deterministic fallback when local AI is unavailable or disabled.
+- Added import-linter AI isolation contract enforcing that AI adapter code cannot be imported by core data quality logic.
+
+### Changed
+
+- Hardened UI seams: all StoryLens surface calls now route through the public API boundary rather than internal modules.
+- Tightened validator rules for scientific notation values, revision hash leakage, and severity contradiction patterns.
+
+### Fixed
+
+- Ensured deterministic fallback behavior when the optional local AI backend is absent, unreachable, or produces no output.
+- Resolved severity contradiction edge cases in the validation pipeline.
+
+### Notes
+
+- **Private-only release.** No public snapshot update. No public release. No model download. No inference activation. No CLI/API/UI AI exposure. Private push remains postponed.
+- Optional `storylens-ai` dependency (`transformers>=5.0.0,<6.0.0`, `torch>=2.12.0`) remains opt-in; not added to default dependencies.
+
+## [2.8.0] - 2026-06-18
+
+### Added
+
+- Added stable typed contracts for public API returns, including public API typed result contracts, row contracts, nested/flat envelope wrapper annotations/contracts, and Power BI package public API wrapper.
+- Exposed monitoring API boundary (builders/value objects) and the complete `DQTError` exception family (along with `StorageError`) directly from the canonical `data_quality_toolkit.api` boundary.
+- Added package lineage marker (`py.typed`) and import-linter boundary.
+
+### Changed
+
+- Routed the `gen-dim-time` CLI command through the public API (`generate_dim_time`) while preserving the CLI JSON payload representation.
+
+### Fixed
+
+- Stabilized settings environment-dependent defaults and resolved environment-loading variance using `cast(Any)` to silence `_env_file` stub variance.
+- Resolved UI service return typing errors in the Streamlit monitoring UI service.
+
+### Tests
+
+- Added CLI help and optional dependency packaging smoke tests.
+- Added direct unit tests for the manifest package lineage tools.
+- Pinned `gen-dim-time` CLI/API parity gap tests.
+
+### Documentation
+
+- Documented public API boundary and typed result contracts.
+- Refreshed DQT module inventory in architecture documentation.
+- Aligned README release references with v2.7.1.
+
+## [2.7.1] - 2026-06-17
+
+### Fixed
+
+- Fixed CI mypy validation for optional DuckDB imports by extending the existing optional-dependency ignore-missing-imports configuration to `duckdb` and `duckdb.*`.
+
+## [2.7.0] - 2026-06-16
+
+### Added
+
+- Added one-shot drift webhook notifications (v2.7.0 slice). New CLI command `dqt drift-history notify --db monitoring.db --webhook-url URL [--fail-on-drift-rate FLOAT] [--fail-on-psi FLOAT] [--dry-run|--send] [--timeout SECONDS] [--allow-http] [--allow-insecure-host]` and public API seam `send_drift_notification(db_path, webhook_url, *, max_drift_rate=None, max_psi=None, dry_run=True, send=False, timeout=10.0, allow_http=False, allow_insecure_host=False)` (re-exported at the package root; lazy `cli/main.py` proxy). Builds a minimal JSON payload from the existing `summarize_drift_trends_sqlite` / `read_drift_columns_sqlite` / `evaluate_drift_rate_threshold` / `evaluate_psi_threshold` seams — no schema or query changes. **Dry-run is the default**: the payload is printed to stdout and nothing is sent. A real POST happens only when `--send` is given **and** `DQT_ALLOW_NETWORK=true`. Returns `{"payload", "sent", "status", "breached", "redacted_url"}`.
+- Security model for the notifier: HTTPS-only by default (`--allow-http` opt-in for trusted local endpoints); SSRF guard rejecting loopback/private/link-local/multicast/reserved/unspecified and cloud-metadata (`169.254.169.254`, `fd00:ec2::254`) addresses, validating **every** resolved IP (`--allow-insecure-host` opt-in for local testing only); redirects refused; proxies disabled so `*_proxy` env vars cannot bypass the guard; mandatory timeout; single attempt, no retries; 64 KB payload cap with offender-list truncation; all logs/errors use a redacted URL (userinfo, query, and fragment stripped). No secrets, environment values, webhook URL, or full local DB path appear in the payload. Standard-library `urllib` only — **no new dependency** (no requests/httpx/aiohttp), no scheduler, no daemon, no background worker, no secret persistence.
+- Added pure payload builder `build_drift_notification_payload(...)` in `application/monitoring/notifications.py` (no I/O, no network) and the webhook transport `adapters/notifications/webhook.py` (`validate_webhook_url`, `redact_url`, `post_json`; injectable resolver/opener for tests). Added `NotificationError` and `WebhookSecurityError` to the `DQTError` family in `shared/exceptions.py`.
+- Exit codes for `notify`: `0` success (no breach), `1` validation/send/security failure, `2` threshold breach (applies even when the dry-run/send itself succeeds), `2` argparse error (e.g. missing `--webhook-url`, or `--dry-run` and `--send` together).
+- Added drift-history SQLite → DuckDB export/mirror (v2.7.0 slice). New CLI command `dqt drift-history export-duckdb --db monitoring.db --out monitoring.duckdb [--overwrite]` and public API seam `export_monitoring_duckdb(db_path, out_path, *, overwrite=False) -> dict` (re-exported at the package root; lazy `cli/main.py` proxy). One-shot mirror of the drift-history tables `drift_runs`, `drift_columns`, and `drift_column_distributions` into a standalone DuckDB database file, returning `{"input_db_path", "output_path", "tables", "row_counts", "overwritten"}`. **DuckDB is export/mirror only — never a live monitoring backend; the monitoring store remains SQLite (no backend replacement, no storage-port refactor, no migrate command).** The source SQLite DB is opened **read-only** (`file:…?mode=ro` URI) and is provably never mutated (only `SELECT`/`PRAGMA` run; no schema changes, no writes, no WAL side files); tables absent from the source are mirrored as empty tables with a stable schema. Implemented in `adapters/exporters/bi/duckdb_exporter.py` with a single-source-of-truth `_TABLE_COLUMNS` mapping (column order + DuckDB types). Optional behind a new `[duckdb]` extra (`duckdb>=1.0.0`): duckdb is imported lazily inside the exporter and its absence raises `DuckdbExportError` with a `pip install data-quality-toolkit[duckdb]` hint — duckdb is never imported on the base path. Safety: `.duckdb` extension + `path_guard` output validation (no `..`/symlink-escape); refuses to overwrite an existing file unless `--overwrite` / `overwrite=True` (which removes the existing file for a deterministic recreate); a missing source database raises rather than producing an empty mirror. No network, no cloud, no `.env` reads, no scheduler/daemon/retry, no secret persistence. CLI exits `0` on success, `1` on export/dependency/path/missing-source failure, `2` on argparse error; success summary to stderr.
+
+### Tests
+
+- Added `tests/unit/notifications/test_webhook.py`: URL redaction, https-only/scheme validation, `--allow-http`, the full SSRF blocklist (loopback/private/link-local/metadata/unspecified, IPv4 + IPv6), multi-IP rejection, `--allow-insecure-host` bypass, redacted error messages, POST success/timeout/non-2xx/URL-error/oversized-payload, and redirect refusal — all with injected resolver/opener (no real network).
+- Added `tests/unit/api/test_drift_notifications_api.py`: dry-run builds payload with no network, breach sets `breached`/offenders, send refused when `DQT_ALLOW_NETWORK` is unset, send succeeds with mocked transport (timeout forwarded), and `send=False` stays a dry-run even with network enabled.
+- Added `tests/unit/cli/test_cli_drift_history_notify.py`: dry-run default prints payload JSON, stderr carries no secret (only redacted URL), `--no-json` suppresses stdout, breach exit `2`, `--send`/`--timeout` flag forwarding, send-failure exit `1`, missing-required-arg exit `2`, and `--dry-run`/`--send` mutual-exclusion exit `2`.
+- Extended `tests/integration/test_api_parity.py` (dry-run delegation, no network) and `tests/integration/test_seam_parity.py` (dual-interface seam presence) for `send_drift_notification`.
+- Added `tests/unit/exporters/test_duckdb_exporter.py`: path-safety (`.duckdb` extension, empty path, `..` traversal, directory target, overwrite refusal/allow), missing-`duckdb` install-hint guard (no extra needed), missing-source-DB error, and on-disk mirror tests (`importorskip("duckdb")`) covering mirrored tables + row counts, value round-trip, **SQLite-input-not-mutated** (byte hash + mtime, no WAL/SHM side files), deterministic overwrite, and empty-mirror when drift tables are absent.
+- Added `tests/unit/cli/test_cli_drift_history_export_duckdb.py`: command exists, success exit `0`, stderr summary, default no-overwrite, `--overwrite` forwarding, missing `--db`/`--out` exit `2`, refused-overwrite exit `1`, and clean missing-dependency handling (exit `1` with `[duckdb]` hint) — all via the monkeypatched proxy (no extra needed).
+- Added `tests/unit/api/test_duckdb_export_api.py`: seam present/callable, re-exported from the package root and in `__all__`, delegates to the exporter impl, returns the expected dict shape, and respects the `overwrite` default.
+- Extended `tests/integration/test_api_parity.py` (delegation) and `tests/integration/test_seam_parity.py` (dual-interface seam presence) for `export_monitoring_duckdb`; added `tests/integration/test_duckdb_export_e2e.py` (build/populate a real monitoring SQLite DB, export, verify DuckDB tables + row counts; `importorskip("duckdb")`).
+
+### Docs
+
+- Added "Drift Webhook Notifications (v2.7.0)" sections to `README.md`, `docs/cli.md` (flag/exit-code tables, SSRF/redaction/timeout notes, token-in-query warning), `docs/api.md` (`send_drift_notification` signature, return shape, network-gate behavior), and `docs/architecture.md` (API seam → pure payload builder → SSRF-guarded stdlib transport data flow).
+- Added "DuckDB Export/Mirror (v2.7.0)" sections to `README.md`, `docs/cli.md` (flag/exit-code tables, read-only-source notes), and `docs/api.md` (`export_monitoring_duckdb` signature + return shape), plus a "DuckDB Export/Mirror (v2.7.0)" data-flow section in `docs/architecture.md` clarifying that DuckDB is export/mirror only (read-only SQLite source, not a live backend) and updating the "DuckDB-backed monitoring remains deferred" note accordingly.
+
+## [2.6.1] - 2026-06-15
+
+### Added
+
+- Added core drift threshold flagging (v2.6.1 slice). Two opt-in CLI flags on existing `drift-history` subcommands exit `2` when a monitored metric exceeds a threshold, following the `--fail-on-drift` exit-code convention: `dqt drift-history trend --fail-on-drift-rate <float>` exits `2` when the historical drift rate exceeds the threshold; `dqt drift-history columns --fail-on-psi <float>` exits `2` when any column's PSI exceeds the threshold. Breach is strictly greater than (`>`); exactly equal is not a breach. Exit `1` on invalid threshold value (out of `[0.0, 1.0]`); exit `0` when no flag is provided or when the threshold is not breached. A missing or empty database produces zero drift rate / no columns → no breach → exit `0`. `None` PSI values (scipy unavailable or column skipped) are silently skipped. No new dependencies, no network, no DB writeback, no schema change.
+- Added pure threshold evaluator functions `evaluate_drift_rate_threshold(summary, *, max_drift_rate)` and `evaluate_psi_threshold(columns, *, max_psi)` in `application/monitoring/thresholds.py`, re-exported via the root `data_quality_toolkit.api` seam. Both return JSON-ready plain dicts (`breached`, metric value, `threshold`; PSI adds `offenders` list). No I/O, no Streamlit, no storage imports.
+- Added drift-history Excel (`.xlsx`) export (v2.6.1 slice). New CLI command `dqt drift-history export-xlsx --db monitoring.db --out drift_monitoring.xlsx` and public API seam `export_drift_history_xlsx(db_path, output_path, *, current_dataset_id=None, limit=None, include_columns=True, include_distributions=False, force=False)` (re-exported at the package root; lazy `cli/main.py` proxy). Writes a multi-sheet workbook (`runs`, `trend_summary`, `columns` default-on, `distributions` opt-in, `metadata`) by reusing the existing `read_drift_runs_sqlite` / `summarize_drift_trends_sqlite` / `read_drift_columns_sqlite` / `read_drift_distributions_sqlite` seams — no schema or query changes. Implemented in `adapters/exporters/bi/xlsx_drift_exporter.py` with a pure, openpyxl-free `build_workbook_model` plus an openpyxl write-only (streaming) writer. Optional behind the existing `[powerbi]` extra: openpyxl is imported lazily and its absence raises `XlsxExportError` with a `pip install data-quality-toolkit[powerbi]` hint. Security: every string cell (headers/data/metadata) is escaped against spreadsheet formula injection (leading `=` `+` `-` `@` or tab/CR → single-quote prefix); `.xlsx` extension and `path_guard` output validation; refuses to overwrite an existing file unless `--force`. No formulas, macros, external links, embedded objects, network, cloud, or `.pbix`. CLI exits `0` on success, `1` on export/dependency/path failure, `2` on argparse error; success summary to stderr, no stdout pollution. A missing or empty database yields a valid zero-state workbook.
+- Cleaned up the `[powerbi]` extra comments in `pyproject.toml` (`openpyxl` now wired to the `.xlsx` export; `xlsxwriter` noted as reserved for future rich formatting). No dependency additions; no Excel dependency moved into the base install.
+- Added drift-history Matplotlib PNG plot export (v2.6.1 slice). New CLI command `dqt drift-history plot --db monitoring.db --out plots/ [--chart drift-rate|psi-by-column|top-drifted|all] [--current-dataset-id ID] [--limit N] [--force]` and public API seam `export_drift_plots(db_path, out, *, chart="all", current_dataset_id=None, limit=None, force=False)` (re-exported at the package root; lazy `cli/main.py` proxy). Renders local PNG charts — `drift-rate` (per-run drift fraction over time with overall-rate reference line), `psi-by-column` (mean PSI per column, descending), `top-drifted` (top-15 columns by drift count) — by reusing the existing `read_drift_runs_sqlite` / `summarize_drift_trends_sqlite` / `read_drift_columns_sqlite` seams (only the seams a requested chart needs are queried; no schema or query changes). Implemented in `adapters/exporters/viz/drift_plots.py` with a pure, matplotlib-free `build_plot_model` plus a lazy renderer that forces the non-interactive `Agg` backend **before** importing `pyplot`. Optional behind the existing `[viz]` extra: matplotlib is imported lazily and its absence raises `PlotExportError` with a `pip install data-quality-toolkit[viz]` hint. Safety: `path_guard` output-directory validation (no `..`/symlink-escape), fixed chart file names (no user input in a filename), refuses to overwrite an existing PNG unless `--force`, figures closed after each save. No network, no cloud, no GUI backend, no remote image fetching. CLI exits `0` on success, `1` on plot/dependency/path failure, `2` on argparse error; success summary to stderr, no stdout pollution. A missing or empty database yields valid zero-state ("No data available") PNGs. The `distribution` (reference-vs-current) chart is deferred to a later release.
+- Updated the `[viz]` extra comment in `pyproject.toml` (`matplotlib` now wired to `dqt drift-history plot`, replacing the "future" placeholder note). No dependency additions; matplotlib remains an optional extra and is not moved into the base install.
+
+### Tests
+
+- Added `tests/unit/exporters/test_drift_plots_exporter.py` covering the pure plot model (drift-fraction ordering, mean-PSI aggregation, drift-count ranking, zero-state, `None`-PSI skip), chart selector, output-path safety, the missing-matplotlib `[viz]` hint, Agg-backend enforcement, valid-PNG writes, single-vs-all chart selection, and no-overwrite/`--force` behavior (matplotlib-requiring tests gated by `importorskip`).
+- Added `tests/unit/cli/test_cli_drift_history_plot.py` for the `plot` command: success exit `0`, stderr summary, clean stdout, flag forwarding, default `--chart all`, missing `--db`/`--out` and invalid `--chart` exit `2`, missing-`[viz]` exit `1` with hint, no-overwrite exit `1`.
+- Added `tests/unit/api/test_drift_plots_api.py` for `export_drift_plots` API-seam import and delegation to the exporter impl.
+- Added `tests/integration/test_drift_plots_e2e.py` (gated by `importorskip("matplotlib")`): seeds a real SQLite monitoring DB and asserts valid PNG output, correct `row_counts`, and API/CLI parity.
+- Added `tests/unit/monitoring/test_thresholds.py` with boundary, equality, above-threshold, `None`-skip, empty-input, ordering, and JSON-readiness coverage for both evaluators.
+- Extended `tests/unit/cli/test_cli_drift_history.py` with threshold flag tests: flag absent, below/equal/above threshold exit codes, breach stderr message, invalid threshold exit `1`, empty/missing DB exit `0`, `None` PSI skip — for both `trend` and `columns` subcommands.
+- Added `tests/unit/api/test_drift_thresholds_api.py` for evaluator API-seam import, breach, no-breach, `None`-skip, and empty-columns coverage.
+- Extended `tests/integration/test_drift_monitoring_parity.py` with threshold parity tests: direct API evaluator result matches CLI exit behavior for drift-rate and PSI thresholds; empty/missing DB exits no breach.
+- Extended `tests/integration/test_api_parity.py` and `tests/integration/test_seam_parity.py` with `export_drift_plots` delegation and dual-interface seam-presence checks.
+
+### Docs
+
+- Added "Drift Plots (v2.6.1)" section to `README.md` (chart catalog, example command, `[viz]` install note, no-overwrite/`--force`, exit codes).
+- Added "Drift Plots (v2.6.1)" section to `docs/cli.md` (chart-catalog table, flag reference, exit-code table, path-safety/zero-state notes).
+- Added "Drift Plots (v2.6.1)" section to `docs/api.md` (`export_drift_plots` signature, return shape, lazy-Agg/safety behavior).
+- Added "Drift Plots (v2.6.1)" section to `docs/architecture.md` (API seam → pure plot model → lazy Agg renderer data flow).
+- Added "Drift Threshold Gating (v2.6.1)" section to `README.md` with example commands, breach semantics, and exit-code table.
+- Added "Drift Threshold Gating (v2.6.1)" section to `docs/cli.md` with flag reference table, exit-code table, and behavior notes.
+- Added "Drift Threshold Evaluators (v2.6.1)" section to `docs/api.md` documenting both functions, return shapes, and empty/None behavior.
+- Added "Drift Threshold Evaluators (v2.6.1)" section to `docs/architecture.md` showing the pure-evaluator seam in the monitoring data flow.
+
+## [2.6.0] - 2026-06-15
+
+### Added
+
+- Added the v2.6.0 Unified Monitoring Experience: a single, presentation-agnostic shared monitoring view-model (`data_quality_toolkit.application.monitoring.view_model`) that normalizes the existing SQLite/API drift query surfaces (`summarize_drift_trends_sqlite`, `read_drift_runs_sqlite`, `read_drift_columns_sqlite`, `read_drift_distributions_sqlite`) into frozen, typed value objects (`TrendSummary`, `RunRow`, `ColumnDrift`, `DistributionBin`, `RunDetail`, `MonitoringOverview`, each with `to_dict()`) via builders (`build_monitoring_overview`, `list_run_rows`, `build_column_drift`, `build_distribution_series`, `build_run_detail`). The view-model reaches storage **only** through the root `data_quality_toolkit.api` seam, imports nothing from Streamlit or the storage adapters directly, normalizes integer `drift_detected` flags to `bool` (preserving `None`), preserves missing numerics as `None`, and returns a zeroed summary / empty lists for a missing or empty database rather than raising.
+- Added the optional interactive **DQT Drift Explorer** Streamlit page (`adapters/ui/pages/drift_explorer.py`) and its Streamlit-free `(data, err)` UI service (`adapters/ui/services/monitoring.py`), both consuming the shared view-model. The Explorer reads its initial DB path from `DQT_UI_DB`, shows trend-summary metrics, a drift-runs table, a run selector, a per-column drift table with column / `drift_detected` / metric (PSI / Jensen-Shannon / Wasserstein) filters, and reference-vs-current distribution bars, with empty-state guidance for no runs / no columns / no distributions. The page is registered under the existing dashboard navigation.
+- Added the preferred `dqt ui --db monitoring.db` CLI launcher (`cmd_ui`). `--db` is optional and, when given, seeds `DQT_UI_DB` for the Drift Explorer; the command launches `python -m streamlit run <app>`, propagates the subprocess return code, returns 130 on `KeyboardInterrupt`, and on missing Streamlit prints `pip install "data-quality-toolkit[ui]"` to stderr and exits 1. No `[streamlit]` extra and no `pyproject.toml` change.
+
+### Changed
+
+- Promoted the static drift dashboard to **Dashboard 2.0**, rendered from the shared monitoring view-model so the static HTML artifact and the interactive Streamlit UI derive identical run counts, drift rates, and column metrics. Still a dependency-free, self-contained HTML artifact (no server, no JavaScript, no external assets).
+- Modularized the `dqt` CLI internals: per-command handlers moved to `adapters/cli/commands/` and shared parser/launcher helpers to `adapters/cli/utils/`, while `adapters/cli/main.py` remains the public entrypoint. Public command names, flags, exit codes, and behavior are unchanged. Deduplicated the `dqt dashboard` and `dqt ui` Streamlit launch paths into a single shared launcher (`launch_streamlit_app`), keeping the `import streamlit` guard at call time so the base CLI stays Streamlit-free. Internal refactor only — no version bump, tag, or release.
+
+### Tests
+
+- Added unit tests for the shared monitoring view-model (`to_dict` parity, `drift_detected` int-to-bool normalization, builders, empty/missing-DB stability, and AST-based assertions that it imports neither Streamlit nor storage adapters), the Streamlit-free UI service (blank/missing-DB clean errors, monkeypatched success/error paths, converter helpers, and import-boundary checks), and the `dqt ui` launcher (missing-Streamlit exit 1 with install hint, `DQT_UI_DB` seeding, mocked `streamlit run` invocation, return-code propagation, `KeyboardInterrupt` → 130, Streamlit-free parser build). Added an integration parity suite (`tests/integration/test_drift_monitoring_parity.py`) that builds a real SQLite monitoring DB and asserts the view-model, UI service, and static dashboard agree on run/drifted counts, trend summary, column metrics, distribution rows, and empty-state behavior without launching a real Streamlit server or taking brittle full-HTML snapshots.
+
+### Docs
+
+- Documented the Unified Monitoring Experience: a README "Unified Monitoring (v2.6.0)" section (static dashboard vs Streamlit UI, the `[ui]` install, the `dqt drift` → `drift-history import` → `drift-history dashboard` → `dqt ui` workflow, and the dashboard-vs-UI mental model), the `dqt ui --db` command and its missing-Streamlit hint in the CLI reference, the shared monitoring view-model module/dataclasses/builders in the API reference, and the `SQLite → API/query seam → shared view-model → static dashboard + Streamlit UI` relationship in the architecture doc (noting Dashboard is a static artifact, the UI is an optional local app, and DuckDB remains deferred). Docs only — no version bump, tag, or release.
+
 ## [2.5.0] - 2026-06-13
 
 ### Added

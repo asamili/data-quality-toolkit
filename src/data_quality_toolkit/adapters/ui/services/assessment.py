@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from data_quality_toolkit.adapters.storage.connection import StorageError
 from data_quality_toolkit.adapters.storage.reader import read_run_history
@@ -32,7 +32,7 @@ def _run_assess_csv(path_str: str) -> tuple[dict[str, Any] | None, str | None]:
     """
     try:
         result = _assess_csv(path_str.strip())
-        return result, None
+        return cast(dict[str, Any], result), None
     except Exception as exc:
         return None, to_error_info(exc)["message"]
 
@@ -48,6 +48,6 @@ def _load_profile_chunked(
     try:
         from data_quality_toolkit.api import profile_csv as _profile_csv_fn
 
-        return _profile_csv_fn(path_str.strip(), chunksize=chunksize), None
+        return cast(dict[str, Any], _profile_csv_fn(path_str.strip(), chunksize=chunksize)), None
     except Exception as exc:
         return None, to_error_info(exc)["message"]

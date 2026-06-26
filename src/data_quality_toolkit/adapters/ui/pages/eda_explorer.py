@@ -7,37 +7,141 @@ hardened ``_load_df_and_assess`` path as Data Overview.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
 
+from data_quality_toolkit.adapters.ui.components.dataset_context import (
+    render_dataset_context_panel,
+)
 from data_quality_toolkit.adapters.ui.components.downloads import csv_download_button
 from data_quality_toolkit.adapters.ui.components.errors import show_error
+from data_quality_toolkit.adapters.ui.components.page_shell import render_page_header
+from data_quality_toolkit.adapters.ui.components.states import render_warning_state
+from data_quality_toolkit.adapters.ui.components.storylens import render_storylens_card
 from data_quality_toolkit.adapters.ui.eda import (
+    MAX_CORRELATION_COLUMNS,
+    MAX_OUTLIER_COLUMNS,
+    MAX_SUMMARY_COLUMNS,
+    _aggregate_iqr_outlier_summary,
     _bivariate_categorical_categorical,
     _bivariate_numeric_categorical,
     _bivariate_numeric_numeric,
     _categorical_top_values,
+    _correlation_matrix,
+    _dataset_profile,
+    _dtype_distribution,
+    _duplicate_row_summary,
     _iqr_outlier_summary,
     _load_df_and_assess,
+    _missingness_summary,
     _numeric_distribution,
     _plan_preprocessing,
 )
+from data_quality_toolkit.adapters.ui.state.context import get_dataset_context
 from data_quality_toolkit.adapters.ui.state.keys import BIV_COL1, BIV_COL2
+from data_quality_toolkit.application.explanation import (
+    Explanation,
+    explain_missing_value_issue,
+    explain_quality_score,
+)
+
+
+def _eda_storylens(
+    result: dict[str, Any] | None, profile: Mapping[str, Any] | None
+) -> list[Explanation]:
+    """Build bounded deterministic StoryLens cards from EDA assessment facts.
+
+    Returns at most 2 cards (quality score + first missing-value issue).
+    Returns [] on any unexpected error — never raises, never fabricates.
+    """
+    try:
+        assessment = (result or {}).get("assessment") or {}
+        score_raw = assessment.get("score")
+        if score_raw is None or profile is None:
+            return []
+        score = float(score_raw)
+        rows = int(profile["rows"])
+        cols = int(profile["cols"])
+        issues: list[dict[str, Any]] = list(assessment.get("issues") or [])
+        cards: list[Explanation] = [
+            explain_quality_score(
+                score=score,
+                rows=rows,
+                columns=cols,
+                issues_total=len(issues),
+            )
+        ]
+        for issue in issues:
+            if issue.get("type") == "missing":
+                column = issue.get("column")
+                pct = issue.get("pct")
+                if column and isinstance(pct, int | float) and not isinstance(pct, bool):
+                    cards.append(
+                        explain_missing_value_issue(
+                            column=str(column),
+                            null_pct=float(pct),
+                            severity_label=str(issue.get("severity", "medium")),
+                        )
+                    )
+                    break
+        return cards
+    except Exception:
+        return []
+
+
+def _render_dataset_profile(
+    st: Any, df: pd.DataFrame, profile: Mapping[str, Any] | None = None
+) -> None:
+    st.subheader("Dataset profile")
+    facts = _dataset_profile(df, profile)
+    cards = st.columns(4)
+    cards[0].metric("Rows", f"{facts['rows']:,}")
+    cards[1].metric("Columns", f"{facts['columns']:,}")
+    cards[2].metric("Missing cells", f"{facts['missing_cells']:,}")
+    cards[3].metric("Memory", f"{facts['memory_mb']:.2f} MB")
+
+
+def _render_missingness(st: Any, df: pd.DataFrame) -> None:
+    st.subheader("Missingness")
+    summary = _missingness_summary(df)
+    if summary.empty:
+        st.info("No columns to summarize.")
+        return
+    st.dataframe(summary, hide_index=True)
+    if df.shape[1] > MAX_SUMMARY_COLUMNS:
+        st.caption(f"Showing the first {MAX_SUMMARY_COLUMNS} columns to keep the view responsive.")
+
+
+def _render_duplicate_rows(st: Any, df: pd.DataFrame) -> None:
+    st.subheader("Duplicate rows")
+    summary = _duplicate_row_summary(df)
+    cards = st.columns(3)
+    cards[0].metric("Duplicate rows", f"{summary['duplicate_rows']:,}")
+    cards[1].metric("Duplicate rate", f"{summary['duplicate_pct']:.2f}%")
+    cards[2].metric("Unique rows", f"{summary['unique_rows']:,}")
+    st.caption("Counts fully duplicated rows; source records are not displayed.")
+
+
+def _render_dtype_distribution(st: Any, df: pd.DataFrame) -> None:
+    st.subheader("Data types")
+    summary = _dtype_distribution(df)
+    if summary.empty:
+        st.info("No data types to summarize.")
+        return
+    st.dataframe(summary, hide_index=True)
+    st.bar_chart(summary.set_index("dtype")[["column_count"]])
 
 
 def _render_eda_univariate(st: Any, df: pd.DataFrame) -> None:
-    """Render EDA Univariate Explorer: column selector, distribution chart, IQR outlier hint."""
-    st.subheader("EDA — Univariate Explorer")
-    cols = df.columns.tolist()
-    if not cols:
-        st.info("No columns to explore.")
-        return
-    col_name = st.selectbox("Select column", cols)
-    if col_name is None:
-        return
-    is_numeric = pd.api.types.is_numeric_dtype(df[col_name])
-    if is_numeric:
+    """Render bounded numeric distributions and categorical top values."""
+    numeric_columns = df.select_dtypes(include="number").columns.tolist()
+    categorical_columns = [column for column in df.columns if column not in numeric_columns]
+
+    st.subheader("Numeric distributions")
+    if numeric_columns:
+        col_name = st.selectbox("Select numeric column", numeric_columns)
         dist = _numeric_distribution(df, col_name)
         if dist is not None:
             st.caption("Distribution")
@@ -54,6 +158,13 @@ def _render_eda_univariate(st: Any, df: pd.DataFrame) -> None:
             )
             st.caption(caption)
     else:
+        st.info("No numeric columns to explore.")
+
+    st.subheader("Categorical top values")
+    if categorical_columns:
+        col_name = st.selectbox("Select categorical column", categorical_columns)
+        if col_name is None:
+            return
         top = _categorical_top_values(df, col_name)
         if top is not None:
             st.caption("Top values (up to 20)")
@@ -61,6 +172,36 @@ def _render_eda_univariate(st: Any, df: pd.DataFrame) -> None:
             st.bar_chart(top)
         else:
             st.info("No usable values for this column.")
+    else:
+        st.info("No categorical columns to explore.")
+
+
+def _render_correlation_matrix(st: Any, df: pd.DataFrame) -> None:
+    st.subheader("Correlation matrix")
+    matrix = _correlation_matrix(df)
+    if matrix is None:
+        st.info("Need at least two numeric columns for a correlation matrix.")
+        return
+    st.dataframe(matrix)
+    numeric_count = df.select_dtypes(include="number").shape[1]
+    if numeric_count > MAX_CORRELATION_COLUMNS:
+        st.caption(
+            f"Correlation is limited to the first {MAX_CORRELATION_COLUMNS} numeric columns."
+        )
+
+
+def _render_outlier_summary(st: Any, df: pd.DataFrame) -> None:
+    st.subheader("Outlier summary")
+    summary = _aggregate_iqr_outlier_summary(df)
+    if summary.empty:
+        st.info("No numeric columns to summarize.")
+        return
+    st.dataframe(summary, hide_index=True)
+    numeric_count = df.select_dtypes(include="number").shape[1]
+    if numeric_count > MAX_OUTLIER_COLUMNS:
+        st.caption(
+            f"Outlier summary is limited to the first {MAX_OUTLIER_COLUMNS} numeric columns."
+        )
 
 
 def _render_num_num(st: Any, df: pd.DataFrame, col1: str, col2: str) -> None:
@@ -134,23 +275,47 @@ def _render_preprocessing_plan(st: Any, df: pd.DataFrame) -> None:
     )
 
 
-def _render_eda_explorer(st: Any) -> None:
+def _render_eda_explorer(st: Any, session_state: Mapping[str, Any] | None = None) -> None:
     """Render the EDA Explorer page: CSV input, then univariate/bivariate/preprocessing."""
-    st.header("EDA Explorer")
-    st.caption("Explore column distributions, relationships, and preprocessing recommendations.")
-    eda_csv = st.text_input("CSV path", placeholder="e.g., ./data/my_dataset.csv")
+    render_page_header(
+        st,
+        "EDA Explorer",
+        "Explore column distributions, relationships, and preprocessing recommendations.",
+        step_label="Step 3 of 11 — EDA Explorer",
+    )
+    context = get_dataset_context(session_state or {})
+    if context is not None:
+        render_dataset_context_panel(st, context)
+        if context.large_file_mode:
+            render_warning_state(
+                st,
+                "EDA is unavailable for the active large-file profile context. "
+                "Return to Start and select full analysis mode to use EDA.",
+            )
+            return
+        eda_csv = context.source_path
+    else:
+        eda_csv = st.text_input("CSV path", placeholder="e.g., ./data/my_dataset.csv")
     if not eda_csv:
-        st.info("💡 Enter a CSV path above to start exploring.")
+        st.info("💡 Start with a dataset context or enter a CSV path above to begin exploring.")
         return
 
-    df, _, err = _load_df_and_assess(eda_csv)
+    df, result, err = _load_df_and_assess(eda_csv)
     if err is not None:
         show_error(st, "Load Error", err)
         return
     if df is None:
         return
 
+    profile = result.get("profile") if result is not None else None
+    render_storylens_card(st, _eda_storylens(result, profile))
+    _render_dataset_profile(st, df, profile)
+    _render_missingness(st, df)
+    _render_duplicate_rows(st, df)
+    _render_dtype_distribution(st, df)
     _render_eda_univariate(st, df)
+    _render_correlation_matrix(st, df)
+    _render_outlier_summary(st, df)
     _render_eda_bivariate(st, df)
     _render_preprocessing_plan(st, df)
 
@@ -159,4 +324,4 @@ def render() -> None:
     """st.navigation entry point."""
     import streamlit as st
 
-    _render_eda_explorer(st)
+    _render_eda_explorer(st, st.session_state)  # type: ignore[arg-type, unused-ignore]

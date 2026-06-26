@@ -20,6 +20,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from data_quality_toolkit.application.monitoring.view_model import (
+    ColumnDrift,
+    MonitoringOverview,
+    RunRow,
+    TrendSummary,
+)
+
 # Run-level table columns: (run dict key, display header).
 _RUN_COLUMNS: tuple[tuple[str, str], ...] = (
     ("run_id", "run_id"),
@@ -195,6 +202,115 @@ def _html_distributions(distributions: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+# Empty-state guidance for the Dashboard 2.0 view-model-driven sections.
+_NO_TREND_HTML = '<p class="empty">No trend data available.</p>'
+_NO_DRIFTED_COLUMNS_HTML = '<p class="empty">No drifted columns detected.</p>'
+_NO_METRICS_HTML = '<p class="empty">No metric data available.</p>'
+
+# Trend-summary cards: (TrendSummary attribute, display label).
+_TREND_FIELDS: tuple[tuple[str, str], ...] = (
+    ("drift_rate", "drift_rate"),
+    ("latest_drift_detected", "latest_drift_detected"),
+    ("columns_tested_total", "columns_tested_total"),
+    ("columns_tested_average", "columns_tested_average"),
+    ("columns_drifted_total", "columns_drifted_total"),
+    ("columns_drifted_average", "columns_drifted_average"),
+)
+
+# Top-drifted-columns table: (ColumnDrift dict key, header).
+_TOP_COLUMN_FIELDS: tuple[tuple[str, str], ...] = (
+    ("column_name", "column_name"),
+    ("kind", "kind"),
+    ("psi", "psi"),
+    ("js_distance", "js_distance"),
+    ("wasserstein", "wasserstein"),
+)
+
+# Aggregate-metric rows: (display label, ColumnDrift attribute).
+_METRIC_FIELDS: tuple[tuple[str, str], ...] = (
+    ("PSI", "psi"),
+    ("Jensen-Shannon", "js_distance"),
+    ("Wasserstein", "wasserstein"),
+)
+
+
+def _resolve_version() -> str | None:
+    """Installed package version for the dashboard header, or ``None`` if absent."""
+    try:
+        from importlib.metadata import version
+
+        return version("data-quality-toolkit")
+    except Exception:  # pragma: no cover - metadata absent in some environments
+        return None
+
+
+def _num(value: float | None) -> str:
+    """Format an optional metric value to 4 decimals; ``None`` -> empty string."""
+    return "" if value is None else f"{value:.4f}"
+
+
+def _avg(value: float) -> str:
+    """Format an average to 2 decimals."""
+    return f"{value:.2f}"
+
+
+def _html_trend_summary(summary: TrendSummary) -> list[str]:
+    """Render the view-model-driven "Trend summary" cards (no I/O)."""
+    out = ["<h2>Trend summary</h2>"]
+    if summary.total_runs == 0:
+        out.append(_NO_TREND_HTML)
+        return out
+    display: dict[str, str] = {
+        "drift_rate": _pct(summary.drift_rate),
+        "latest_drift_detected": _filter_display(summary.latest_drift_detected),
+        "columns_tested_total": str(summary.columns_tested_total),
+        "columns_tested_average": _avg(summary.columns_tested_average),
+        "columns_drifted_total": str(summary.columns_drifted_total),
+        "columns_drifted_average": _avg(summary.columns_drifted_average),
+    }
+    out.append('<div class="cards">')
+    for attr, label in _TREND_FIELDS:
+        out.append('<div class="card">')
+        out.append(f'<div class="label">{_esc(label)}</div>')
+        out.append(f'<div class="value">{_esc(display[attr])}</div>')
+        out.append("</div>")
+    out.append("</div>")
+    return out
+
+
+def _html_top_drifted_columns(columns: list[ColumnDrift]) -> list[str]:
+    """Render the "Top drifted columns" table from view-model ``ColumnDrift`` objects."""
+    out = ["<h2>Top drifted columns</h2>"]
+    drifted = [c for c in columns if c.drift_detected]
+    if not drifted:
+        out.append(_NO_DRIFTED_COLUMNS_HTML)
+        return out
+    drifted.sort(key=lambda c: (c.psi if c.psi is not None else float("-inf")), reverse=True)
+    rows = [c.to_dict() for c in drifted[:10]]
+    out.extend(_html_table(_TOP_COLUMN_FIELDS, rows))
+    return out
+
+
+def _html_metric_summary(columns: list[ColumnDrift]) -> list[str]:
+    """Render the aggregate PSI / Jensen-Shannon / Wasserstein "Metric summary"."""
+    out = ["<h2>Metric summary (PSI / Jensen-Shannon / Wasserstein)</h2>"]
+    if not columns:
+        out.append(_NO_METRICS_HTML)
+        return out
+    rows: list[dict[str, Any]] = []
+    for label, attr in _METRIC_FIELDS:
+        values = [v for v in (getattr(c, attr) for c in columns) if v is not None]
+        if values:
+            mx: float | None = max(values)
+            mean: float | None = sum(values) / len(values)
+        else:
+            mx = mean = None
+        rows.append({"metric": label, "max": _num(mx), "mean": _num(mean)})
+    spec = (("metric", "metric"), ("max", "max"), ("mean", "mean"))
+    out.extend(_html_table(spec, rows))
+    return out
+
+
 def render_drift_dashboard(
     *,
     summary: dict[str, Any],
@@ -205,6 +321,7 @@ def render_drift_dashboard(
     limit: int | None = None,
     generated_at: str | None = None,
     distributions: list[dict[str, Any]] | None = None,
+    version: str | None = None,
 ) -> str:
     """Render a static, self-contained drift analytics dashboard as HTML.
 
@@ -225,10 +342,25 @@ def render_drift_dashboard(
     generated_at = generated_at or _utc_now_iso()
     db_path = str(db_path)
 
+    # Consume the shared monitoring view-model: a single normalized projection of
+    # the already-fetched dicts drives the trend-summary and column metric
+    # sections (and the same value objects power the Streamlit Drift Explorer).
+    overview = MonitoringOverview(
+        summary=TrendSummary.from_summary(summary),
+        runs=[RunRow.from_row(r) for r in runs],
+        db_path=db_path,
+        current_dataset_id=current_dataset_id,
+        limit=limit,
+        generated_at=generated_at,
+    )
+    column_drifts = [ColumnDrift.from_row(c) for c in columns]
+
     meta = [
         ("generated_at", generated_at),
         ("database", db_path),
     ]
+    if version is not None:
+        meta.append(("toolkit_version", str(version)))
     if current_dataset_id is not None:
         meta.append(("current_dataset_id filter", str(current_dataset_id)))
     if limit is not None:
@@ -258,6 +390,8 @@ def render_drift_dashboard(
         parts.append("</div>")
     parts.append("</div>")
 
+    parts.extend(_html_trend_summary(overview.summary))
+
     parts.append("<h2>Runs</h2>")
     if not runs:
         parts.append(_NO_RUNS_HTML)
@@ -269,6 +403,9 @@ def render_drift_dashboard(
         parts.append(_NO_COLUMNS_HTML)
     else:
         parts.extend(_html_table(_COLUMN_COLUMNS, columns))
+
+    parts.extend(_html_top_drifted_columns(column_drifts))
+    parts.extend(_html_metric_summary(column_drifts))
 
     if distributions is not None:
         parts.extend(_html_distributions(distributions))
@@ -288,23 +425,23 @@ def build_drift_dashboard(
 ) -> str:
     """Fetch drift history from SQLite and render a static HTML dashboard.
 
-    Reuses the accepted public APIs ``summarize_drift_trends_sqlite``,
-    ``read_drift_runs_sqlite``, and ``read_drift_columns_sqlite``. A missing or
-    empty database yields a valid zero dashboard rather than raising. When
-    ``include_plots`` is true, persisted distribution bins are fetched via
-    ``read_drift_distributions_sqlite`` and rendered as a "Distribution plots"
-    section (an empty database renders a clear empty-state).
+    The run-level overview (trend summary + recent runs) is built through the
+    shared monitoring view-model ``build_monitoring_overview`` (which itself reads
+    only via the root ``data_quality_toolkit.api`` seam). Column-level rows and,
+    when ``include_plots`` is true, distribution bins are fetched database-wide
+    via ``read_drift_columns_sqlite`` / ``read_drift_distributions_sqlite``. A
+    missing or empty database yields a valid zero dashboard rather than raising.
     """
-    from data_quality_toolkit.api import (
-        read_drift_columns_sqlite,
-        read_drift_runs_sqlite,
-        summarize_drift_trends_sqlite,
+    from data_quality_toolkit.application.monitoring.view_model import (
+        build_monitoring_overview,
     )
 
-    summary = summarize_drift_trends_sqlite(
+    overview = build_monitoring_overview(
         db_path, current_dataset_id=current_dataset_id, limit=limit
     )
-    runs = read_drift_runs_sqlite(db_path, current_dataset_id=current_dataset_id, limit=limit)
+
+    from data_quality_toolkit.api import read_drift_columns_sqlite
+
     columns = read_drift_columns_sqlite(db_path)
     distributions: list[dict[str, Any]] | None = None
     if include_plots:
@@ -312,12 +449,13 @@ def build_drift_dashboard(
 
         distributions = read_drift_distributions_sqlite(db_path)
     return render_drift_dashboard(
-        summary=summary,
-        runs=runs,
+        summary=overview.summary.to_dict(),
+        runs=[run.to_dict() for run in overview.runs],
         columns=columns,
         db_path=db_path,
         current_dataset_id=current_dataset_id,
         limit=limit,
         generated_at=generated_at,
         distributions=distributions,
+        version=_resolve_version(),
     )

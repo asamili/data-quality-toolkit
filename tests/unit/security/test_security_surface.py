@@ -55,6 +55,7 @@ def test_settings_network_off_by_default(tmp_path, monkeypatch):
 
 
 def test_settings_api_key_not_baked_into_defaults(tmp_path, monkeypatch):
+    monkeypatch.delenv("DQT_LOAD_ENV", raising=False)
     monkeypatch.delenv("API_KEY", raising=False)
     monkeypatch.setenv("EXPORT_BASE_DIR", str(tmp_path / "dist"))
     monkeypatch.setenv("PBI_BASE_FOLDER_PARAMETER", str(tmp_path / "dist"))

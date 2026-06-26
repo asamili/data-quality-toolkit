@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 
 from data_quality_toolkit.application.workflow.preprocessing import (
+    RECIPE_SCHEMA_VERSION,
+    STATUS_PENDING,
+    frame_facts,
     iqr_outlier_summary,
+    make_recipe_step,
     plan_preprocessing,
+    recipe_to_json_payload,
+    summarize_before_after,
 )
 
 # ---------------------------------------------------------------------------
@@ -115,3 +123,105 @@ def test_plan_numeric_with_outlier_recommends_outlier_treatment() -> None:
     df = pd.DataFrame({"n": [1.0, 2.0, 3.0, 4.0, 1000.0]})
     plan = plan_preprocessing(df)
     assert "consider outlier treatment" in plan[0]["recommendations"]
+
+
+# ---------------------------------------------------------------------------
+# recipe model — make_recipe_step
+# ---------------------------------------------------------------------------
+
+
+def test_make_recipe_step_has_required_keys() -> None:
+    step = make_recipe_step("type_cast", ["a"], {"target_type": "numeric"})
+    assert {
+        "step_id",
+        "operation",
+        "columns",
+        "parameters",
+        "before",
+        "after",
+        "status",
+        "warning",
+    } <= step.keys()
+    assert step["status"] == STATUS_PENDING
+    assert step["before"] is None and step["after"] is None
+    assert step["warning"] is None
+
+
+def test_make_recipe_step_is_deterministic() -> None:
+    a = make_recipe_step("scaling", ["x", "y"], {"strategy": "minmax"})
+    b = make_recipe_step("scaling", ["x", "y"], {"strategy": "minmax"})
+    assert a["step_id"] == b["step_id"]
+
+
+def test_make_recipe_step_id_changes_with_params() -> None:
+    a = make_recipe_step("scaling", ["x"], {"strategy": "minmax"})
+    b = make_recipe_step("scaling", ["x"], {"strategy": "zscore"})
+    assert a["step_id"] != b["step_id"]
+
+
+def test_make_recipe_step_normalizes_columns_to_strings() -> None:
+    step = make_recipe_step("missing_value", [1, 2], {"strategy": "drop"})
+    assert step["columns"] == ["1", "2"]
+
+
+# ---------------------------------------------------------------------------
+# recipe model — frame_facts / summarize_before_after
+# ---------------------------------------------------------------------------
+
+
+def test_frame_facts_counts_rows_columns_and_missing() -> None:
+    df = pd.DataFrame({"a": [1, None, 3], "b": ["x", "y", "z"]})
+    facts = frame_facts(df)
+    assert facts["row_count"] == 3
+    assert facts["column_count"] == 2
+    assert facts["missing_cells"] == 1
+    assert 0.0 <= facts["completeness"] <= 1.0
+
+
+def test_frame_facts_handles_empty_frame() -> None:
+    facts = frame_facts(pd.DataFrame())
+    assert facts["row_count"] == 0
+    assert facts["column_count"] == 0
+    assert facts["completeness"] == 1.0
+
+
+def test_summarize_before_after_reports_row_and_dtype_changes() -> None:
+    before = pd.DataFrame({"a": ["1", "2", "2"], "b": [1, 2, 2]})
+    after = before.drop_duplicates().copy()
+    after["a"] = after["a"].astype("Int64")
+    summary = summarize_before_after(before, after)
+    assert summary["before"]["row_count"] == 3
+    assert summary["after"]["row_count"] == 2
+    assert "a" in summary["dtype_changes"]
+    assert summary["dtype_changes"]["a"]["from"] != summary["dtype_changes"]["a"]["to"]
+
+
+def test_summarize_before_after_tracks_added_and_removed_columns() -> None:
+    before = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+    after = pd.DataFrame({"a": [1, 2], "c": [5, 6]})
+    summary = summarize_before_after(before, after)
+    assert summary["added_columns"] == ["c"]
+    assert summary["removed_columns"] == ["b"]
+
+
+# ---------------------------------------------------------------------------
+# recipe model — recipe_to_json_payload
+# ---------------------------------------------------------------------------
+
+
+def test_recipe_to_json_payload_is_json_serializable() -> None:
+    steps = [make_recipe_step("scaling", ["x"], {"strategy": "minmax"})]
+    summary = summarize_before_after(pd.DataFrame({"x": [1, 2]}), pd.DataFrame({"x": [0.0, 1.0]}))
+    payload = recipe_to_json_payload(steps, summary)
+    assert payload["schema_version"] == RECIPE_SCHEMA_VERSION
+    assert len(payload["steps"]) == 1
+    # must not raise
+    json.dumps(payload)
+
+
+def test_recipe_to_json_payload_is_deterministic_without_summary() -> None:
+    steps = [make_recipe_step("drop_duplicates", [], {})]
+    first = recipe_to_json_payload(steps)
+    second = recipe_to_json_payload(steps)
+    assert json.dumps(first) == json.dumps(second)
+    assert first["summary"] is None

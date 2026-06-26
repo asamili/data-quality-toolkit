@@ -13,14 +13,16 @@ from data_quality_toolkit.shared.compat import (
 )
 from data_quality_toolkit.shared.constants import DEFAULT_MAX_ROWS_IN_MEMORY, DEFAULT_SAMPLE_SIZE
 
-ENV_FILE: str | None = None
-if os.getenv("DQT_LOAD_ENV", "").lower() in {"1", "true", "yes", "on"}:
-    try:
-        from dotenv import find_dotenv
 
-        ENV_FILE = find_dotenv(usecwd=True) or ".env"
-    except Exception:  # pragma: no cover
-        ENV_FILE = ".env"
+def _resolve_env_file() -> str | None:
+    if os.getenv("DQT_LOAD_ENV", "").lower() in {"1", "true", "yes", "on"}:
+        try:
+            from dotenv import find_dotenv
+
+            return find_dotenv(usecwd=True) or ".env"
+        except Exception:  # pragma: no cover
+            return ".env"
+    return None
 
 
 class Settings(BaseSettings):
@@ -61,14 +63,14 @@ class Settings(BaseSettings):
     # ------------------------------
     if V2:
         model_config: ClassVar[SettingsConfigDict] = {
-            "env_file": ENV_FILE,
+            "env_file": None,
             "case_sensitive": False,
             "extra": "ignore",
         }
     else:  # pragma: no cover
 
         class Config:
-            env_file = ENV_FILE
+            env_file = None
             case_sensitive = False
 
     # ------------------------------
@@ -95,15 +97,14 @@ class Settings(BaseSettings):
 
 
 def load_settings() -> Settings:
-    """Load and prepare settings (type-checker friendly; no direct constructor)."""
-    # Explicitly type the variable to keep mypy happy
+    """Load and prepare settings."""
+    env_file = _resolve_env_file()
+    _cls = cast(Any, Settings)  # _env_file not in pydantic-generated __init__ stubs
     s: Settings
     if V2:
-        # Pydantic v2
-        s = Settings.model_validate({})
+        s = _cls(_env_file=env_file)
     else:  # pragma: no cover
-        # Pydantic v1
-        s = Settings.parse_obj({})  # returns Settings in v1 too
+        s = _cls(_env_file=env_file)
     s.ensure_runtime_dirs()
     return s
 

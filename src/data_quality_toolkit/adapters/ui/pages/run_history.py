@@ -1,9 +1,10 @@
-"""Run History page: score trend, latest-run issues, and run-to-run comparison."""
+"""Quality History page: score trend, latest-run issues, and run comparison."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from data_quality_toolkit.adapters.ui.components.storylens import render_storylens_card
 from data_quality_toolkit.adapters.ui.eda import (
     _build_trend_df,
     _extract_latest_issues,
@@ -11,6 +12,7 @@ from data_quality_toolkit.adapters.ui.eda import (
 )
 from data_quality_toolkit.adapters.ui.services.assessment import _load_run_history
 from data_quality_toolkit.adapters.ui.services.compare import _run_compare
+from data_quality_toolkit.application.explanation import explain_not_enough_runs
 
 
 def _render_compare_section(st: Any, db_path_str: str, dataset_id: str) -> None:
@@ -54,8 +56,8 @@ def _render_compare_section(st: Any, db_path_str: str, dataset_id: str) -> None:
 
 def _render_run_history(st: Any) -> None:
     """Render the Run History section: trend chart, latest issues breakdown, and run comparison."""
-    st.header("Run History")
-    st.caption("Load historical audit data from the DQT database.")
+    st.header("Quality History")
+    st.caption("Load historical quality-audit data (separate from drift monitoring history).")
     st.info(
         "**How to generate run history:** run `dqt export <file.csv> --outdir <dir>` at least once. "
         "This writes `<dir>/dqt.db` and `<dir>/star/quality_report.json`. "
@@ -80,6 +82,12 @@ def _render_run_history(st: Any) -> None:
     if not records:
         st.warning("No run history found for this dataset.")
         return
+
+    if len(records) == 1:
+        try:
+            render_storylens_card(st, [explain_not_enough_runs(run_count=1)])
+        except Exception:  # noqa: S110
+            pass
 
     trend = _extract_trend_data(records)
     if len(trend) >= 2:

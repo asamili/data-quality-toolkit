@@ -9,10 +9,157 @@ CLI behavior is unchanged — these functions call the same internal implementat
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
+
+# Public re-exports (G8C1): make the stable view-model, exception family, and the
+# storage error importable from the canonical ``data_quality_toolkit.api`` seam.
+# Cycle-safe: view_model imports ``api`` only lazily inside its builder functions.
+from data_quality_toolkit.adapters.storage.connection import StorageError
+from data_quality_toolkit.application.monitoring.view_model import (
+    ColumnDrift,
+    DistributionBin,
+    MonitoringOverview,
+    RunDetail,
+    RunRow,
+    TrendSummary,
+    build_column_drift,
+    build_distribution_series,
+    build_monitoring_overview,
+    build_run_detail,
+    list_run_rows,
+)
+from data_quality_toolkit.shared.exceptions import (
+    AssessmentError,
+    ConfigError,
+    DQTError,
+    LoaderError,
+    NotificationError,
+    ProfileError,
+    ValidationError,
+    WebhookSecurityError,
+)
+from data_quality_toolkit.shared.result_types import (
+    AssessCsvResult,
+    ColumnPlan,
+    CsvAssessment,
+    CsvAssessmentIssue,
+    CsvExportPaths,
+    CsvMeta,
+    CsvProfile,
+    CsvProfileColumn,
+    CsvProfileCompact,
+    CsvStarExport,
+    DimTimeResult,
+    DriftColumnRow,
+    DriftDistributionRow,
+    DriftHistoryXlsxExportResult,
+    DriftNotificationSendResult,
+    DriftPlotsExportResult,
+    DriftRateThresholdResult,
+    DriftRunRow,
+    ExportCsvResult,
+    KpiEmitResult,
+    KpiGraphResult,
+    MonitoringDuckdbExportResult,
+    PlanCsvResult,
+    PowerBIPackageResult,
+    ProfileCsvResult,
+    PsiOffender,
+    PsiThresholdResult,
+    SummarizeDriftTrendsResult,
+)
 
 if TYPE_CHECKING:
     from data_quality_toolkit.application.workflow.elt_pipeline import ELTPipeline
+
+__all__ = [
+    # CSV profiling / assessment / export
+    "profile_csv",
+    "assess_csv",
+    "export_csv",
+    "plan_csv",
+    "compare_runs",
+    "create_manifest",
+    "create_elt_pipeline",
+    # Drift detection + history readers
+    "detect_drift",
+    "read_drift_history",
+    "import_drift_history_sqlite",
+    "read_drift_runs_sqlite",
+    "read_drift_columns_sqlite",
+    "read_drift_distributions_sqlite",
+    "summarize_drift_trends_sqlite",
+    # Drift reporting / export
+    "drift_history_report",
+    "drift_dashboard",
+    "export_drift_history_xlsx",
+    "export_monitoring_duckdb",
+    "export_drift_plots",
+    "send_drift_notification",
+    # Drift threshold evaluators
+    "evaluate_drift_rate_threshold",
+    "evaluate_psi_threshold",
+    # KPI workflows
+    "kpi_validate",
+    "kpi_emit",
+    "kpi_graph",
+    "generate_dim_time",
+    "build_powerbi_package",
+    # Monitoring view-model (value objects + builders)
+    "MonitoringOverview",
+    "TrendSummary",
+    "RunRow",
+    "ColumnDrift",
+    "DistributionBin",
+    "RunDetail",
+    "build_monitoring_overview",
+    "list_run_rows",
+    "build_column_drift",
+    "build_distribution_series",
+    "build_run_detail",
+    # Exception family
+    "DQTError",
+    "LoaderError",
+    "ValidationError",
+    "ConfigError",
+    "ProfileError",
+    "AssessmentError",
+    "NotificationError",
+    "WebhookSecurityError",
+    "StorageError",
+    # Result TypedDicts (G8C2B)
+    "DriftRateThresholdResult",
+    "PsiOffender",
+    "PsiThresholdResult",
+    "ColumnPlan",
+    "PlanCsvResult",
+    "DimTimeResult",
+    "KpiEmitResult",
+    "KpiGraphResult",
+    "SummarizeDriftTrendsResult",
+    "DriftRunRow",
+    "DriftColumnRow",
+    "DriftDistributionRow",
+    # Flat wrapper result TypedDicts (G8C2E)
+    "DriftHistoryXlsxExportResult",
+    "MonitoringDuckdbExportResult",
+    "DriftPlotsExportResult",
+    "DriftNotificationSendResult",
+    # Power BI package contract (G8C3B)
+    "PowerBIPackageResult",
+    # Nested envelope contracts (G8C2G)
+    "CsvMeta",
+    "CsvProfileColumn",
+    "CsvProfile",
+    "CsvProfileCompact",
+    "CsvAssessmentIssue",
+    "CsvAssessment",
+    "CsvStarExport",
+    "CsvExportPaths",
+    "ProfileCsvResult",
+    "AssessCsvResult",
+    "ExportCsvResult",
+]
 
 
 def _build_csv_kwargs(
@@ -38,7 +185,7 @@ def profile_csv(
     na_values: list[str] | None = None,
     sample_size: int | None = None,
     chunksize: int | None = None,
-) -> dict[str, Any]:
+) -> ProfileCsvResult:
     """Profile a CSV file. Returns profile metadata — no disk writes.
 
     chunksize=None (default): full in-memory load, all metrics available.
@@ -48,10 +195,10 @@ def profile_csv(
     if chunksize is not None:
         from data_quality_toolkit.application.workflow.pipeline import run_profile_chunked
 
-        return run_profile_chunked(str(path), chunksize=chunksize, **kw)
+        return cast(ProfileCsvResult, run_profile_chunked(str(path), chunksize=chunksize, **kw))
     from data_quality_toolkit.application.workflow.pipeline import run_profile
 
-    return run_profile(str(path), sample_size=sample_size, **kw)
+    return cast(ProfileCsvResult, run_profile(str(path), sample_size=sample_size, **kw))
 
 
 def assess_csv(
@@ -63,7 +210,7 @@ def assess_csv(
     na_values: list[str] | None = None,
     sample_size: int | None = None,
     chunksize: int | None = None,
-) -> dict[str, Any]:
+) -> AssessCsvResult:
     """Profile and assess a CSV file. Returns profile + quality score + issues. No disk writes.
 
     chunksize=None (default): full in-memory load, all rules available.
@@ -75,17 +222,21 @@ def assess_csv(
         from data_quality_toolkit.application.workflow.pipeline import run_assessment_chunked
 
         if null_threshold is not None:
-            return run_assessment_chunked(
-                str(path), chunksize=chunksize, null_threshold=null_threshold, **kw
+            return cast(
+                AssessCsvResult,
+                run_assessment_chunked(
+                    str(path), chunksize=chunksize, null_threshold=null_threshold, **kw
+                ),
             )
-        return run_assessment_chunked(str(path), chunksize=chunksize, **kw)
+        return cast(AssessCsvResult, run_assessment_chunked(str(path), chunksize=chunksize, **kw))
     from data_quality_toolkit.application.workflow.pipeline import run_assessment
 
     if null_threshold is not None:
-        return run_assessment(
-            str(path), null_threshold=null_threshold, sample_size=sample_size, **kw
+        return cast(
+            AssessCsvResult,
+            run_assessment(str(path), null_threshold=null_threshold, sample_size=sample_size, **kw),
         )
-    return run_assessment(str(path), sample_size=sample_size, **kw)
+    return cast(AssessCsvResult, run_assessment(str(path), sample_size=sample_size, **kw))
 
 
 def export_csv(
@@ -98,23 +249,33 @@ def export_csv(
     na_values: list[str] | None = None,
     sample_size: int | None = None,
     emit_manifest: bool = False,
-) -> dict[str, Any]:
+) -> ExportCsvResult:
     """Full pipeline: profile → assess → star schema → write artifacts. Returns run metadata."""
     from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
     kw = _build_csv_kwargs(sep, encoding, na_values)
     out_dir = str(output_dir) if output_dir is not None else None
     if null_threshold is not None:
-        return run_export_star(
+        return cast(
+            ExportCsvResult,
+            run_export_star(
+                str(path),
+                output_dir=out_dir,
+                null_threshold=null_threshold,
+                sample_size=sample_size,
+                emit_manifest=emit_manifest,
+                **kw,
+            ),
+        )
+    return cast(
+        ExportCsvResult,
+        run_export_star(
             str(path),
             output_dir=out_dir,
-            null_threshold=null_threshold,
             sample_size=sample_size,
             emit_manifest=emit_manifest,
             **kw,
-        )
-    return run_export_star(
-        str(path), output_dir=out_dir, sample_size=sample_size, emit_manifest=emit_manifest, **kw
+        ),
     )
 
 
@@ -141,6 +302,20 @@ def compare_runs(
     dataset_id = dataset_id_from_file(Path(path))
     history_path = Path(output_dir) / "star" / "quality_history.jsonl"
     return compare_last_two_runs(dataset_id, history_path)
+
+
+def compare_runs_history(
+    dataset_id: str,
+    history_path: str | Path,
+) -> dict[str, Any]:
+    """Compare last two runs by dataset_id and an explicit JSONL history file path.
+
+    Thin seam for callers that already have dataset_id and history_path
+    (e.g. the UI service, which infers history_path from a DB directory).
+    """
+    from data_quality_toolkit.application.workflow.compare import compare_last_two_runs
+
+    return compare_last_two_runs(dataset_id, Path(history_path))
 
 
 DRIFT_REPORT_SCHEMA_VERSION = "3"
@@ -294,7 +469,7 @@ def plan_csv(
     encoding: str | None = None,
     na_values: list[str] | None = None,
     sample_size: int | None = None,
-) -> dict[str, Any]:
+) -> PlanCsvResult:
     """Return per-column preprocessing recommendations for a CSV. No disk writes."""
     from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
     from data_quality_toolkit.application.workflow.preprocessing import plan_preprocessing
@@ -303,7 +478,7 @@ def plan_csv(
     df, meta = load_csv(str(path), sample_size=sample_size, **kw)
     return {
         "dataset_id": meta["dataset_id"],
-        "columns": plan_preprocessing(df),
+        "columns": cast(list[ColumnPlan], plan_preprocessing(df)),
     }
 
 
@@ -318,22 +493,22 @@ def kpi_emit(
     config_path: str | Path,
     dax_out: str | Path,
     tmsl_out: str | Path,
-) -> dict[str, Any]:
+) -> KpiEmitResult:
     """Load KPI catalog, validate, and emit DAX + TMSL files. Writes two output files."""
     from data_quality_toolkit.application.workflow.kpi import emit_kpi_artifacts
 
-    return emit_kpi_artifacts(config_path, dax_out, tmsl_out)
+    return cast(KpiEmitResult, emit_kpi_artifacts(config_path, dax_out, tmsl_out))
 
 
 def kpi_graph(
     config_path: str | Path,
     out: str | Path,
     graph_format: Literal["mermaid", "graphviz"] = "mermaid",
-) -> dict[str, Any]:
+) -> KpiGraphResult:
     """Export KPI dependency graph as Mermaid (.mmd) or Graphviz (.dot). Writes one file."""
     from data_quality_toolkit.application.workflow.kpi import export_kpi_graph
 
-    return export_kpi_graph(config_path, out, graph_format=graph_format)
+    return cast(KpiGraphResult, export_kpi_graph(config_path, out, graph_format=graph_format))
 
 
 def generate_dim_time(
@@ -343,7 +518,7 @@ def generate_dim_time(
     week_start: int = 1,
     fiscal_year_start: int | None = None,
     output_dir: str | Path | None = None,
-) -> dict[str, Any]:
+) -> DimTimeResult:
     """
     Generate a time dimension table.
 
@@ -352,12 +527,45 @@ def generate_dim_time(
     """
     from data_quality_toolkit.application.workflow.kpi import generate_dim_time_workflow
 
-    return generate_dim_time_workflow(
-        start_date=start_date,
-        end_date=end_date,
-        week_start=week_start,
-        fiscal_year_start=fiscal_year_start,
-        output_dir=output_dir,
+    return cast(
+        DimTimeResult,
+        generate_dim_time_workflow(
+            start_date=start_date,
+            end_date=end_date,
+            week_start=week_start,
+            fiscal_year_start=fiscal_year_start,
+            output_dir=output_dir,
+        ),
+    )
+
+
+def build_powerbi_package(
+    star_dir: str | Path,
+    output_dir: str | Path,
+    time_start: str = "2018-01-01",
+    time_end: str = "2030-12-31",
+    base_folder: str = "./dist",
+    fiscal_year_start: int | None = None,
+) -> PowerBIPackageResult:
+    """Build a Power BI package from a star-schema directory. Writes package files.
+
+    Thin pass-through over the internal exporter — behavior is unchanged. Generates
+    a time dimension, scaffolds the zero-config Power BI package, validates it, and
+    returns the package metadata. Raises ValueError when validation fails and
+    FileNotFoundError when star_dir is missing.
+    """
+    from data_quality_toolkit.adapters.exporters.bi.powerbi_exporter import export_powerbi_package
+
+    return cast(
+        PowerBIPackageResult,
+        export_powerbi_package(
+            star_dir,
+            output_dir,
+            time_start=time_start,
+            time_end=time_end,
+            base_folder=base_folder,
+            fiscal_year_start=fiscal_year_start,
+        ),
     )
 
 
@@ -410,6 +618,7 @@ def read_drift_runs_sqlite(
     Newest first (created_at descending, run_id tie-break). Optional filters:
     limit, current_dataset_id, drift_detected, status. Missing DB or no matching
     rows returns []. Raises StorageError on DB read failure.
+    See DriftRunRow for the stable key contract.
     """
     from data_quality_toolkit.adapters.storage.queries import read_drift_runs as _read
 
@@ -436,6 +645,7 @@ def read_drift_columns_sqlite(
     Ordered by run_id then column_name. Optional filters: run_id, column_name,
     drift_detected. Missing DB or no matching rows returns []. Raises
     StorageError on DB read failure.
+    See DriftColumnRow for the stable key contract.
     """
     from data_quality_toolkit.adapters.storage.queries import read_drift_columns as _read
 
@@ -460,6 +670,7 @@ def read_drift_distributions_sqlite(
     ``result.columns[].distribution`` bins. Ordered by run_id, column_name, then
     bin_index. Optional filters: run_id, column_name. Missing DB or no matching
     rows returns []. Raises StorageError on DB read failure.
+    See DriftDistributionRow for the stable key contract.
     """
     from data_quality_toolkit.adapters.storage.queries import read_drift_distributions as _read
 
@@ -485,6 +696,7 @@ def summarize_drift_trends_sqlite(
     current_dataset_id and limit filters narrow the runs aggregated. A missing DB,
     an empty table, or no matching rows returns a stable zero-summary. Raises
     StorageError on DB read failure.
+    See SummarizeDriftTrendsResult for the stable key contract.
     """
     from data_quality_toolkit.adapters.storage.trends import summarize_drift_trends as _summarize
 
@@ -554,3 +766,242 @@ def drift_dashboard(
         limit=limit,
         include_plots=include_plots,
     )
+
+
+def export_drift_history_xlsx(
+    db_path: str | Path,
+    output_path: str | Path,
+    *,
+    current_dataset_id: str | None = None,
+    limit: int | None = None,
+    include_columns: bool = True,
+    include_distributions: bool = False,
+    force: bool = False,
+) -> DriftHistoryXlsxExportResult:
+    """Export drift-history monitoring data to a multi-sheet .xlsx workbook.
+
+    Reuses read_drift_runs_sqlite, summarize_drift_trends_sqlite,
+    read_drift_columns_sqlite, and read_drift_distributions_sqlite to build a
+    local Excel workbook (sheets: runs, trend_summary, columns when
+    include_columns, distributions when include_distributions, metadata). Refuses
+    to overwrite an existing file unless force is True. A missing or empty DB
+    yields a valid zero-state workbook. All string cells are escaped against
+    spreadsheet formula injection.
+
+    Requires the optional [powerbi] extra (openpyxl); raises XlsxExportError with
+    a "pip install data-quality-toolkit[powerbi]" hint when it is absent. Returns
+    {"output_path", "sheets", "row_counts"}.
+    """
+    from data_quality_toolkit.adapters.exporters.bi.xlsx_drift_exporter import (
+        export_drift_history_xlsx as _impl,
+    )
+
+    return cast(
+        DriftHistoryXlsxExportResult,
+        _impl(
+            db_path,
+            output_path,
+            current_dataset_id=current_dataset_id,
+            limit=limit,
+            include_columns=include_columns,
+            include_distributions=include_distributions,
+            force=force,
+        ),
+    )
+
+
+def export_monitoring_duckdb(
+    db_path: str | Path,
+    out_path: str | Path,
+    *,
+    overwrite: bool = False,
+) -> MonitoringDuckdbExportResult:
+    """Mirror drift-history monitoring tables from SQLite into a DuckDB file.
+
+    Opens an existing monitoring SQLite database read-only (never mutating it) and
+    writes a standalone DuckDB database mirroring the drift-history tables
+    drift_runs, drift_columns, and drift_column_distributions with a stable schema.
+    DuckDB is export/mirror only — it is never a live monitoring backend, and the
+    SQLite store is unchanged. Tables absent from the source are mirrored empty.
+
+    Refuses to overwrite an existing output unless overwrite is True, in which case
+    the output is recreated deterministically. Requires the optional [duckdb] extra
+    (duckdb); raises DuckdbExportError with a "pip install data-quality-toolkit[duckdb]"
+    hint when it is absent. Returns
+    {"input_db_path", "output_path", "tables", "row_counts", "overwritten"}.
+    """
+    from data_quality_toolkit.adapters.exporters.bi.duckdb_exporter import (
+        export_monitoring_duckdb as _impl,
+    )
+
+    return cast(MonitoringDuckdbExportResult, _impl(db_path, out_path, overwrite=overwrite))
+
+
+def export_drift_plots(
+    db_path: str | Path,
+    out: str | Path,
+    *,
+    chart: str = "all",
+    current_dataset_id: str | None = None,
+    limit: int | None = None,
+    force: bool = False,
+) -> DriftPlotsExportResult:
+    """Export drift-history monitoring data to local PNG chart files.
+
+    Reuses read_drift_runs_sqlite, summarize_drift_trends_sqlite, and
+    read_drift_columns_sqlite to render static PNG charts into the *out*
+    directory. Supported charts: "drift-rate", "psi-by-column", "top-drifted"
+    (or "all", the default). Refuses to overwrite an existing PNG unless force is
+    True. A missing or empty DB yields valid zero-state PNGs. Only local file
+    writes — no network, no GUI backend.
+
+    Requires the optional [viz] extra (matplotlib); raises PlotExportError with a
+    "pip install data-quality-toolkit[viz]" hint when it is absent. Returns
+    {"output_dir", "charts", "row_counts"}.
+    """
+    from data_quality_toolkit.adapters.exporters.viz.drift_plots import export_drift_plots as _impl
+
+    return cast(
+        DriftPlotsExportResult,
+        _impl(
+            db_path,
+            out,
+            chart=chart,
+            current_dataset_id=current_dataset_id,
+            limit=limit,
+            force=force,
+        ),
+    )
+
+
+def send_drift_notification(
+    db_path: str | Path,
+    webhook_url: str,
+    *,
+    max_drift_rate: float | None = None,
+    max_psi: float | None = None,
+    dry_run: bool = True,
+    send: bool = False,
+    timeout: float = 10.0,
+    allow_http: bool = False,
+    allow_insecure_host: bool = False,
+) -> DriftNotificationSendResult:
+    """Build (and optionally POST) a one-shot drift-threshold webhook notification.
+
+    Reads a drift trend summary (and per-column PSI when *max_psi* is set) from the
+    SQLite monitoring database via the existing summarize/read/evaluate seams, then
+    builds a minimal JSON payload. Dry-run (the default, and whenever *send* is False)
+    performs no network call. A real POST happens only when ``send=True`` and
+    ``dry_run=False`` AND ``DQT_ALLOW_NETWORK=true``; the URL is SSRF-validated
+    (https-only unless *allow_http*), redirects are refused, and the request uses a
+    single attempt with a mandatory *timeout*. Returns
+    ``{"payload", "sent", "status", "breached", "redacted_url"}``. Raises
+    NotificationError / WebhookSecurityError on a send or security failure.
+    """
+    from data_quality_toolkit.adapters.notifications.webhook import (
+        post_json,
+        redact_url,
+        validate_webhook_url,
+    )
+    from data_quality_toolkit.application.monitoring.notifications import (
+        build_drift_notification_payload,
+    )
+    from data_quality_toolkit.shared.constants import VERSION
+    from data_quality_toolkit.shared.exceptions import NotificationError
+    from data_quality_toolkit.shared.settings import load_settings
+
+    summary = summarize_drift_trends_sqlite(db_path)
+
+    rate_result = None
+    if max_drift_rate is not None:
+        rate_result = evaluate_drift_rate_threshold(summary, max_drift_rate=max_drift_rate)
+
+    psi_result = None
+    if max_psi is not None:
+        columns = read_drift_columns_sqlite(db_path)
+        psi_result = evaluate_psi_threshold(columns, max_psi=max_psi)
+
+    payload = build_drift_notification_payload(
+        summary,
+        version=VERSION,
+        max_drift_rate=max_drift_rate,
+        max_psi=max_psi,
+        rate_result=rate_result,  # type: ignore[arg-type]
+        psi_result=psi_result,  # type: ignore[arg-type]
+    )
+    breached = bool(payload["breached"])
+    redacted = redact_url(webhook_url)
+
+    # Fail safe: only a real send when explicitly requested and not in dry-run.
+    if not (send and not dry_run):
+        return cast(
+            DriftNotificationSendResult,
+            {
+                "payload": payload,
+                "sent": False,
+                "status": None,
+                "breached": breached,
+                "redacted_url": redacted,
+            },
+        )
+
+    if not load_settings().dqt_allow_network:
+        raise NotificationError(
+            "real webhook send refused: network is disabled",
+            hint="set DQT_ALLOW_NETWORK=true to allow real sends, or use --dry-run",
+        )
+
+    redacted = validate_webhook_url(
+        webhook_url,
+        allow_http=allow_http,
+        allow_insecure_host=allow_insecure_host,
+    )
+    status = post_json(webhook_url, payload, version=VERSION, timeout=timeout)
+    return cast(
+        DriftNotificationSendResult,
+        {
+            "payload": payload,
+            "sent": True,
+            "status": status,
+            "breached": breached,
+            "redacted_url": redacted,
+        },
+    )
+
+
+def evaluate_drift_rate_threshold(
+    summary: dict[str, Any],
+    *,
+    max_drift_rate: float,
+) -> DriftRateThresholdResult:
+    """Evaluate a drift-rate trend summary against a threshold.
+
+    Returns a JSON-ready dict with breached (bool), drift_rate (float), and
+    threshold (float). Missing or None drift_rate is treated as 0.0. Breach
+    is strictly greater than (equality is not a breach). No I/O, no network,
+    no new dependencies.
+    """
+    from data_quality_toolkit.application.monitoring.thresholds import (
+        evaluate_drift_rate_threshold as _impl,
+    )
+
+    return cast(DriftRateThresholdResult, _impl(summary, max_drift_rate=max_drift_rate))
+
+
+def evaluate_psi_threshold(
+    columns: list[dict[str, Any]],
+    *,
+    max_psi: float,
+) -> PsiThresholdResult:
+    """Evaluate per-column PSI values against a threshold.
+
+    Returns a JSON-ready dict with breached (bool), threshold (float), and
+    offenders (list of {column_name, psi} dicts). Skips None PSI values safely.
+    Breach is strictly greater than (equality is not a breach). Offender ordering
+    matches input order. No I/O, no network, no new dependencies.
+    """
+    from data_quality_toolkit.application.monitoring.thresholds import (
+        evaluate_psi_threshold as _impl,
+    )
+
+    return cast(PsiThresholdResult, _impl(columns, max_psi=max_psi))

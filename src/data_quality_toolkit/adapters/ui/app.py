@@ -29,44 +29,83 @@ def main() -> None:
 
     # Page imports are deferred so this module stays importable without streamlit.
     from data_quality_toolkit.adapters.ui.pages import (
+        artifact_center,
         data_overview,
         dim_time,
+        drift_explorer,
         eda_explorer,
         export,
+        help_about,
         kpi_catalog,
         manifest_viewer,
         pipeline_runner,
+        preprocess_studio,
+        quality_score,
         run_history,
         settings_diagnostics,
+        start,
+        statistics_lab,
     )
 
     st.title("Data Quality Toolkit Dashboard")
 
     nav = st.navigation(
         {
-            "Data Quality": [
+            "Start": [
+                st.Page(
+                    start.render,
+                    title="Start / Load Dataset",
+                    url_path="start",
+                    default=True,
+                ),
+            ],
+            "Analyze": [
                 st.Page(
                     data_overview.render,
                     title="Data Overview",
                     url_path="data-overview",
-                    default=True,
+                ),
+                st.Page(
+                    statistics_lab.render,
+                    title="Statistics Lab",
+                    url_path="statistics-lab",
                 ),
                 st.Page(eda_explorer.render, title="EDA Explorer", url_path="eda-explorer"),
-                st.Page(run_history.render, title="Run History", url_path="run-history"),
+                st.Page(
+                    quality_score.render,
+                    title="Quality Score / Rule Breakdown",
+                    url_path="quality-score",
+                ),
             ],
-            "Pipeline": [
+            "Prepare": [
+                st.Page(
+                    preprocess_studio.render,
+                    title="Preprocess Studio",
+                    url_path="preprocess-studio",
+                ),
+            ],
+            "Operate": [
                 st.Page(
                     pipeline_runner.render,
                     title="Pipeline Runner",
                     url_path="pipeline-runner",
                 ),
+                st.Page(
+                    drift_explorer.render,
+                    title="Drift Monitoring",
+                    url_path="drift-monitoring",
+                ),
+                st.Page(run_history.render, title="Quality History", url_path="run-history"),
             ],
-            "BI & Export": [
+            "Deliver": [
+                st.Page(
+                    artifact_center.render,
+                    title="Artifact Center",
+                    url_path="artifact-center",
+                ),
                 st.Page(export.render, title="Export", url_path="export"),
                 st.Page(kpi_catalog.render, title="KPI Catalog", url_path="kpi-catalog"),
                 st.Page(dim_time.render, title="Dim Time", url_path="dim-time"),
-            ],
-            "Lineage": [
                 st.Page(
                     manifest_viewer.render_manifest_viewer,
                     title="Manifest Viewer",
@@ -76,9 +115,10 @@ def main() -> None:
             "System": [
                 st.Page(
                     settings_diagnostics.render,
-                    title="Settings & Diagnostics",
-                    url_path="settings-diagnostics",
+                    title="Settings / Governance",
+                    url_path="settings-governance",
                 ),
+                st.Page(help_about.render, title="Help / About", url_path="help-about"),
             ],
         }
     )

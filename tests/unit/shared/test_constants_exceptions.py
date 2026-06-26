@@ -58,10 +58,13 @@ def test_exceptions_hierarchy_and_raise():
         assert "bad config" in str(e)
 
 
-def test_settings_defaults_from_constants(monkeypatch):
-    # Unset env to ensure defaults are used
+def test_settings_defaults_from_constants(tmp_path, monkeypatch):
+    # Unset env to ensure defaults are used; isolate from .env files and CWD writes
+    monkeypatch.delenv("DQT_LOAD_ENV", raising=False)
     monkeypatch.delenv("MAX_ROWS_IN_MEMORY", raising=False)
     monkeypatch.delenv("SAMPLE_SIZE", raising=False)
+    monkeypatch.setenv("EXPORT_BASE_DIR", str(tmp_path / "dist"))
+    monkeypatch.setenv("PBI_BASE_FOLDER_PARAMETER", str(tmp_path / "dist"))
 
     from data_quality_toolkit.shared.constants import (
         DEFAULT_MAX_ROWS_IN_MEMORY,

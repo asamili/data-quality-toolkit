@@ -40,6 +40,14 @@ class AssessmentError(DQTError):
     """Raised when quality assessment fails."""
 
 
+class NotificationError(DQTError):
+    """Raised when a webhook notification cannot be built or delivered."""
+
+
+class WebhookSecurityError(NotificationError):
+    """Raised when a webhook URL fails security validation (scheme / host / SSRF guard)."""
+
+
 __all__ = [
     "DQTError",
     "ConfigError",
@@ -47,4 +55,6 @@ __all__ = [
     "AssessmentError",
     "LoaderError",
     "ValidationError",
+    "NotificationError",
+    "WebhookSecurityError",
 ]

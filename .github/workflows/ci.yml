@@ -50,6 +50,10 @@ jobs:
       - name: pip-audit (dependency CVEs)
         run: pip-audit --desc
 
+      # Architecture boundary enforcement (import-linter already in [dev])
+      - name: Import-linter (architecture contracts)
+        run: python -c "from importlinter.cli import lint_imports; raise SystemExit(lint_imports())"
+
       # Tests (respect pytest.ini: coverage + fail_under)
       - name: Unit tests (with coverage)
         run: pytest -v

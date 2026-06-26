@@ -6,6 +6,7 @@ command returns the expected output. Guards against re-introducing broken paths.
 
 from __future__ import annotations
 
+import importlib.metadata
 import subprocess
 import sys
 
@@ -25,9 +26,10 @@ def test_readme_module_path_help() -> None:
 
 
 def test_readme_module_path_version() -> None:
+    expected = importlib.metadata.version("data-quality-toolkit")
     proc = _run("version")
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "2.5.0"
+    assert proc.stdout.strip() == expected
 
 
 def test_readme_module_path_profile(tmp_path) -> None:

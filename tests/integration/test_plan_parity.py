@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -31,7 +33,7 @@ def _sample_csv(tmp_path: Path) -> Path:
     return p
 
 
-def _column_names(plan_result: dict) -> list[str]:
+def _column_names(plan_result: Mapping[str, Any]) -> list[str]:
     return sorted(c["column"] for c in plan_result["columns"])
 
 

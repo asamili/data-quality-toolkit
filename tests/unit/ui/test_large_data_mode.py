@@ -443,3 +443,91 @@ def test_render_data_overview_empty_csv_shows_info_before_checkbox() -> None:
     _render_data_overview(st)
     assert st.called("info")
     assert not st.called("checkbox") or not st.called("metric")
+
+
+# ---------------------------------------------------------------------------
+# Issue-level StoryLens explanations (DQT-V2.9-G2A-SL2)
+# ---------------------------------------------------------------------------
+
+# score >= 0.90 → quality-score card is "ok" severity (no st.warning from the
+# score card). st.warning is otherwise only emitted by the high-cardinality
+# notice, so a missing-value issue card is identified by its text ("missing"),
+# and a constant-column issue card by st.info text ("constant").
+
+
+def _result_with_issues(issues: list[dict[str, Any]], score: float = 0.95) -> dict[str, Any]:
+    return {
+        **_FAKE_RESULT,
+        "assessment": {"score": score, "issues": issues},
+    }
+
+
+def _all_text(st: FakeSt, name: str) -> str:
+    return " ".join(str(a) for args in st.call_args(name) for a in args)
+
+
+def test_render_data_overview_score_only_storylens_when_no_issue_details() -> None:
+    """No issues → page renders the score card only, no issue warning/info card."""
+    st = FakeSt()
+    st.set_text_input("CSV path", "data.csv")
+    with patch(_MOCK_LOAD_DF, return_value=(_FAKE_DF, _result_with_issues([]), None)):
+        _render_data_overview(st)
+    assert st.called("metric")
+    assert "missing" not in _all_text(st, "warning")  # no missing-value card
+    assert not st.called("info")  # no constant-column card
+
+
+def test_render_data_overview_missing_value_issue_adds_explanation() -> None:
+    """A missing-value issue produces an additional StoryLens explanation."""
+    issues = [
+        {
+            "type": "missing",
+            "column": "revenue",
+            "pct": 0.3,
+            "severity": "high",
+            "category": "Completeness",
+            "message": "Column 'revenue' has 30.0% missing values",
+        }
+    ]
+    st = FakeSt()
+    st.set_text_input("CSV path", "data.csv")
+    with patch(_MOCK_LOAD_DF, return_value=(_FAKE_DF, _result_with_issues(issues), None)):
+        _render_data_overview(st)
+    assert st.called("warning")
+    text = _all_text(st, "warning")
+    assert "revenue" in text and "missing" in text
+
+
+def test_render_data_overview_constant_column_issue_adds_explanation() -> None:
+    """A constant-column issue produces an additional StoryLens explanation."""
+    issues = [
+        {
+            "type": "constant_column",
+            "column": "status",
+            "severity": "medium",
+            "category": "Completeness",
+            "message": "Column 'status' has only one distinct non-null value",
+        }
+    ]
+    st = FakeSt()
+    st.set_text_input("CSV path", "data.csv")
+    with patch(_MOCK_LOAD_DF, return_value=(_FAKE_DF, _result_with_issues(issues), None)):
+        _render_data_overview(st)
+    assert st.called("info")
+    text = _all_text(st, "info")
+    assert "status" in text and "constant" in text
+
+
+def test_render_data_overview_unsupported_or_incomplete_issue_skipped() -> None:
+    """Unsupported type and a missing-issue lacking column/pct are skipped safely."""
+    issues = [
+        {"type": "some_other_check", "column": "x", "severity": "low"},
+        {"type": "missing"},  # no column, no pct → skipped, no fabrication
+    ]
+    st = FakeSt()
+    st.set_text_input("CSV path", "data.csv")
+    with patch(_MOCK_LOAD_DF, return_value=(_FAKE_DF, _result_with_issues(issues), None)):
+        _render_data_overview(st)
+    assert st.called("metric")  # page still rendered, no raise
+    assert "missing" not in _all_text(st, "warning")  # no missing-value card
+    assert not st.called("info")  # no constant-column card

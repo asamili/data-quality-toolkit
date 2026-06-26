@@ -11,10 +11,13 @@ are intentionally excluded.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+from data_quality_toolkit.shared.result_types import AssessCsvResult
 
 pytestmark = pytest.mark.integration
 
@@ -34,7 +37,7 @@ def _sample_csv(tmp_path: Path) -> Path:
     return p
 
 
-def _column_index(columns: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def _column_index(columns: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
     """Map column name -> {dtype, nulls, unique} for order-independent comparison."""
     return {
         str(c.get("name")): {
@@ -50,12 +53,14 @@ def _ui_assess(csv: Path) -> dict[str, Any]:
     """Reproduce the dashboard's assessment path exactly (ui.services.assessment._run_assess_csv)."""
     from data_quality_toolkit.adapters.ui.services.assessment import _run_assess_csv
 
+    out: dict[str, Any] | None
+    err: str | None
     out, err = _run_assess_csv(str(csv))
     assert err is None and out is not None, f"UI _run_assess_csv failed: {err}"
     return out
 
 
-def _core_assess(csv: Path) -> dict[str, Any]:
+def _core_assess(csv: Path) -> AssessCsvResult:
     """Core pipeline assessment path (api.assess_csv -> load_csv -> run_profiling -> assess)."""
     from data_quality_toolkit import assess_csv
 

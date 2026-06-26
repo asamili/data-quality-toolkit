@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "data-quality-toolkit"
-version = "2.5.0"
+version = "2.9.0"
 description = "CSV-first data quality toolkit for BI and reporting workflows: profile, assess, export, and compare run-to-run quality trends."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -20,7 +20,7 @@ dependencies = [
 
     # Configuration & Models
     "pydantic>=2.6,<2.10",
-    "pydantic-settings>=2.2.1",
+    "pydantic-settings>=2.14.2",
     "python-dotenv>=1.2.2",
 
     # CLI & UI
@@ -54,7 +54,7 @@ dev = [
 
 viz = [
     "graphviz>=0.20",  # For rendering graphs
-    "matplotlib>=3.7.0",  # For plotting (future)
+    "matplotlib>=3.7.0",  # Drift PNG plots: dqt drift-history plot
 ]
 
 test = [
@@ -73,8 +73,8 @@ docs = [
 ]
 
 powerbi = [
-    "openpyxl>=3.1.0",  # For Excel export (future)
-    "xlsxwriter>=3.1.0",  # For Excel formatting (future)
+    "openpyxl>=3.1.0",  # Excel (.xlsx) export: dqt drift-history export-xlsx
+    "xlsxwriter>=3.1.0",  # Reserved for future rich Excel formatting
 ]
 
 ui = [
@@ -83,6 +83,15 @@ ui = [
 
 stats = [
     "scipy>=1.11,<2.0",  # Statistical drift detection (KS / chi-square); >=1.11 for attribute-style chi2_contingency result
+]
+
+duckdb = [
+    "duckdb>=1.0.0",  # SQLite->DuckDB drift-history mirror: dqt drift-history export-duckdb
+]
+
+storylens-ai = [
+    "transformers>=5.0.0,<6.0.0",  # Optional local StoryLens AI backend (Category A only); primary model: HuggingFaceTB/SmolLM2-135M-Instruct
+    "torch>=2.12.0",               # Required by transformers v5; CPU-only torch may require PyTorch CPU index (see install docs)
 ]
 
 [project.urls]
@@ -188,7 +197,11 @@ module = [
     "jinja2.*",
     "yaml.*",
     "openpyxl.*",
-    "scipy.*"
+    "scipy.*",
+    "matplotlib",
+    "matplotlib.*",
+    "duckdb",
+    "duckdb.*"
 ]
 ignore_missing_imports = true
 
@@ -321,4 +334,56 @@ ignore_imports = [
     "data_quality_toolkit.application.workflow.compare -> data_quality_toolkit.adapters.storage.reader",
     # api.py (application seam at root) calls adapter-layer loaders for dataset_id
     "data_quality_toolkit.api -> data_quality_toolkit.adapters.loaders.file.csv_loader",
+]
+
+[[tool.importlinter.contracts]]
+# DQT-ARCH-G5D DECISION: lineage/ kept as top-level cross-cutting package.
+# Prophylactic boundary: lineage must not import adapter, application, or delivery layers.
+# Only shared kernel (shared, utils) and self-internal imports are permitted.
+name = "Lineage package must not import adapters, application, or delivery layers"
+type = "forbidden"
+source_modules = [
+    "data_quality_toolkit.lineage",
+]
+forbidden_modules = [
+    "data_quality_toolkit.adapters.loaders",
+    "data_quality_toolkit.adapters.exporters",
+    "data_quality_toolkit.adapters.storage",
+    "data_quality_toolkit.adapters.cli",
+    "data_quality_toolkit.adapters.ui",
+    "data_quality_toolkit.adapters.reports",
+    "data_quality_toolkit.adapters.notifications",
+    "data_quality_toolkit.application.workflow",
+    "data_quality_toolkit.application.monitoring",
+    "data_quality_toolkit.api",
+]
+
+[[tool.importlinter.contracts]]
+# G20B: Lock StoryLens optional AI non-exposure by import-linter contract.
+# Public API and CLI command modules must not import StoryLens AI internals.
+# Non-exposure was previously held only by convention + runtime tests;
+# this contract makes it a static, machine-checked boundary.
+# UI pages/services may still use the approved default-off fallback path
+# (adapters.ui is not in source_modules).
+#
+# Intentional transitive exception:
+#   adapters.cli.utils.streamlit_launcher → adapters.ui.app
+#   The CLI `ui` command uses streamlit_launcher as a subprocess launcher to
+#   start the Streamlit dashboard. The dashboard includes data_overview.py
+#   which uses the approved default-off AI fallback (try_explain). The
+#   streamlit_launcher is a launch helper, not a CLI business handler.
+#   We suppress only this single edge so that direct CLI imports of AI
+#   symbols remain forbidden.
+name = "Public API and CLI must not import StoryLens optional AI internals"
+type = "forbidden"
+source_modules = [
+    "data_quality_toolkit.api",
+    "data_quality_toolkit.adapters.cli",
+]
+forbidden_modules = [
+    "data_quality_toolkit.application.explanation.ai_adapter",
+    "data_quality_toolkit.application.explanation.ai_narrator",
+]
+ignore_imports = [
+    "data_quality_toolkit.adapters.cli.utils.streamlit_launcher -> data_quality_toolkit.adapters.ui.app",
 ]

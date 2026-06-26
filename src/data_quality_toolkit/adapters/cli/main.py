@@ -1,50 +1,64 @@
 # src/data_quality_toolkit/adapters/cli/main.py
-"""CLI implementation."""
+"""CLI entrypoint.
+
+This module is the thin, stable surface for the ``dqt`` CLI. It keeps:
+
+* the process entry (:func:`main`) and the parser factory (:func:`build_parser`),
+* the lazy-import API proxies (``run_profile``, ``run_drift``, ...), and
+* the small shared helpers (``_json_dump``, ``_safe_text``, ``_get_sample_size``,
+  ``_csv_kwargs_from_args``, ``_check_quality_gate``, ...).
+
+Command registration and per-command handlers live under
+``adapters/cli/commands``; shared parser pieces and the Streamlit launcher live
+under ``adapters/cli/utils``. The command handlers resolve the proxies and
+shared helpers *through this module* at call time, so tests that
+``monkeypatch.setattr(cli.main, "<name>", ...)`` keep working after the split.
+"""
 
 from __future__ import annotations
 
 import argparse
-import inspect
+import importlib
 import json
 import logging
-import subprocess
+import subprocess  # noqa: F401  (retained: tests patch ``cli.subprocess.run``)
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NoReturn, cast
+from typing import Any, cast
 
-from data_quality_toolkit.shared.config import load_dqt_config, load_pipeline_config
-from data_quality_toolkit.shared.constants import VERSION
+from data_quality_toolkit.adapters.cli.utils.parser import (
+    CROSS_FALLBACK,
+    DEFAULT_DIST,
+    DQTArgumentParser,
+    add_csv_options,
+    parse_bool_flag,
+)
+from data_quality_toolkit.shared.config import load_dqt_config
+from data_quality_toolkit.shared.constants import (  # noqa: F401  (re-export for cmd_version/tests)
+    VERSION,
+)
 from data_quality_toolkit.shared.error_contract import to_error_info
 from data_quality_toolkit.shared.exceptions import ConfigError
 from data_quality_toolkit.shared.models import ErrorInfo
-from data_quality_toolkit.shared.settings import load_settings
+from data_quality_toolkit.shared.result_types import (
+    DriftHistoryXlsxExportResult,
+    DriftNotificationSendResult,
+    DriftPlotsExportResult,
+    DriftRateThresholdResult,
+    MonitoringDuckdbExportResult,
+    PsiThresholdResult,
+)
+from data_quality_toolkit.shared.settings import (  # noqa: F401  (re-export for cmd_settings_show/tests)
+    load_settings,
+)
 from data_quality_toolkit.utils.logging import setup_logging
 
-# ----- Constants to de-duplicate literals (Sonar S1192) -----
-CSV_PATH_HELP = "Path to CSV file"
-DEFAULT_DIST = "./dist"
-CROSS_FALLBACK = "[FAIL]"
-FAIL_UNDER_HELP = "Exit 2 if quality score is below this threshold (0.0 to 1.0)"
-SCORE_FIELD_CHOICES = ("score", "completeness_score", "quality_score")
-SCORE_FIELD_DEFAULT = "score"
-# ----- Phase 3 (KPI) constants -----
-KPI_DEFAULT_CONFIG = "config/kpi_catalog.yaml"
-KPI_CONFIG_HELP = "Path to KPI catalog YAML"
-
-KPI_DEFAULT_DAX_OUT = "dist/powerbi_package/dax/quality_measures.dax"
-KPI_DAX_OUT_HELP = "Output path for DAX measures"
-
-KPI_DEFAULT_TMSL_OUT = "dist/powerbi_package/dax/model.tmsl.json"
-KPI_TMSL_OUT_HELP = "Output path for TMSL"
-
-KPI_DEFAULT_GRAPH_OUT = "dist/semantics/kpi_graph.mmd"
-KPI_GRAPH_OUT_HELP = "Output path for graph file (.mmd or .dot)"
-
-KPI_GRAPH_FORMAT_DEFAULT = "mermaid"
-KPI_GRAPH_FORMAT_CHOICES = ["mermaid", "graphviz"]
-KPI_GRAPH_FORMAT_HELP = "Graph format"
-
+# Backward-compatible aliases for names that moved to utils.parser (kept so any
+# external/import-path reference to ``cli.main._add_csv_options`` etc. still works).
+_DQTArgumentParser = DQTArgumentParser
+_add_csv_options = add_csv_options
+_parse_bool_flag = parse_bool_flag
 
 # Module logger (used for exception logging, satisfies Ruff S110)
 LOGGER = logging.getLogger("dqt.cli")
@@ -91,19 +105,6 @@ def _get_sample_size(args: argparse.Namespace) -> int | None:
     """Extract --sample-size from parsed args; returns None when not provided."""
     val = getattr(args, "sample_size", None)
     return int(val) if val is not None else None
-
-
-def _parse_bool_flag(value: str) -> bool:
-    """Parse a true|false CLI string into a bool (argparse type callback).
-
-    argparse ``type=bool`` is unusable here because ``bool("false")`` is ``True``.
-    """
-    v = value.strip().lower()
-    if v in {"true", "1", "yes"}:
-        return True
-    if v in {"false", "0", "no"}:
-        return False
-    raise argparse.ArgumentTypeError(f"expected true|false, got {value!r}")
 
 
 # --- Test-friendly, lazy-imported wrappers (so monkeypatch can replace them) ---
@@ -252,6 +253,114 @@ def read_drift_distributions_sqlite(
     )
 
 
+def export_drift_history_xlsx(
+    db_path: str,
+    output_path: str,
+    *,
+    current_dataset_id: str | None = None,
+    limit: int | None = None,
+    include_columns: bool = True,
+    include_distributions: bool = False,
+    force: bool = False,
+) -> DriftHistoryXlsxExportResult:
+    """Proxy to api.export_drift_history_xlsx (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import export_drift_history_xlsx as _impl
+
+    return _impl(
+        db_path,
+        output_path,
+        current_dataset_id=current_dataset_id,
+        limit=limit,
+        include_columns=include_columns,
+        include_distributions=include_distributions,
+        force=force,
+    )
+
+
+def export_monitoring_duckdb(
+    db_path: str,
+    out_path: str,
+    *,
+    overwrite: bool = False,
+) -> MonitoringDuckdbExportResult:
+    """Proxy to api.export_monitoring_duckdb (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import export_monitoring_duckdb as _impl
+
+    return _impl(db_path, out_path, overwrite=overwrite)
+
+
+def export_drift_plots(
+    db_path: str,
+    out: str,
+    *,
+    chart: str = "all",
+    current_dataset_id: str | None = None,
+    limit: int | None = None,
+    force: bool = False,
+) -> DriftPlotsExportResult:
+    """Proxy to api.export_drift_plots (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import export_drift_plots as _impl
+
+    return _impl(
+        db_path,
+        out,
+        chart=chart,
+        current_dataset_id=current_dataset_id,
+        limit=limit,
+        force=force,
+    )
+
+
+def send_drift_notification(
+    db_path: str,
+    webhook_url: str,
+    *,
+    max_drift_rate: float | None = None,
+    max_psi: float | None = None,
+    dry_run: bool = True,
+    send: bool = False,
+    timeout: float = 10.0,
+    allow_http: bool = False,
+    allow_insecure_host: bool = False,
+) -> DriftNotificationSendResult:
+    """Proxy to api.send_drift_notification (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import send_drift_notification as _impl
+
+    return _impl(
+        db_path,
+        webhook_url,
+        max_drift_rate=max_drift_rate,
+        max_psi=max_psi,
+        dry_run=dry_run,
+        send=send,
+        timeout=timeout,
+        allow_http=allow_http,
+        allow_insecure_host=allow_insecure_host,
+    )
+
+
+def evaluate_drift_rate_threshold(
+    summary: dict[str, Any],
+    *,
+    max_drift_rate: float,
+) -> DriftRateThresholdResult:
+    """Proxy to api.evaluate_drift_rate_threshold (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import evaluate_drift_rate_threshold as _impl
+
+    return _impl(summary, max_drift_rate=max_drift_rate)
+
+
+def evaluate_psi_threshold(
+    columns: list[dict[str, Any]],
+    *,
+    max_psi: float,
+) -> PsiThresholdResult:
+    """Proxy to api.evaluate_psi_threshold (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import evaluate_psi_threshold as _impl
+
+    return _impl(columns, max_psi=max_psi)
+
+
 def kpi_validate_catalog(config_path: str) -> dict[str, Any]:
     """Proxy to application.workflow.kpi.validate_kpi_catalog (lazy import for monkeypatching)."""
     from data_quality_toolkit.application.workflow.kpi import validate_kpi_catalog
@@ -300,6 +409,15 @@ def _extract_fail_under(args: argparse.Namespace) -> float | None:
     return float(fu)
 
 
+def _extract_drift_threshold(value: float | None, flag_name: str) -> float | None:
+    """Validate and return a drift threshold float if provided; None otherwise."""
+    if value is None:
+        return None
+    if not (0.0 <= value <= 1.0):
+        raise ValueError(f"{flag_name} must be between 0.0 and 1.0, got {value}")
+    return float(value)
+
+
 def _apply_dqt_config(args: argparse.Namespace) -> None:
     """Fill unset CLI options from ./dqt.yaml. Explicit CLI args always win."""
     config = load_dqt_config()
@@ -311,20 +429,6 @@ def _apply_dqt_config(args: argparse.Namespace) -> None:
             args.outdir = config["outdir"]
         if args.outdir is None:
             args.outdir = DEFAULT_DIST
-
-
-def _apply_pipeline_config(args: argparse.Namespace) -> None:
-    """Fill unset pipeline run args from --config YAML. CLI flags always win."""
-    config_path = getattr(args, "config", None)
-    if config_path is None:
-        return
-    config = load_pipeline_config(config_path)
-    for key in ("run_id", "sessions_root", "extract", "transform", "load"):
-        if getattr(args, key, None) is None and key in config:
-            setattr(args, key, config[key])
-    for key in ("assess", "manifest"):
-        if not getattr(args, key, False) and config.get(key):
-            setattr(args, key, True)
 
 
 def _check_quality_gate(fu: float | None, out: dict, score_field: str = "score") -> int:
@@ -343,178 +447,6 @@ def _check_quality_gate(fu: float | None, out: dict, score_field: str = "score")
     return 0
 
 
-# ------------------------------------------------------------------------------
-
-
-def cmd_settings_show(_: argparse.Namespace) -> int:
-    """Show current settings."""
-    s = load_settings()
-    print(_json_dump(s))
-    return 0
-
-
-def cmd_version(_: argparse.Namespace) -> int:
-    """Print version."""
-    print(VERSION)
-    return 0
-
-
-def cmd_log_demo(args: argparse.Namespace) -> int:
-    """Demonstrate logging functionality."""
-    # Lazy import to ensure logging is configured first in main()
-    from data_quality_toolkit.utils.logging import get_logger
-
-    logger = get_logger("dqt.cli")
-    logger.debug("debug message")
-    logger.info("info message")
-    logger.warning("warning message")
-    logger.error("error message")
-    if args.raise_error:
-        try:
-            raise ZeroDivisionError("Test division error")
-        except ZeroDivisionError:
-            logger.exception("captured exception with stack")
-    return 0
-
-
-def cmd_manifest_create(args: argparse.Namespace) -> int:
-    """Create a lineage manifest for a run."""
-    manifest = manifest_create(args.run_id, args.sessions_root)
-    tick = _safe_text("✓", "[OK]")
-    print(f"{tick} Manifest created  [run_id={args.run_id}]", file=sys.stderr)
-    if not getattr(args, "no_json", False):
-        print(_json_dump(manifest))
-    return 0
-
-
-def cmd_profile(args: argparse.Namespace) -> int:
-    """Profile a CSV file."""
-    chunksize: int | None = getattr(args, "chunksize", None)
-    if chunksize is not None:
-        out = run_profile_chunked(args.csv, chunksize=chunksize, **_csv_kwargs_from_args(args))
-    else:
-        out = run_profile(
-            args.csv, sample_size=_get_sample_size(args), **_csv_kwargs_from_args(args)
-        )
-
-    # Human-friendly summary -> stderr (stdout stays pure JSON)
-    tick = _safe_text("✓", "[OK]")
-    csv_name = Path(args.csv).name
-    mode = " [chunked]" if chunksize is not None else ""
-    print(f"{tick} Profile complete  [{csv_name}]{mode}", file=sys.stderr)
-    prof = out.get("profile") or {}
-    if isinstance(prof, dict):
-        if "rows" in prof:
-            print(f"  - Rows: {prof['rows']}", file=sys.stderr)
-        if "cols" in prof:
-            print(f"  - Columns: {prof['cols']}", file=sys.stderr)
-        memory_mb = prof.get("memory_mb")
-        if memory_mb is not None:
-            print(f"  - Memory: {memory_mb:.2f} MB", file=sys.stderr)
-    if out.get("approximate"):
-        print("  - Note: approximate profile (chunked mode)", file=sys.stderr)
-
-    if not getattr(args, "no_json", False):
-        print(_json_dump(out))
-    return 0
-
-
-def _print_assessment_score_lines(assessment: dict) -> None:
-    """Print score breakdown lines to stderr for assess/export-star summaries."""
-    try:
-        print(f"  - Score: {float(assessment['score']):.2%}", file=sys.stderr)
-    except Exception:
-        LOGGER.debug("Failed to format Score from assessment: %r", assessment, exc_info=True)
-    if "completeness_score" in assessment:
-        try:
-            print(
-                f"  - Completeness Score: {float(assessment['completeness_score']):.2%}",
-                file=sys.stderr,
-            )
-        except Exception:
-            LOGGER.debug("Failed to format Completeness Score: %r", assessment, exc_info=True)
-    if "quality_score" in assessment:
-        try:
-            print(
-                f"  - Quality Score: {float(assessment['quality_score']):.2%}",
-                file=sys.stderr,
-            )
-        except Exception:
-            LOGGER.debug("Failed to format Quality Score: %r", assessment, exc_info=True)
-    issues = assessment.get("issues") or []
-    print(f"  - Issues flagged: {len(issues)}", file=sys.stderr)
-
-
-def _dispatch_assessment(
-    args: argparse.Namespace,
-    nt: float | None,
-    chunksize: int | None,
-    csv_kw: dict[str, Any],
-) -> Any:
-    """Route to chunked or full-load assessment."""
-    if chunksize is not None:
-        chunked_kw: dict[str, Any] = {}
-        if nt is not None:
-            chunked_kw["null_threshold"] = nt
-        return run_assessment_chunked(args.csv, chunksize=chunksize, **chunked_kw, **csv_kw)
-    sample_size = _get_sample_size(args)
-    db_path = Path(args.db) if getattr(args, "db", None) else None
-    if nt is not None:
-        return run_assessment(
-            args.csv, null_threshold=nt, db_path=db_path, sample_size=sample_size, **csv_kw
-        )
-    return run_assessment(args.csv, db_path=db_path, sample_size=sample_size, **csv_kw)
-
-
-def _print_chunked_assessment_note(assessment: dict[str, Any]) -> None:
-    """Print chunked-mode note and completeness score to stderr."""
-    print(
-        "  - Note: partial chunked assessment — distribution/cardinality/outlier rules skipped",
-        file=sys.stderr,
-    )
-    if "completeness_score" in assessment:
-        try:
-            print(
-                f"  - Completeness Score: {float(assessment['completeness_score']):.2%}",
-                file=sys.stderr,
-            )
-        except Exception:
-            LOGGER.debug("Failed to format Completeness Score: %r", assessment, exc_info=True)
-    issues = assessment.get("issues") or []
-    print(f"  - Issues flagged: {len(issues)}", file=sys.stderr)
-
-
-def cmd_assess(args: argparse.Namespace) -> int:
-    """Assess a CSV file."""
-    nt = _extract_null_threshold(args)
-    fu = _extract_fail_under(args)
-    chunksize: int | None = getattr(args, "chunksize", None)
-    score_field = getattr(args, "score_field", SCORE_FIELD_DEFAULT) or SCORE_FIELD_DEFAULT
-    csv_kw = _csv_kwargs_from_args(args)
-    out = _dispatch_assessment(args, nt, chunksize, csv_kw)
-
-    # Human-friendly summary -> stderr (stdout stays pure JSON)
-    tick = _safe_text("✓", "[OK]")
-    mode = " [chunked, partial]" if chunksize is not None else ""
-    print(f"{tick} Assessment complete{mode}", file=sys.stderr)
-    prof = out.get("profile") or {}
-    if isinstance(prof, dict):
-        if "rows" in prof:
-            print(f"  - Rows: {prof['rows']}", file=sys.stderr)
-        if "cols" in prof:
-            print(f"  - Columns: {prof['cols']}", file=sys.stderr)
-
-    assessment = out.get("assessment")
-    if chunksize is not None and isinstance(assessment, dict):
-        _print_chunked_assessment_note(assessment)
-    elif isinstance(assessment, dict) and "score" in assessment:
-        _print_assessment_score_lines(assessment)
-
-    if not getattr(args, "no_json", False):
-        print(_json_dump(out))
-    return _check_quality_gate(fu, out, score_field=score_field)
-
-
 def _safe_text(s: str, fallback: str) -> str:
     """Get console-safe text."""
     import sys
@@ -527,684 +459,69 @@ def _safe_text(s: str, fallback: str) -> str:
         return fallback
 
 
-def cmd_gen_dim_time(args: argparse.Namespace) -> int:
-    """Generate dim_time.csv."""
-    from pathlib import Path
-
-    from data_quality_toolkit.adapters.exporters.time.dim_time_generator import write_dim_time
-
-    try:
-        path = write_dim_time(
-            output_dir=Path(args.out),
-            start_date=args.start,
-            end_date=args.end,
-            week_start=args.week_start,
-            fiscal_year_start=args.fiscal,
-        )
-        if args.json:
-            payload = {
-                "status": "success",
-                "dim_time_path": str(path),
-                "start": args.start,
-                "end": args.end,
-                "week_start": args.week_start,
-                "fiscal": args.fiscal,
-            }
-            print(_json_dump(payload))
-        else:
-            print(f"Generated: {path}")
-        return 0
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-
-def cmd_build_pbi(args: argparse.Namespace) -> int:
-    """Build Phase 2 Power BI package (zero-config orchestrator)."""
-    from data_quality_toolkit.adapters.exporters.bi.powerbi_exporter import export_powerbi_package
-
-    tick = _safe_text("✓", "[OK]")
-    try:
-        print("Building Power BI package...", file=sys.stderr)
-        result = export_powerbi_package(
-            star_dir=args.star,
-            output_dir=args.out,
-            time_start=args.time_start,
-            time_end=args.time_end,
-            base_folder=args.base_folder,
-            fiscal_year_start=args.fiscal,
-        )
-
-        # Human-friendly summary → STDERR
-        print(f"{tick} Package: {result['package_dir']}", file=sys.stderr)
-        print(f"  - Files: {len(result.get('files', {}))}", file=sys.stderr)
-        print(f"  - Time range: {result.get('time_range')}", file=sys.stderr)
-        print(f"  - Base folder: {result.get('base_folder')}", file=sys.stderr)
-
-        # Treat validation as generic mapping to avoid TypedDict optional-key warnings
-        val: Mapping[str, Any] = cast(Mapping[str, Any], result["validation"])
-        warnings: list[str] = cast(list[str], val.get("warnings", []))
-        for w in warnings:
-            print(f"  ⚠ {w}", file=sys.stderr)
-
-        # Machine-friendly JSON → STDOUT
-        print(_json_dump(result))
-        return 0
-
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-
-# --- Phase 3: KPI CLI commands (argparse) -------------------------------------
-
-
-def cmd_kpi_emit(args: argparse.Namespace) -> int:
-    """Generate DAX measures and TMSL from KPI catalog."""
-    tick = _safe_text("✓", "[OK]")
-    try:
-        print(f"Loading KPI catalog from {args.config}...", file=sys.stderr)
-        result = kpi_emit_artifacts(args.config, args.dax_out, args.tmsl_out)
-
-        print(f"{tick} Loaded {result.get('kpis', 0)} KPIs", file=sys.stderr)
-        print(f"{tick} Generated DAX: {result.get('dax')}", file=sys.stderr)
-        print(f"{tick} Generated TMSL: {result.get('tmsl')}", file=sys.stderr)
-
-        print(_json_dump(result))
-        return 0
-
-    except Exception as e:
-        LOGGER.exception("KPI emission failed")
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-
-def cmd_kpi_graph(args: argparse.Namespace) -> int:
-    """Export KPI dependency graph (Mermaid or Graphviz)."""
-    tick = _safe_text("✓", "[OK]")
-    try:
-        print(f"Loading KPI catalog from {args.config}...", file=sys.stderr)
-        fmt = (args.format or KPI_GRAPH_FORMAT_DEFAULT).lower()
-        result = kpi_export_graph(args.config, args.out, fmt)
-
-        graph_path = result.get("graph", "")
-        nodes = result.get("nodes", 0)
-        print(f"{tick} Generated {fmt} graph: {graph_path}", file=sys.stderr)
-
-        # Preview for small catalogs (first 20 lines)
-        if nodes <= 10 and graph_path:
-            print("\nGraph preview:", file=sys.stderr)
-            text = Path(graph_path).read_text(encoding="utf-8")
-            lines = text.splitlines()
-            preview = lines[:20]
-            for line in preview:
-                print(line, file=sys.stderr)
-            if len(lines) > 20:
-                print("...", file=sys.stderr)
-
-        print(_json_dump(result))
-        return 0
-
-    except Exception as e:
-        LOGGER.exception("Graph generation failed")
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-
-def cmd_kpi_validate(args: argparse.Namespace) -> int:
-    """Validate KPI catalog (schema, semantics, cycles)."""
-    try:
-        print(f"Validating KPI catalog: {args.config}", file=sys.stderr)
-        result = kpi_validate_catalog(args.config)
-        kpi_count = result.get("kpis", 0)
-        print(f"✓ Loaded {kpi_count} KPIs", file=sys.stderr)
-
-        if result.get("status") == "invalid":
-            print("✗ Dependency cycles detected:", file=sys.stderr)
-            for cycle_path in result.get("cycles", []):
-                print(f"  - {' -> '.join(str(c) for c in cycle_path)}", file=sys.stderr)
-            output = {k: v for k, v in result.items() if k != "by_grain"}
-            print(_json_dump(output))
-            return 1
-
-        print("✓ Semantic validation passed", file=sys.stderr)
-        print("\nCatalog Summary:", file=sys.stderr)
-        for grain, count in (result.get("by_grain") or {}).items():
-            print(f"  {grain}: {count} KPIs", file=sys.stderr)
-        print(f"  Total dependencies: {result.get('dependencies', 0)}", file=sys.stderr)
-
-        output = {k: v for k, v in result.items() if k != "by_grain"}
-        print(_json_dump(output))
-        return 0
-
-    except Exception as e:
-        LOGGER.exception("Validation failed")
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-
-def _print_compare_score_lines(result: dict) -> None:
-    """Print quality_score and completeness_score compare lines to stderr if present."""
-    if "current_quality_score" in result or "previous_quality_score" in result:
-        prev_qs = result.get("previous_quality_score")
-        curr_qs = result.get("current_quality_score")
-        prev_str = f"{prev_qs:.3f}" if prev_qs is not None else "N/A"
-        curr_str = f"{curr_qs:.3f}" if curr_qs is not None else "N/A"
-        print(f"  - Quality Score: {prev_str} -> {curr_str}", file=sys.stderr)
-    if "current_completeness_score" in result or "previous_completeness_score" in result:
-        prev_cs = result.get("previous_completeness_score")
-        curr_cs = result.get("current_completeness_score")
-        prev_str = f"{prev_cs:.3f}" if prev_cs is not None else "N/A"
-        curr_str = f"{curr_cs:.3f}" if curr_cs is not None else "N/A"
-        print(f"  - Completeness Score: {prev_str} -> {curr_str}", file=sys.stderr)
-
-
-def cmd_compare(args: argparse.Namespace) -> int:
-    """Compare the last two export runs for a dataset."""
-    from data_quality_toolkit.adapters.loaders.file.csv_loader import dataset_id_from_file
-    from data_quality_toolkit.application.workflow.compare import compare_last_two_runs
-
-    try:
-        dataset_id = dataset_id_from_file(Path(args.csv))
-    except Exception as e:
-        print(f"Error: could not compute dataset_id from '{args.csv}': {e}", file=sys.stderr)
-        return 1
-
-    history_path = Path(args.outdir) / "star" / "quality_history.jsonl"
-    result = compare_last_two_runs(dataset_id, history_path)
-
-    if "error" in result:
-        cross = _safe_text("✗", CROSS_FALLBACK)
-        print(
-            f"{cross} Compare: not enough history for '{Path(args.csv).name}'",
-            file=sys.stderr,
-        )
-        print(f"  {result['message']}", file=sys.stderr)
-        if not getattr(args, "no_json", False):
-            print(_json_dump(result))
-        return 1
-
-    # Human-friendly stderr summary
-    tick = _safe_text("✓", "[OK]")
-    csv_name = Path(args.csv).name
-    print(f"{tick} Compare complete  [{csv_name}]", file=sys.stderr)
-
-    prev_score = result.get("previous_score")
-    curr_score = result.get("current_score")
-    score_delta = result.get("score_delta")
-    if prev_score is not None and curr_score is not None and score_delta is not None:
-        direction = "up" if score_delta > 0 else ("down" if score_delta < 0 else "flat")
-        delta_sign = "+" if score_delta > 0 else ""
-        print(
-            f"  - Score: {prev_score:.3f} -> {curr_score:.3f}"
-            f"  ({direction}, {delta_sign}{score_delta:.3f})",
-            file=sys.stderr,
-        )
-
-    _print_compare_score_lines(result)
-
-    prev_issues = result.get("previous_issues_total")
-    curr_issues = result.get("current_issues_total")
-    if prev_issues is not None and curr_issues is not None:
-        print(f"  - Issues: {prev_issues} -> {curr_issues}", file=sys.stderr)
-
-    sev_delta = result.get("issues_by_severity_delta")
-    if isinstance(sev_delta, dict) and sev_delta:
-        parts = [f"{k} {'+' if v > 0 else ''}{v}" for k, v in sev_delta.items()]
-        print(f"  - Severity delta: {', '.join(parts)}", file=sys.stderr)
-
-    cat_delta = result.get("issues_by_category_delta")
-    if isinstance(cat_delta, dict) and cat_delta:
-        parts = [f"{k} {'+' if v > 0 else ''}{v}" for k, v in cat_delta.items()]
-        print(f"  - Category delta: {', '.join(parts)}", file=sys.stderr)
-
-    if not getattr(args, "no_json", False):
-        print(_json_dump(result))
-    return 0
-
-
-def _drift_kwargs_from_args(args: argparse.Namespace) -> dict[str, Any]:
-    """Collect detect_drift kwargs from parsed args; omit unset so API defaults win."""
-    kw: dict[str, Any] = {}
-    if args.alpha is not None:
-        kw["alpha"] = float(args.alpha)
-    if args.min_samples is not None:
-        kw["min_samples"] = int(args.min_samples)
-    if args.max_categories is not None:
-        kw["max_categories"] = int(args.max_categories)
-    if args.sep is not None:
-        kw["sep"] = args.sep
-    if args.encoding is not None:
-        kw["encoding"] = args.encoding
-    if getattr(args, "na_values", None):
-        kw["na_values"] = [x.strip() for x in args.na_values.split(",") if x.strip()]
-    sample_size = _get_sample_size(args)
-    if sample_size is not None:
-        kw["sample_size"] = sample_size
-    if getattr(args, "output", None):
-        kw["output_path"] = args.output
-    if getattr(args, "history", None):
-        kw["history_path"] = args.history
-    return kw
-
-
-def _print_drift_report_line(result: dict[str, Any]) -> None:
-    """Print the evidence-report stderr line when a report file was written."""
-    if out_path := result.get("output_path"):
-        print(f"  - Report written: {out_path}", file=sys.stderr)
-    if hist_path := result.get("history_path"):
-        print(f"  - History appended: {hist_path}", file=sys.stderr)
-
-
-def cmd_drift(args: argparse.Namespace) -> int:
-    """Detect statistical drift between a baseline CSV and a current CSV."""
-    result = run_drift(args.baseline, args.current, **_drift_kwargs_from_args(args))
-
-    if result.get("status") == "unavailable":
-        cross = _safe_text("✗", CROSS_FALLBACK)
-        print(f"{cross} Drift detection unavailable: scipy is not installed", file=sys.stderr)
-        if reason := result.get("reason"):
-            print(f"  {reason}", file=sys.stderr)
-        _print_drift_report_line(result)
-        if not getattr(args, "no_json", False):
-            print(_json_dump(result))
-        return 1
-
-    tick = _safe_text("✓", "[OK]")
-    baseline_name = Path(args.baseline).name
-    current_name = Path(args.current).name
-    print(f"{tick} Drift check complete  [{baseline_name} vs {current_name}]", file=sys.stderr)
-    print(
-        f"  - Rows: {result.get('reference_rows')} (baseline)"
-        f" vs {result.get('current_rows')} (current)",
-        file=sys.stderr,
-    )
-    summary = result.get("summary") or {}
-    print(
-        f"  - Columns tested: {summary.get('columns_tested', 0)},"
-        f" skipped: {summary.get('columns_skipped', 0)}",
-        file=sys.stderr,
-    )
-    print(f"  - Columns drifted: {summary.get('columns_drifted', 0)}", file=sys.stderr)
-    for col in result.get("columns") or []:
-        if col.get("drift_detected"):
-            print(
-                f"  - {col['column']}: {col.get('test')} {col.get('interpretation')}",
-                file=sys.stderr,
-            )
-    if note := summary.get("note"):
-        print(f"  - Note: {note}", file=sys.stderr)
-    _print_drift_report_line(result)
-
-    if not getattr(args, "no_json", False):
-        print(_json_dump(result))
-
-    if args.fail_on_drift and summary.get("columns_drifted", 0) > 0:
-        return 2
-
-    return 0
-
-
-def cmd_drift_history(args: argparse.Namespace) -> int:
-    """Read and print drift history records from a JSONL file."""
-    records = read_drift_history(args.history_path)
-    tick = _safe_text("✓", "[OK]")
-    print(f"{tick} Drift history read  [{Path(args.history_path).name}]", file=sys.stderr)
-    print(f"  - Records: {len(records)}", file=sys.stderr)
-    if not getattr(args, "no_json", False):
-        print(_json_dump(records))
-    return 0
-
-
-def cmd_drift_history_import(args: argparse.Namespace) -> int:
-    """Import drift history JSONL records into a SQLite monitoring DB."""
-    ensure_drift_db(args.db)
-    imported_count = import_drift_history_sqlite(args.db, args.history_path)
-    tick = _safe_text("✓", "[OK]")
-    print(
-        f"{tick} Drift history imported  [{Path(args.history_path).name}]",
-        file=sys.stderr,
-    )
-    print(f"  - Imported rows: {imported_count}", file=sys.stderr)
-    if not getattr(args, "no_json", False):
-        print(
-            _json_dump(
-                {
-                    "imported_count": imported_count,
-                    "history_path": str(args.history_path),
-                    "db_path": str(args.db),
-                }
-            )
-        )
-    return 0
-
-
-def cmd_drift_history_list(args: argparse.Namespace) -> int:
-    """List imported drift runs from a SQLite monitoring DB."""
-    runs = read_drift_runs_sqlite(
-        args.db,
-        limit=getattr(args, "limit", None),
-        current_dataset_id=getattr(args, "current_dataset_id", None),
-        drift_detected=getattr(args, "drift_detected", None),
-        status=getattr(args, "status", None),
-    )
-    tick = _safe_text("✓", "[OK]")
-    print(f"{tick} Drift runs listed  [{Path(args.db).name}]", file=sys.stderr)
-    print(f"  - Runs: {len(runs)}", file=sys.stderr)
-    if not getattr(args, "no_json", False):
-        print(_json_dump(runs))
-    return 0
-
-
-def cmd_drift_history_columns(args: argparse.Namespace) -> int:
-    """List imported per-column drift metrics from a SQLite monitoring DB."""
-    rows = read_drift_columns_sqlite(
-        args.db,
-        run_id=getattr(args, "run_id", None),
-        column_name=getattr(args, "column_name", None),
-        drift_detected=getattr(args, "drift_detected", None),
-    )
-    drifted = sum(1 for r in rows if r.get("drift_detected"))
-    tick = _safe_text("✓", "[OK]")
-    print(f"{tick} Drift columns listed  [{Path(args.db).name}]", file=sys.stderr)
-    print(f"  - Columns: {len(rows)}", file=sys.stderr)
-    print(f"  - Drifted columns: {drifted}", file=sys.stderr)
-    if not getattr(args, "no_json", False):
-        print(_json_dump(rows))
-    return 0
-
-
-def cmd_drift_history_trend(args: argparse.Namespace) -> int:
-    """Summarize drift trends from a SQLite monitoring DB."""
-    summary = summarize_drift_trends_sqlite(
-        args.db,
-        current_dataset_id=getattr(args, "current_dataset_id", None),
-        limit=getattr(args, "limit", None),
-    )
-    tick = _safe_text("✓", "[OK]")
-    print(f"{tick} Drift trend summarized  [{Path(args.db).name}]", file=sys.stderr)
-    print(f"  - Total runs: {summary['total_runs']}", file=sys.stderr)
-    print(f"  - Drifted runs: {summary['drifted_runs']}", file=sys.stderr)
-    print(f"  - Drift rate: {summary['drift_rate']}", file=sys.stderr)
-    if not getattr(args, "no_json", False):
-        print(_json_dump(summary))
-    return 0
-
-
-def cmd_drift_history_report(args: argparse.Namespace) -> int:
-    """Generate a drift-history monitoring report from a SQLite monitoring DB."""
-    current_dataset_id = getattr(args, "current_dataset_id", None)
-    limit = getattr(args, "limit", None)
-    summary = summarize_drift_trends_sqlite(
-        args.db,
-        current_dataset_id=current_dataset_id,
-        limit=limit,
-    )
-    runs = read_drift_runs_sqlite(
-        args.db,
-        limit=limit,
-        current_dataset_id=current_dataset_id,
-    )
-    fmt = "html" if getattr(args, "format", None) == "html" else "md"
-
-    columns: list[dict[str, Any]] | None = None
-    if getattr(args, "include_columns", False):
-        columns = read_drift_columns_sqlite(args.db)
-
-    distributions: list[dict[str, Any]] | None = None
-    include_plots = getattr(args, "include_plots", False)
-    if include_plots:
-        distributions = read_drift_distributions_sqlite(args.db)
-
-    from data_quality_toolkit.adapters.reports.drift_history import (
-        render_drift_history_report,
-    )
-
-    text = render_drift_history_report(
-        summary=summary,
-        runs=runs,
-        db_path=args.db,
-        current_dataset_id=current_dataset_id,
-        limit=limit,
-        fmt=fmt,
-        columns=columns,
-        distributions=distributions,
-    )
-    Path(args.output).write_text(text, encoding="utf-8")
-
-    tick = _safe_text("✓", "[OK]")
-    print(f"{tick} Drift report written  [{Path(args.output).name}]", file=sys.stderr)
-    print(f"  - Output: {args.output}", file=sys.stderr)
-    print(f"  - Total runs: {summary['total_runs']}", file=sys.stderr)
-    if include_plots:
-        print(f"  - Distribution rows: {len(distributions or [])}", file=sys.stderr)
-    return 0
-
-
-def cmd_drift_dashboard(args: argparse.Namespace) -> int:
-    """Generate a static HTML drift analytics dashboard from a SQLite DB."""
-    current_dataset_id = getattr(args, "current_dataset_id", None)
-    limit = getattr(args, "limit", None)
-    summary = summarize_drift_trends_sqlite(
-        args.db,
-        current_dataset_id=current_dataset_id,
-        limit=limit,
-    )
-    runs = read_drift_runs_sqlite(
-        args.db,
-        limit=limit,
-        current_dataset_id=current_dataset_id,
-    )
-    columns = read_drift_columns_sqlite(args.db)
-
-    distributions: list[dict[str, Any]] | None = None
-    include_plots = getattr(args, "include_plots", False)
-    if include_plots:
-        distributions = read_drift_distributions_sqlite(args.db)
-
-    from data_quality_toolkit.adapters.reports.drift_dashboard import (
-        render_drift_dashboard,
-    )
-
-    text = render_drift_dashboard(
-        summary=summary,
-        runs=runs,
-        columns=columns,
-        db_path=args.db,
-        current_dataset_id=current_dataset_id,
-        limit=limit,
-        distributions=distributions,
-    )
-    Path(args.output).write_text(text, encoding="utf-8")
-
-    tick = _safe_text("✓", "[OK]")
-    print(f"{tick} Drift dashboard written  [{Path(args.output).name}]", file=sys.stderr)
-    print(f"  - Output: {args.output}", file=sys.stderr)
-    print(f"  - Total runs: {summary['total_runs']}", file=sys.stderr)
-    print(f"  - Drifted runs: {summary['drifted_runs']}", file=sys.stderr)
-    print(f"  - Column rows: {len(columns)}", file=sys.stderr)
-    if include_plots:
-        print(f"  - Distribution rows: {len(distributions or [])}", file=sys.stderr)
-    return 0
-
-
-def cmd_export_star(args: argparse.Namespace) -> int:
-    """Export star schema."""
-    nt = _extract_null_threshold(args)
-    fu = _extract_fail_under(args)
-    score_field = getattr(args, "score_field", SCORE_FIELD_DEFAULT) or SCORE_FIELD_DEFAULT
-    sample_size = _get_sample_size(args)
-    csv_kw = _csv_kwargs_from_args(args)
-    emit_manifest = getattr(args, "manifest", False)
-    if nt is not None:
-        out = run_export_star(
-            args.csv,
-            output_dir=args.outdir,
-            null_threshold=nt,
-            sample_size=sample_size,
-            emit_manifest=emit_manifest,
-            **csv_kw,
-        )
-    else:
-        out = run_export_star(
-            args.csv,
-            output_dir=args.outdir,
-            sample_size=sample_size,
-            emit_manifest=emit_manifest,
-            **csv_kw,
-        )
-
-    # Friendly summary -> STDERR (so STDOUT stays pure JSON)
-    tick = _safe_text("✓", "[OK]")
-    print(f"{tick} Profile complete", file=sys.stderr)
-
-    prof = out.get("profile") or {}
-    if isinstance(prof, dict):
-        if "rows" in prof:
-            print(f"  - Rows: {prof['rows']}", file=sys.stderr)
-        if "cols" in prof:
-            print(f"  - Columns: {prof['cols']}", file=sys.stderr)
-
-    assessment = out.get("assessment")
-    if isinstance(assessment, dict) and "score" in assessment:
-        _print_assessment_score_lines(assessment)
-
-    print(f"{tick} Star schema exported", file=sys.stderr)
-    for name, path in (out.get("export_paths") or {}).items():
-        if name != "relationships":
-            print(f"  - {name}: {path}", file=sys.stderr)
-
-    # Machine-friendly JSON last on STDOUT
-    if not getattr(args, "no_json", False):
-        print(_json_dump(out))
-    return _check_quality_gate(fu, out, score_field=score_field)
-
-
-def _add_csv_options(parser: argparse.ArgumentParser) -> None:
-    """Add CSV-related options to parser."""
-    parser.add_argument("--sep", help="CSV delimiter (e.g., ',' or '\\t')")
-    parser.add_argument("--encoding", help="CSV encoding (e.g., 'utf-8', 'latin-1')")
-    parser.add_argument("--no-header", action="store_true", help="Treat CSV as having no header")
-    parser.add_argument("--na-values", help="Comma-separated NA values (e.g., 'NA,NaN,null')")
-    parser.add_argument("--sample-size", type=int, help="Override SAMPLE_SIZE for this run")
-
-
-class _DQTArgumentParser(argparse.ArgumentParser):
-    """ArgumentParser that adds actionable hints for common missing-input errors."""
-
-    def error(self, message: str) -> NoReturn:
-        self.print_usage(sys.stderr)
-        print(f"{self.prog}: error: {message}", file=sys.stderr)
-        if "required" in message and "csv" in message:
-            print(
-                "  Hint: provide the path to a CSV file as the first positional argument.",
-                file=sys.stderr,
-            )
-            print("  Example: dqt profile data/my_file.csv", file=sys.stderr)
-        sys.exit(2)
-
-
-def cmd_plan(args: argparse.Namespace) -> int:
-    """Generate per-column preprocessing recommendations for a CSV."""
-    out = run_plan(args.csv, sample_size=_get_sample_size(args), **_csv_kwargs_from_args(args))
-
-    tick = _safe_text("✓", "[OK]")
-    columns = out.get("columns") or []
-    cols_total = len(columns)
-    cols_with_issues = sum(1 for c in columns if c.get("issues") != "none")
-    print(f"{tick} Plan complete", file=sys.stderr)
-    print(f"  - Columns: {cols_total}", file=sys.stderr)
-    print(f"  - Columns with issues: {cols_with_issues}", file=sys.stderr)
-
-    if not getattr(args, "no_json", False):
-        print(_json_dump(out))
-    return 0
-
-
-def cmd_pipeline_run(args: argparse.Namespace) -> int:
-    """Run an ELT pipeline via the create_elt_pipeline() API."""
-    import dataclasses
-
-    from data_quality_toolkit.api import create_elt_pipeline
-
-    try:
-        _apply_pipeline_config(args)
-    except ConfigError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 2
-
-    if not getattr(args, "run_id", None):
-        print("Error: --run-id is required (provide via CLI or --config)", file=sys.stderr)
-        return 2
-    if not getattr(args, "sessions_root", None):
-        print("Error: --sessions-root is required (provide via CLI or --config)", file=sys.stderr)
-        return 2
-
-    pipeline = create_elt_pipeline(args.run_id, args.sessions_root)
-    if args.extract:
-        pipeline.extract(args.extract)
-    if args.transform:
-        pipeline.transform(name=args.transform)
-    if args.load:
-        pipeline.load(args.load)
-    if args.assess:
-        pipeline.assess()
-    if args.manifest:
-        pipeline.manifest()
-
-    result = pipeline.run()
-
-    if not getattr(args, "no_json", False):
-        print(_json_dump(dataclasses.asdict(result)))
-    return 0
-
-
-def cmd_chart(args: argparse.Namespace) -> int:
-    """Generate a terminal-based profiling chart for a column."""
-    from data_quality_toolkit.adapters.cli.charts import render_univariate_chart
-    from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
-    from data_quality_toolkit.domain.profiling.charts import compute_univariate_chart_data
-
-    try:
-        df, meta = load_csv(
-            args.csv, sample_size=_get_sample_size(args), **_csv_kwargs_from_args(args)
-        )
-        chart_data = compute_univariate_chart_data(df, args.column)
-
-        # We don't use tick/[OK] here because the chart is the main output
-        render_univariate_chart(chart_data)
-
-        if not getattr(args, "no_json", False):
-            # Also emit JSON to stdout if requested
-            print(_json_dump(chart_data))
-        return 0
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-
-
-def cmd_dashboard(args: argparse.Namespace) -> int:
-    try:
-        import streamlit  # noqa: F401
-    except ImportError:
-        print(
-            "Error: Streamlit is not installed.\n"
-            "  Install it with: pip install data-quality-toolkit[ui]",
-            file=sys.stderr,
-        )
-        return 1
-    import data_quality_toolkit.adapters.ui.app as _app_mod
-
-    app_file = inspect.getfile(_app_mod)
-    try:
-        result = subprocess.run([sys.executable, "-m", "streamlit", "run", app_file])  # noqa: S603
-        return result.returncode
-    except KeyboardInterrupt:
-        return 130
+# Command modules live under ``adapters/cli/commands`` and reach back into this
+# module (``import ...cli.main as _m``) to resolve the monkeypatchable proxies and
+# shared helpers above. When this module is launched via
+# ``python -m data_quality_toolkit.adapters.cli.main`` it runs as ``__main__`` and
+# is NOT registered under its real dotted name, so register an alias first to
+# avoid a re-import cycle when the command modules import this module.
+if __name__ == "__main__":  # pragma: no cover
+    sys.modules.setdefault("data_quality_toolkit.adapters.cli.main", sys.modules[__name__])
+
+# Imported via importlib (not ``import`` statements) so they can sit below the
+# proxy/helper definitions without tripping E402 / import-sorting.
+_meta = importlib.import_module("data_quality_toolkit.adapters.cli.commands.meta")
+_pipeline = importlib.import_module("data_quality_toolkit.adapters.cli.commands.pipeline")
+_profile = importlib.import_module("data_quality_toolkit.adapters.cli.commands.profile")
+_assess = importlib.import_module("data_quality_toolkit.adapters.cli.commands.assess")
+_export = importlib.import_module("data_quality_toolkit.adapters.cli.commands.export")
+_powerbi = importlib.import_module("data_quality_toolkit.adapters.cli.commands.powerbi")
+_kpi = importlib.import_module("data_quality_toolkit.adapters.cli.commands.kpi")
+_compare = importlib.import_module("data_quality_toolkit.adapters.cli.commands.compare")
+_drift = importlib.import_module("data_quality_toolkit.adapters.cli.commands.drift")
+_drift_history = importlib.import_module("data_quality_toolkit.adapters.cli.commands.drift_history")
+_plan = importlib.import_module("data_quality_toolkit.adapters.cli.commands.plan")
+_chart = importlib.import_module("data_quality_toolkit.adapters.cli.commands.chart")
+_dashboard = importlib.import_module("data_quality_toolkit.adapters.cli.commands.dashboard")
+_ui = importlib.import_module("data_quality_toolkit.adapters.cli.commands.ui")
+
+# Re-export handlers so ``cli.main.cmd_*`` identity is preserved (tests assert
+# ``ns.func is cli.cmd_X`` and call ``cli.cmd_X(...)`` directly).
+cmd_settings_show = _meta.cmd_settings_show
+cmd_version = _meta.cmd_version
+cmd_log_demo = _meta.cmd_log_demo
+cmd_manifest_create = _meta.cmd_manifest_create
+cmd_pipeline_run = _pipeline.cmd_pipeline_run
+cmd_profile = _profile.cmd_profile
+cmd_assess = _assess.cmd_assess
+cmd_export_star = _export.cmd_export_star
+cmd_build_pbi = _powerbi.cmd_build_pbi
+cmd_gen_dim_time = _powerbi.cmd_gen_dim_time
+cmd_kpi_emit = _kpi.cmd_kpi_emit
+cmd_kpi_graph = _kpi.cmd_kpi_graph
+cmd_kpi_validate = _kpi.cmd_kpi_validate
+cmd_compare = _compare.cmd_compare
+cmd_drift = _drift.cmd_drift
+cmd_drift_history = _drift_history.cmd_drift_history
+cmd_drift_history_import = _drift_history.cmd_drift_history_import
+cmd_drift_history_list = _drift_history.cmd_drift_history_list
+cmd_drift_history_columns = _drift_history.cmd_drift_history_columns
+cmd_drift_history_trend = _drift_history.cmd_drift_history_trend
+cmd_drift_history_report = _drift_history.cmd_drift_history_report
+cmd_drift_history_notify = _drift_history.cmd_drift_history_notify
+cmd_drift_dashboard = _drift_history.cmd_drift_dashboard
+cmd_plan = _plan.cmd_plan
+cmd_chart = _chart.cmd_chart
+cmd_dashboard = _dashboard.cmd_dashboard
+cmd_ui = _ui.cmd_ui
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build argument parser."""
+    """Build argument parser.
+
+    Subcommands are registered by each command module's ``register*`` function,
+    in the original order so ``dqt --help`` listing is unchanged.
+    """
     p = _DQTArgumentParser(prog="dqt", description="Data Quality Toolkit CLI")
     p.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
     p.add_argument("--log-format", choices=["json", "text"])
@@ -1230,603 +547,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="command", required=True)
 
-    # settings
-    sp = sub.add_parser("settings", help="Settings commands")
-    ssp = sp.add_subparsers(dest="subcommand", required=True)
-    ssp_show = ssp.add_parser("show", help="Show resolved settings")
-    ssp_show.set_defaults(func=cmd_settings_show)
-
-    # manifest
-    sp_manifest = sub.add_parser("manifest", help="Manifest commands")
-    ssp_manifest = sp_manifest.add_subparsers(dest="subcommand", required=True)
-    ssp_manifest_create = ssp_manifest.add_parser("create", help="Build lineage manifest for a run")
-    ssp_manifest_create.add_argument(
-        "--run-id",
-        dest="run_id",
-        required=True,
-        metavar="ID",
-        help="Run identifier",
-    )
-    ssp_manifest_create.add_argument(
-        "--sessions-root",
-        dest="sessions_root",
-        required=True,
-        metavar="PATH",
-        help="Root directory containing session folders",
-    )
-    ssp_manifest_create.set_defaults(func=cmd_manifest_create)
-
-    # pipeline
-    sp_pipeline = sub.add_parser("pipeline", help="Pipeline commands")
-    ssp_pipeline = sp_pipeline.add_subparsers(dest="subcommand", required=True)
-    ssp_pipeline_run = ssp_pipeline.add_parser(
-        "run", help="Run an ELT pipeline (extract → transform → load → assess → manifest)"
-    )
-    ssp_pipeline_run.add_argument(
-        "--config",
-        default=None,
-        metavar="PATH",
-        help="Path to pipeline YAML config file (CLI flags override config values)",
-    )
-    ssp_pipeline_run.add_argument(
-        "--run-id",
-        dest="run_id",
-        required=False,
-        default=None,
-        metavar="ID",
-        help="Unique run identifier",
-    )
-    ssp_pipeline_run.add_argument(
-        "--sessions-root",
-        dest="sessions_root",
-        required=False,
-        default=None,
-        metavar="PATH",
-        help="Root directory for session data",
-    )
-    ssp_pipeline_run.add_argument(
-        "--extract", default=None, metavar="PATH", help="Source path for the extract step"
-    )
-    ssp_pipeline_run.add_argument(
-        "--transform", default=None, metavar="NAME", help="Name for the transform step"
-    )
-    ssp_pipeline_run.add_argument(
-        "--load", default=None, metavar="PATH", help="Output path for the load step"
-    )
-    ssp_pipeline_run.add_argument(
-        "--assess", action="store_true", default=False, help="Add an assess step"
-    )
-    ssp_pipeline_run.add_argument(
-        "--manifest", action="store_true", default=False, help="Add a manifest step"
-    )
-    ssp_pipeline_run.set_defaults(func=cmd_pipeline_run)
-
-    # version
-    sp_ver = sub.add_parser("version", help="Print package version")
-    sp_ver.set_defaults(func=cmd_version)
-
-    # log demo
-    sp_log = sub.add_parser("log-demo", help="Emit sample log lines")
-    sp_log.add_argument("--raise-error", action="store_true")
-    sp_log.set_defaults(func=cmd_log_demo)
-
-    # profile
-    sp_prof = sub.add_parser("profile", help="Load CSV and emit profile JSON")
-    sp_prof.add_argument("csv", help=CSV_PATH_HELP)
-    _add_csv_options(sp_prof)
-    sp_prof.add_argument(
-        "--chunksize",
-        type=int,
-        default=None,
-        metavar="N",
-        help="Stream CSV in chunks of N rows (approximate profile; skips dtype/unique/memory_mb)",
-    )
-    sp_prof.set_defaults(func=cmd_profile)
-
-    # assess
-    sp_as = sub.add_parser("assess", help="Load CSV, profile, and assess JSON")
-    sp_as.add_argument("csv", help=CSV_PATH_HELP)
-    _add_csv_options(sp_as)
-    sp_as.add_argument(
-        "--null-threshold",
-        dest="null_threshold",
-        type=float,
-        default=None,
-        metavar="FLOAT",
-        help="Flag completeness issues above this missing-value fraction (0.0 to 1.0, default: 0.2)",
-    )
-    sp_as.add_argument(
-        "--fail-under",
-        dest="fail_under",
-        type=float,
-        default=None,
-        metavar="FLOAT",
-        help=FAIL_UNDER_HELP,
-    )
-    sp_as.add_argument(
-        "--score-field",
-        dest="score_field",
-        choices=SCORE_FIELD_CHOICES,
-        default=SCORE_FIELD_DEFAULT,
-        metavar="FIELD",
-        help="Score field used by --fail-under quality gate (default: score)",
-    )
-    sp_as.add_argument(
-        "--db",
-        dest="db",
-        default=None,
-        metavar="PATH",
-        help="Persist assessment run to a dashboard-readable SQLite database",
-    )
-    sp_as.add_argument(
-        "--chunksize",
-        type=int,
-        default=None,
-        metavar="N",
-        help=(
-            "Stream CSV in chunks of N rows (partial assessment; "
-            "distribution/cardinality/outlier rules skipped)"
-        ),
-    )
-    sp_as.set_defaults(func=cmd_assess)
-
-    # export-star
-    sp_star = sub.add_parser("export-star", help="Export star schema CSVs to a folder")
-    sp_star.add_argument("csv", help=CSV_PATH_HELP)
-    sp_star.add_argument(
-        "--outdir", default=None, help=f"Output directory (default: {DEFAULT_DIST})"
-    )
-    _add_csv_options(sp_star)
-    sp_star.add_argument(
-        "--null-threshold",
-        dest="null_threshold",
-        type=float,
-        default=None,
-        metavar="FLOAT",
-        help="Flag completeness issues above this missing-value fraction (0.0 to 1.0, default: 0.2)",
-    )
-    sp_star.add_argument(
-        "--fail-under",
-        dest="fail_under",
-        type=float,
-        default=None,
-        metavar="FLOAT",
-        help=FAIL_UNDER_HELP,
-    )
-    sp_star.add_argument(
-        "--score-field",
-        dest="score_field",
-        choices=SCORE_FIELD_CHOICES,
-        default=SCORE_FIELD_DEFAULT,
-        metavar="FIELD",
-        help="Score field used by --fail-under quality gate (default: score)",
-    )
-    sp_star.add_argument(
-        "--manifest",
-        action="store_true",
-        default=False,
-        help="Emit a lineage manifest (artifacts.json) alongside star outputs",
-    )
-    sp_star.set_defaults(func=cmd_export_star)
-
-    # alias: export
-    sp_export = sub.add_parser("export", help="Alias for export-star")
-    sp_export.add_argument("csv", help=CSV_PATH_HELP)
-    sp_export.add_argument(
-        "--outdir", default=None, help=f"Output directory (default: {DEFAULT_DIST})"
-    )
-    _add_csv_options(sp_export)
-    sp_export.add_argument(
-        "--null-threshold",
-        dest="null_threshold",
-        type=float,
-        default=None,
-        metavar="FLOAT",
-        help="Flag completeness issues above this missing-value fraction (0.0 to 1.0, default: 0.2)",
-    )
-    sp_export.add_argument(
-        "--fail-under",
-        dest="fail_under",
-        type=float,
-        default=None,
-        metavar="FLOAT",
-        help=FAIL_UNDER_HELP,
-    )
-    sp_export.add_argument(
-        "--score-field",
-        dest="score_field",
-        choices=SCORE_FIELD_CHOICES,
-        default=SCORE_FIELD_DEFAULT,
-        metavar="FIELD",
-        help="Score field used by --fail-under quality gate (default: score)",
-    )
-    sp_export.add_argument(
-        "--manifest",
-        action="store_true",
-        default=False,
-        help="Emit a lineage manifest (artifacts.json) alongside star outputs",
-    )
-    sp_export.set_defaults(func=cmd_export_star)
-
-    # build-pbi (Phase 2 orchestrator)
-    sp_pbi = sub.add_parser("build-pbi", help="Build Power BI package (Phase 2)")
-    sp_pbi.add_argument("--star", default=f"{DEFAULT_DIST}/star", help="Star schema directory")
-    sp_pbi.add_argument("--out", default=f"{DEFAULT_DIST}/powerbi_package", help="Output directory")
-    sp_pbi.add_argument(
-        "--time-start", default="2018-01-01", help="Time dimension start (YYYY-MM-DD)"
-    )
-    sp_pbi.add_argument("--time-end", default="2030-12-31", help="Time dimension end (YYYY-MM-DD)")
-    sp_pbi.add_argument(
-        "--base-folder", default=DEFAULT_DIST, help="Base folder parameter for Power BI"
-    )
-    sp_pbi.add_argument("--fiscal", type=int, default=None, help="Fiscal year start month (1-12)")
-    sp_pbi.set_defaults(func=cmd_build_pbi)
-
-    # gen-dim-time
-    sp_time = sub.add_parser("gen-dim-time", help="Generate dim_time.csv")
-    sp_time.add_argument("--start", default="2018-01-01", help="Start date (YYYY-MM-DD)")
-    sp_time.add_argument("--end", default="2030-12-31", help="End date (YYYY-MM-DD)")
-    sp_time.add_argument(
-        "--week-start",
-        type=int,
-        default=1,
-        choices=[1, 2, 3, 4, 5, 6, 7],
-        help="Custom week start (1=Mon .. 7=Sun)",
-    )
-    sp_time.add_argument("--fiscal", type=int, default=None, help="Fiscal year start month (1-12)")
-    sp_time.add_argument("--out", default=f"{DEFAULT_DIST}/time", help="Output directory")
-    sp_time.add_argument("--json", action="store_true", help="Emit JSON on stdout (path & args)")
-    sp_time.set_defaults(func=cmd_gen_dim_time)
-
-    # kpi-emit
-    sp_kpi_emit = sub.add_parser("kpi-emit", help="Generate DAX and TMSL from KPI catalog")
-    sp_kpi_emit.add_argument(
-        "--config",
-        default=KPI_DEFAULT_CONFIG,
-        help=KPI_CONFIG_HELP,
-    )
-    sp_kpi_emit.add_argument(
-        "--dax-out",
-        dest="dax_out",
-        default=KPI_DEFAULT_DAX_OUT,
-        help=KPI_DAX_OUT_HELP,
-    )
-    sp_kpi_emit.add_argument(
-        "--tmsl-out",
-        dest="tmsl_out",
-        default=KPI_DEFAULT_TMSL_OUT,
-        help=KPI_TMSL_OUT_HELP,
-    )
-    sp_kpi_emit.set_defaults(func=cmd_kpi_emit)
-
-    # kpi-graph
-    sp_kpi_graph = sub.add_parser("kpi-graph", help="Export KPI dependency graph")
-    sp_kpi_graph.add_argument("--config", default=KPI_DEFAULT_CONFIG, help=KPI_CONFIG_HELP)
-    sp_kpi_graph.add_argument("--out", default=KPI_DEFAULT_GRAPH_OUT, help=KPI_GRAPH_OUT_HELP)
-    sp_kpi_graph.add_argument(
-        "--format",
-        default=KPI_GRAPH_FORMAT_DEFAULT,
-        choices=KPI_GRAPH_FORMAT_CHOICES,
-        help=KPI_GRAPH_FORMAT_HELP,
-    )
-    sp_kpi_graph.set_defaults(func=cmd_kpi_graph)
-
-    # compare
-    sp_cmp = sub.add_parser("compare", help="Compare last two export runs for a dataset")
-    sp_cmp.add_argument("csv", help=CSV_PATH_HELP)
-    sp_cmp.add_argument(
-        "--outdir",
-        default=None,
-        help=f"Output directory (default: {DEFAULT_DIST}); must match the --outdir used with export-star",
-    )
-    sp_cmp.set_defaults(func=cmd_compare)
-
-    # drift
-    sp_drift = sub.add_parser(
-        "drift",
-        help="Detect statistical drift between two CSV files (KS / chi-square)",
-    )
-    sp_drift.add_argument("baseline", help="Path to baseline CSV file")
-    sp_drift.add_argument("current", help="Path to current CSV file")
-    sp_drift.add_argument(
-        "--alpha",
-        type=float,
-        default=None,
-        metavar="FLOAT",
-        help="Significance level for drift tests, in (0, 1) (default: 0.05)",
-    )
-    sp_drift.add_argument(
-        "--min-samples",
-        dest="min_samples",
-        type=int,
-        default=None,
-        metavar="N",
-        help="Minimum non-null samples per column required to test (default: 30)",
-    )
-    sp_drift.add_argument(
-        "--max-categories",
-        dest="max_categories",
-        type=int,
-        default=None,
-        metavar="N",
-        help="Max categories kept before bucketing rare values (default: 20)",
-    )
-    sp_drift.add_argument(
-        "--fail-on-drift",
-        action="store_true",
-        help="Exit 2 if statistical drift is detected",
-    )
-    sp_drift.add_argument(
-        "--output",
-        default=None,
-        help="Write the drift result to this path as a JSON evidence report",
-    )
-    sp_drift.add_argument(
-        "--history",
-        default=None,
-        metavar="PATH",
-        help="Append a compact drift history record (JSONL) to this path",
-    )
-    sp_drift.add_argument("--sep", help="CSV delimiter (e.g., ',' or '\\t')")
-    sp_drift.add_argument("--encoding", help="CSV encoding (e.g., 'utf-8', 'latin-1')")
-    sp_drift.add_argument("--na-values", help="Comma-separated NA values (e.g., 'NA,NaN,null')")
-    sp_drift.add_argument("--sample-size", type=int, help="Override SAMPLE_SIZE for this run")
-    sp_drift.set_defaults(func=cmd_drift)
-
-    # drift-history
-    sp_dh = sub.add_parser(
-        "drift-history",
-        help="Drift history commands (read JSONL, import to SQLite)",
-    )
-    ssp_dh = sp_dh.add_subparsers(dest="subcommand", required=True)
-
-    ssp_dh_read = ssp_dh.add_parser(
-        "read",
-        help="Read drift history records from a JSONL file written by dqt drift --history",
-    )
-    ssp_dh_read.add_argument(
-        "history_path",
-        metavar="HISTORY_PATH",
-        help="Path to a drift history JSONL file",
-    )
-    ssp_dh_read.set_defaults(func=cmd_drift_history)
-
-    ssp_dh_import = ssp_dh.add_parser(
-        "import",
-        help="Import drift history JSONL records into a SQLite monitoring database",
-    )
-    ssp_dh_import.add_argument(
-        "history_path",
-        metavar="HISTORY_PATH",
-        help="Path to a drift history JSONL file",
-    )
-    ssp_dh_import.add_argument(
-        "--db",
-        dest="db",
-        required=True,
-        metavar="PATH",
-        help="Path to the SQLite monitoring database",
-    )
-    ssp_dh_import.set_defaults(func=cmd_drift_history_import)
-
-    ssp_dh_list = ssp_dh.add_parser(
-        "list",
-        help="List imported drift runs from a SQLite monitoring database",
-    )
-    ssp_dh_list.add_argument(
-        "--db",
-        dest="db",
-        required=True,
-        metavar="PATH",
-        help="Path to the SQLite monitoring database",
-    )
-    ssp_dh_list.add_argument(
-        "--limit",
-        dest="limit",
-        type=int,
-        metavar="N",
-        help="Maximum number of runs to return",
-    )
-    ssp_dh_list.add_argument(
-        "--current-dataset-id",
-        dest="current_dataset_id",
-        metavar="VALUE",
-        help="Filter by current_dataset_id",
-    )
-    ssp_dh_list.add_argument(
-        "--drift-detected",
-        dest="drift_detected",
-        type=_parse_bool_flag,
-        metavar="true|false",
-        help="Filter by drift_detected (true|false)",
-    )
-    ssp_dh_list.add_argument(
-        "--status",
-        dest="status",
-        metavar="VALUE",
-        help="Filter by status",
-    )
-    ssp_dh_list.set_defaults(func=cmd_drift_history_list)
-
-    ssp_dh_columns = ssp_dh.add_parser(
-        "columns",
-        help="List imported per-column drift metrics from a SQLite database",
-    )
-    ssp_dh_columns.add_argument(
-        "--db",
-        dest="db",
-        required=True,
-        metavar="PATH",
-        help="Path to the SQLite monitoring database",
-    )
-    ssp_dh_columns.add_argument(
-        "--run-id",
-        dest="run_id",
-        metavar="VALUE",
-        help="Filter by run_id",
-    )
-    ssp_dh_columns.add_argument(
-        "--column-name",
-        dest="column_name",
-        metavar="VALUE",
-        help="Filter by column_name",
-    )
-    ssp_dh_columns.add_argument(
-        "--drift-detected",
-        dest="drift_detected",
-        type=_parse_bool_flag,
-        metavar="true|false",
-        help="Filter by drift_detected (true|false)",
-    )
-    ssp_dh_columns.set_defaults(func=cmd_drift_history_columns)
-
-    ssp_dh_trend = ssp_dh.add_parser(
-        "trend",
-        help="Summarize drift trends from a SQLite monitoring database",
-    )
-    ssp_dh_trend.add_argument(
-        "--db",
-        dest="db",
-        required=True,
-        metavar="PATH",
-        help="Path to the SQLite monitoring database",
-    )
-    ssp_dh_trend.add_argument(
-        "--current-dataset-id",
-        dest="current_dataset_id",
-        metavar="VALUE",
-        help="Filter by current_dataset_id",
-    )
-    ssp_dh_trend.add_argument(
-        "--limit",
-        dest="limit",
-        type=int,
-        metavar="N",
-        help="Maximum number of runs to aggregate",
-    )
-    ssp_dh_trend.set_defaults(func=cmd_drift_history_trend)
-
-    ssp_dh_report = ssp_dh.add_parser(
-        "report",
-        help="Generate a drift-history monitoring report from a SQLite database",
-    )
-    ssp_dh_report.add_argument(
-        "--db",
-        dest="db",
-        required=True,
-        metavar="PATH",
-        help="Path to the SQLite monitoring database",
-    )
-    ssp_dh_report.add_argument(
-        "--output",
-        dest="output",
-        required=True,
-        metavar="PATH",
-        help="Path to write the report file",
-    )
-    ssp_dh_report.add_argument(
-        "--current-dataset-id",
-        dest="current_dataset_id",
-        metavar="VALUE",
-        help="Filter by current_dataset_id",
-    )
-    ssp_dh_report.add_argument(
-        "--limit",
-        dest="limit",
-        type=int,
-        metavar="N",
-        help="Maximum number of runs to include",
-    )
-    ssp_dh_report.add_argument(
-        "--format",
-        dest="format",
-        choices=["md", "html"],
-        default="md",
-        help="Report output format (md|html, default: md)",
-    )
-    ssp_dh_report.add_argument(
-        "--include-columns",
-        dest="include_columns",
-        action="store_true",
-        help="Include a per-column drift metrics section in the report",
-    )
-    ssp_dh_report.add_argument(
-        "--include-plots",
-        dest="include_plots",
-        action="store_true",
-        help="Include a dependency-free distribution-plots section in the report",
-    )
-    ssp_dh_report.set_defaults(func=cmd_drift_history_report)
-
-    ssp_dh_dashboard = ssp_dh.add_parser(
-        "dashboard",
-        help="Generate a static HTML drift analytics dashboard from a SQLite database",
-    )
-    ssp_dh_dashboard.add_argument(
-        "--db",
-        dest="db",
-        required=True,
-        metavar="PATH",
-        help="Path to the SQLite monitoring database",
-    )
-    ssp_dh_dashboard.add_argument(
-        "--output",
-        dest="output",
-        required=True,
-        metavar="PATH",
-        help="Path to write the dashboard HTML file",
-    )
-    ssp_dh_dashboard.add_argument(
-        "--current-dataset-id",
-        dest="current_dataset_id",
-        metavar="VALUE",
-        help="Filter by current_dataset_id",
-    )
-    ssp_dh_dashboard.add_argument(
-        "--limit",
-        dest="limit",
-        type=int,
-        metavar="N",
-        help="Maximum number of runs to include",
-    )
-    ssp_dh_dashboard.add_argument(
-        "--include-plots",
-        dest="include_plots",
-        action="store_true",
-        help="Include a dependency-free distribution-plots section in the dashboard",
-    )
-    ssp_dh_dashboard.set_defaults(func=cmd_drift_dashboard)
-
-    # kpi-validate
-    sp_kpi_val = sub.add_parser("kpi-validate", help="Validate KPI catalog for errors")
-    sp_kpi_val.add_argument("--config", default=KPI_DEFAULT_CONFIG, help=KPI_CONFIG_HELP)
-    sp_kpi_val.set_defaults(func=cmd_kpi_validate)
-
-    # plan
-    sp_plan = sub.add_parser(
-        "plan",
-        help="Generate per-column preprocessing recommendations for a CSV",
-    )
-    sp_plan.add_argument("csv", help=CSV_PATH_HELP)
-    _add_csv_options(sp_plan)
-    sp_plan.set_defaults(func=cmd_plan)
-
-    # chart
-    sp_chart = sub.add_parser(
-        "chart",
-        help="Generate a terminal-based profiling chart for a column",
-    )
-    sp_chart.add_argument("csv", help=CSV_PATH_HELP)
-    sp_chart.add_argument("--column", required=True, help="Column name to chart")
-    _add_csv_options(sp_chart)
-    sp_chart.set_defaults(func=cmd_chart)
-
-    # dashboard (Phase 4)
-    sp_dash = sub.add_parser(
-        "dashboard",
-        help="Launch the Streamlit dashboard (requires: pip install data-quality-toolkit[ui])",
-    )
-    sp_dash.set_defaults(func=cmd_dashboard)
+    _meta.register_settings(sub)
+    _meta.register_manifest(sub)
+    _pipeline.register(sub)
+    _meta.register_version(sub)
+    _meta.register_log_demo(sub)
+    _profile.register(sub)
+    _assess.register(sub)
+    _export.register(sub)
+    _export.register_alias(sub)
+    _powerbi.register_build_pbi(sub)
+    _powerbi.register_gen_dim_time(sub)
+    _kpi.register_kpi_emit(sub)
+    _kpi.register_kpi_graph(sub)
+    _compare.register(sub)
+    _drift.register(sub)
+    _drift_history.register(sub)
+    _kpi.register_kpi_validate(sub)
+    _plan.register(sub)
+    _chart.register(sub)
+    _dashboard.register(sub)
+    _ui.register(sub)
 
     return p
 

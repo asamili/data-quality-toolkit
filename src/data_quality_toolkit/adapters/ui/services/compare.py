@@ -16,11 +16,11 @@ def _run_compare(db_path_str: str, dataset_id: str) -> tuple[dict[str, Any] | No
     not an unexpected error, so the caller should render st.info, not st.error.
     """
     try:
-        from data_quality_toolkit.application.workflow.compare import compare_last_two_runs
+        from data_quality_toolkit.api import compare_runs_history as _compare_history
 
         db_path = Path(db_path_str.strip())
         history_path = db_path.parent / "star" / "quality_history.jsonl"
-        result = compare_last_two_runs(dataset_id.strip(), history_path)
+        result = _compare_history(dataset_id.strip(), history_path)
 
         if result.get("error") == "not_enough_runs":
             return None, result["message"]
