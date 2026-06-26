@@ -26,8 +26,10 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ### Notes
 
-- **Private-only release.** No public snapshot update. No public release. No model download. No inference activation. No CLI/API/UI AI exposure. Private push remains postponed.
-- Optional `storylens-ai` dependency (`transformers>=5.0.0,<6.0.0`, `torch>=2.12.0`) remains opt-in; not added to default dependencies.
+- First public release of v2.9.0: the sanitized public snapshot, the `v2.9.0` tag, and the GitHub Release (created by the release workflow on tag push) are published to the public repository.
+- Optional local AI (StoryLens) is **off by default**: no model is bundled, no model download or inference occurs on install or at runtime, and the AI path is not exposed through the CLI or public API.
+- The public snapshot applies the project's public/private boundary exclusions; it contains no internal coordination/governance files, secrets, or model artifacts.
+- Optional `storylens-ai` dependency (`transformers>=5.0.0,<6.0.0`, `torch>=2.12.0`) remains opt-in; not added to the default install.
 
 ## [2.8.0] - 2026-06-18
 
