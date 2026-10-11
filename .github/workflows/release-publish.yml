@@ -109,12 +109,6 @@ jobs:
           python scripts/release_verify.py --manifest "$MANIFEST" ci \
             --runs-json "$WORK/ci_runs.json" --sha "$GITHUB_SHA"
 
-      - name: Apply the governed body to the draft
-        run: |
-          release_id="$(cat "$WORK/release_id")"
-          gh api -X PATCH "repos/$REPOSITORY/releases/$release_id" \
-            -F "body=@$WORK/body.md" > /dev/null
-
       - name: Re-verify the draft immediately before publication
         run: |
           release_id="$(cat "$WORK/release_id")"
@@ -126,7 +120,8 @@ jobs:
       - name: Publish (draft -> public)
         run: |
           release_id="$(cat "$WORK/release_id")"
-          gh api -X PATCH "repos/$REPOSITORY/releases/$release_id" -F draft=false > /dev/null
+          gh api -X PATCH "repos/$REPOSITORY/releases/$release_id" \
+            -f tag_name="$TAG" -F draft=false > /dev/null
 
       - name: Read back the published release
         run: |

@@ -1074,7 +1074,6 @@ def test_publish_workflow_verifies_everything_before_the_flip() -> None:
         "Verify tag, source commit and frozen snapshot",
         "Verify release body",
         "Require CI success on this exact commit",
-        "Apply the governed body to the draft",
         "Re-verify the draft immediately before publication",
         "Publish (draft -> public)",
         "Read back the published release",
@@ -1087,6 +1086,46 @@ def test_publish_workflow_verifies_everything_before_the_flip() -> None:
     assert "draft=false" in steps["Publish (draft -> public)"]
     assert sum("draft=false" in r for r in steps.values()) == 1
     assert "$GITHUB_SHA" in steps["Require CI success on this exact commit"]
+
+
+_RELEASE_PATCH = re.compile(r'\bgh\s+api\s+-X\s+PATCH\s+"repos/\$REPOSITORY/releases/')
+
+
+def _shell_commands(script: str) -> list[str]:
+    """Logical shell commands: backslash continuations joined, comment lines dropped."""
+    joined = re.sub(r"\\\n\s*", " ", script)
+    return [line.strip() for line in joined.splitlines() if not line.strip().startswith("#")]
+
+
+def _release_patches(job: dict[str, Any]) -> list[tuple[int, str]]:
+    return [
+        (index, command)
+        for index, step in enumerate(_steps(job))
+        for command in _shell_commands(str(step.get("run", "")))
+        if _RELEASE_PATCH.search(command)
+    ]
+
+
+def test_publish_workflow_patches_the_release_once_and_keeps_its_tag() -> None:
+    # A release PATCH that omits tag_name detaches a draft from its tag, so the
+    # only release write is the final flip, and it must name the tag explicitly.
+    wf = _workflow(_PUBLISH_WORKFLOW)
+    publish = wf["jobs"]["publish"]
+    names = [s.get("name", "") for s in _steps(publish)]
+    verify = names.index("Re-verify the draft immediately before publication")
+    flip = names.index("Publish (draft -> public)")
+    assert verify < flip < names.index("Read back the published release")
+    patches = _release_patches(publish)
+    assert [index for index, _ in patches] == [flip]
+    command = patches[0][1]
+    assert re.search(r'(?<!\S)-f\s+tag_name="\$TAG"(?!\S)', command)
+    assert re.search(r"(?<!\S)-F\s+draft=false(?!\S)", command)
+    for job_name, job in wf["jobs"].items():
+        if job_name != "publish":
+            assert _release_patches(job) == []
+    check = str(_steps(publish)[verify].get("run", ""))
+    assert all(flag in check for flag in ("--phase draft", "--expect-plan", "--check-body"))
+    assert publish["environment"] == "release"
 
 
 def test_no_workflow_publishes_on_tag_push() -> None:
