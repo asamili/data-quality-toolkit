@@ -252,8 +252,13 @@ def export_drift_history_xlsx(
     summary = summarize_drift_trends_sqlite(
         db_path, current_dataset_id=current_dataset_id, limit=limit
     )
-    columns = read_drift_columns_sqlite(db_path) if include_columns else None
-    distributions = read_drift_distributions_sqlite(db_path) if include_distributions else None
+    # A filtered export scopes column/distribution sheets to exactly its runs.
+    scoped = current_dataset_id is not None or limit is not None
+    run_ids = [r["run_id"] for r in runs] if scoped else None
+    columns = read_drift_columns_sqlite(db_path, run_ids=run_ids) if include_columns else None
+    distributions = (
+        read_drift_distributions_sqlite(db_path, run_ids=run_ids) if include_distributions else None
+    )
 
     metadata = _build_metadata(
         db_path, output_path, current_dataset_id, limit, include_columns, include_distributions

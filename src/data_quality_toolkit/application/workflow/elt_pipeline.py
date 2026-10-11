@@ -1,3 +1,18 @@
+"""Declarative ELT step scaffold — it records a plan, it does not run one.
+
+This is a scaffold, not an ELT engine. ``extract``, ``transform``, ``load`` and
+``assess`` only append an :class:`ELTStep` describing what was asked for: no file
+is read, no data is transformed, and nothing is written for those step types.
+``manifest`` is the one step that performs real work — :func:`ELTPipeline.run`
+calls ``create_manifest`` for it.
+
+Read the :class:`ELTResult` fields accordingly: ``steps_executed`` is the list of
+*declared* steps, and ``status`` is ``"success"`` whenever the scaffold itself
+completed without raising. Neither field reports that extract/transform/load work
+happened, because none does. Both names and the status value are pinned by
+``tests/integration/test_elt_pipeline.py``.
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any

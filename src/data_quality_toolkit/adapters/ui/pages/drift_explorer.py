@@ -5,16 +5,27 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import pandas as pd
+
+from data_quality_toolkit.adapters.ui import journey
+from data_quality_toolkit.adapters.ui.components.downloads import csv_download_button
+from data_quality_toolkit.adapters.ui.components.page_guidance import render_page_guidance
 from data_quality_toolkit.adapters.ui.components.page_shell import (
     render_metric_cards,
     render_page_header,
     render_section_header,
 )
+from data_quality_toolkit.adapters.ui.components.source_context import render_monitoring_db_input
+from data_quality_toolkit.adapters.ui.components.source_hub import render_source_hub_callout
 from data_quality_toolkit.adapters.ui.components.storylens import render_storylens_card
+from data_quality_toolkit.adapters.ui.components.workspace_save_ui import (
+    render_analysis_csv_save,
+)
 from data_quality_toolkit.adapters.ui.services.monitoring import (
     build_drift_storylens_cards,
     columns_to_display_dicts,
     compact_identifier,
+    distribution_comparison_rows,
     distributions_to_display_dicts,
     evaluate_drift_rate_for_display,
     evaluate_psi_for_display,
@@ -43,6 +54,19 @@ _METRIC_FIELDS: dict[str, str] = {
 }
 _DASHBOARD_CMD = "dqt drift-history dashboard --db monitoring.db --output dashboard.html"
 _UI_CMD = "dqt ui --db monitoring.db"
+_SAVE_DISTRIBUTION_COMPARISON_BTN = "drift_explorer_save_distribution_comparison_btn"
+_SAVE_ANALYSIS_CAPTION = (
+    "Downloads stay in your browser. Optionally save this analysis under your "
+    "Workspace Root / analysis; existing files are not overwritten."
+)
+
+# One-line operator flow map shown under the page guidance so the numbered stage
+# headers below read as a single guided sequence.
+_FLOW_MAP = (
+    "Flow: 1 Choose monitoring source → 2 Review status summary → "
+    "3 Set drift-rate threshold → 4 Read deterministic explanation → "
+    "5 Review monitoring history → 6 Inspect a run"
+)
 
 
 def _drift_summary_storylens(summary: Any) -> list[Explanation]:
@@ -81,7 +105,7 @@ def _render_summary(st: Any, overview: Any) -> None:
     """Render monitoring status without collapsing unknown drift into no drift."""
     summary = overview.summary
     latest = _latest_run(overview)
-    render_section_header(st, "Monitoring status summary")
+    render_section_header(st, "2 · Monitoring status summary")
 
     render_metric_cards(
         st,
@@ -119,7 +143,7 @@ def _render_summary(st: Any, overview: Any) -> None:
 
 def _render_drift_rate_threshold(st: Any, overview: Any) -> float:
     """Render an informational threshold using authoritative evaluator semantics."""
-    render_section_header(st, "Drift-rate threshold guidance")
+    render_section_header(st, "3 · Drift-rate threshold guidance")
     threshold = float(
         st.number_input(
             "Maximum acceptable drift rate",
@@ -159,7 +183,7 @@ def _trend_rows(overview: Any) -> list[dict[str, Any]]:
 
 def _render_history(st: Any, overview: Any) -> None:
     """Render run-series context, with raw-ish history kept as secondary evidence."""
-    render_section_header(st, "Monitoring history")
+    render_section_header(st, "5 · Monitoring history")
     if len(overview.runs) < 2:
         st.info(
             "Insufficient trend history: at least two monitoring runs are needed for a "
@@ -240,6 +264,22 @@ def _render_distribution_section(
         "draw the bars. The evidence table below preserves them as unavailable."
     )
     st.dataframe(display_rows, use_container_width=True)
+    st.caption("Reference = baseline snapshot; Current = latest snapshot. Bins align by index.")
+    comparison_df = pd.DataFrame(distribution_comparison_rows(bins))
+    csv_download_button(
+        st,
+        "Download distribution comparison (CSV)",
+        comparison_df,
+        "drift_distribution_comparison.csv",
+    )
+    render_analysis_csv_save(
+        st,
+        button_label="Save distribution comparison to Workspace",
+        key=_SAVE_DISTRIBUTION_COMPARISON_BTN,
+        artifact="drift_distribution_comparison",
+        dataframe=comparison_df,
+        caption=_SAVE_ANALYSIS_CAPTION,
+    )
 
 
 def _render_columns_section(st: Any, db_path_str: str, run_id: str) -> None:
@@ -334,16 +374,31 @@ def _render_drift_explorer(st: Any) -> None:
         "Drift Monitoring",
         "Inspect monitoring status, deterministic explanations, run history, and drift "
         "evidence from a local monitoring database.",
-        step_label="Step 8 of 11 — Drift Monitoring",
+        step_label=journey.step_label("drift_explorer"),
     )
+    render_page_guidance(
+        st,
+        purpose="Inspect drift history and distribution evidence from a local monitoring database.",
+        inputs="A local monitoring database and an optional dataset filter.",
+        workflow="Choose the database, review runs and thresholds, then inspect per-run "
+        "distribution comparison.",
+        safety="Read-only; the database path is shown basename-first.",
+        next_step="Export, when you are ready to generate governed outputs",
+    )
+    st.caption(_FLOW_MAP)
 
-    render_section_header(st, "Monitoring source and filters")
-    initial_db = os.environ.get(_DB_ENV_VAR, "")
-    db_path_str = st.text_input(
+    render_section_header(st, "1 · Monitoring source and filters")
+    st.caption(
+        "This page is read-only: choosing a source only reads drift evidence. "
+        "Nothing is computed or written until you click a Save button."
+    )
+    db_path_str = render_monitoring_db_input(st, env_default=os.environ.get(_DB_ENV_VAR, ""))
+    render_source_hub_callout(
+        st,
         "Local monitoring database",
-        value=initial_db,
-        placeholder="e.g., ./monitoring.db",
-        key=keys.DRIFT_DB_PATH,
+        db_path_str,
+        present_text="Using monitoring source from Start",
+        missing_text="Set Local monitoring database in Start / Load Dataset.",
     )
     if not db_path_str.strip():
         st.info(
@@ -360,6 +415,10 @@ def _render_drift_explorer(st: Any) -> None:
         placeholder="Optional: exact current_dataset_id",
         key=keys.DRIFT_DATASET_FILTER,
     ).strip()
+    st.caption(
+        "This drift filter is page-local and distinct from the Source Hub Dataset ID "
+        "used by Quality History."
+    )
     limit = int(
         st.number_input(
             "Maximum monitoring runs",
@@ -393,7 +452,7 @@ def _render_drift_explorer(st: Any) -> None:
     _render_summary(st, overview)
     threshold = _render_drift_rate_threshold(st, overview)
 
-    render_section_header(st, "Deterministic monitoring explanation")
+    render_section_header(st, "4 · Deterministic monitoring explanation")
     render_storylens_card(
         st,
         build_drift_storylens_cards(
@@ -414,7 +473,7 @@ def _render_drift_explorer(st: Any) -> None:
         st.info("Runs are present, but none have a run ID available for inspection.")
         return
 
-    render_section_header(st, "Run-level inspection")
+    render_section_header(st, "6 · Run-level inspection")
     selected_run = st.selectbox(
         "Select a monitoring run",
         options=run_ids,

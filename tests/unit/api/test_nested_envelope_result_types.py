@@ -1,4 +1,4 @@
-"""DQT-UX-G8C2G: nested envelope result contracts for profile/assess/export.
+"""Nested envelope result contracts for profile/assess/export.
 
 Proves the 11 nested TypedDicts (CsvMeta, CsvProfileColumn, CsvProfile,
 CsvProfileCompact, CsvAssessmentIssue, CsvAssessment, CsvStarExport,

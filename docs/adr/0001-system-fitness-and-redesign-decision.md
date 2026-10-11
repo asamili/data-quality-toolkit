@@ -34,7 +34,7 @@ The following findings grounded this decision:
 - Capability matrix, StoryLens governance summary, and public safety boundary document were added as part of the current decision cycle. These confirm that the existing architecture is well-understood and appropriately documented.
 - No source code security issues identified that would block a v2.9.0 release lane under Option A.
 
-Internal gate evidence (G23A, G24B, G24C, G24E, G25A) is recorded in the private repository history. This ADR summarizes accepted findings without reproducing private gate artifacts.
+This ADR summarizes the accepted review findings.
 
 ## Consequences
 
@@ -47,7 +47,7 @@ Internal gate evidence (G23A, G24B, G24C, G24E, G25A) is recorded in the private
 **Constraints accepted:**
 - Plugin architecture (Option C) is not available in v2.9.0. Feature bundling continues as the default distribution model.
 - Option B service-boundary improvements are deferred to a post-v2.9.0 planning gate. The current import-linter contracts are the enforced boundary mechanism for now.
-- The `lineage/` package sits outside the primary layered contracts (open review item: DQT-ARCH-G5). This is a known, documented constraint, not a blocker.
+- The `lineage/` package sits outside the primary layered contracts (an open architecture review item). This is a known, documented constraint, not a blocker.
 
 ## Non-Goals
 
@@ -61,7 +61,7 @@ This ADR does not approve, authorize, or constitute:
 - Implementation of Option B service-boundary wiring
 - Implementation of Option C plugin/feature-module architecture
 
-Each of those requires a separate admitted gate.
+Each of those requires a separate, explicit decision.
 
 ## Future Candidates
 

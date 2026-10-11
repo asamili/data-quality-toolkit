@@ -289,14 +289,6 @@ n8n/
 *.pstats
 
 # ===============================
-# Docker
-# ===============================
-docker/data/
-docker/dist/
-!docker/data/.gitkeep
-!docker/dist/.gitkeep
-
-# ===============================
 # Keep These (Important!)
 # ===============================
 !.gitkeep

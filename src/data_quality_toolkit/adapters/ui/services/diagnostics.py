@@ -36,7 +36,6 @@ _OPTIONAL_DEPENDENCIES: tuple[str, ...] = (
     "matplotlib",
     "duckdb",
     "openpyxl",
-    "graphviz",
 )
 
 

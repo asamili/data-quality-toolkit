@@ -1,4 +1,4 @@
-"""G8C1: additive public-export surface + StorageError exception-family fix.
+"""Additive public-export surface + StorageError exception-family fix.
 
 Proves the threshold evaluators, the monitoring view-model symbols, and the
 public exception family are importable from BOTH the package root
@@ -13,6 +13,35 @@ import importlib
 import pytest
 
 _EVALUATORS = ["evaluate_drift_rate_threshold", "evaluate_psi_threshold"]
+
+_BUILTIN_QUALITY_API = [
+    "get_builtin_quality_catalog",
+    "emit_builtin_quality_dax",
+    "validate_builtin_quality_semantic_contract",
+]
+
+_BUILTIN_QUALITY_RESULT_TYPES = [
+    "BuiltinQualityKpi",
+    "BuiltinQualityCatalogResult",
+    "BuiltinQualityDaxResult",
+    "SemanticContractValidationResult",
+]
+
+_STATISTICS_API = [
+    "stats_profile_csv",
+    "select_statistical_test",
+    "run_statistical_test",
+    "compare_ab",
+]
+
+_STATISTICS_RESULT_TYPES = [
+    "StatisticsNumericSummary",
+    "StatisticsProfileSummary",
+    "StatisticsProfileResult",
+    "StatisticalTestSelectionResult",
+    "StatisticalTestResult",
+    "ABComparisonResult",
+]
 
 _VIEW_MODEL = [
     "MonitoringOverview",
@@ -41,14 +70,32 @@ _EXCEPTIONS = [
 ]
 
 
-@pytest.mark.parametrize("name", _EVALUATORS + _VIEW_MODEL + _EXCEPTIONS)
+@pytest.mark.parametrize(
+    "name",
+    _EVALUATORS
+    + _BUILTIN_QUALITY_API
+    + _BUILTIN_QUALITY_RESULT_TYPES
+    + _STATISTICS_API
+    + _STATISTICS_RESULT_TYPES
+    + _VIEW_MODEL
+    + _EXCEPTIONS,
+)
 def test_symbol_importable_from_root(name: str) -> None:
     root = importlib.import_module("data_quality_toolkit")
     assert hasattr(root, name), f"{name} missing from data_quality_toolkit"
     assert name in root.__all__, f"{name} missing from data_quality_toolkit.__all__"
 
 
-@pytest.mark.parametrize("name", _EVALUATORS + _VIEW_MODEL + _EXCEPTIONS)
+@pytest.mark.parametrize(
+    "name",
+    _EVALUATORS
+    + _BUILTIN_QUALITY_API
+    + _BUILTIN_QUALITY_RESULT_TYPES
+    + _STATISTICS_API
+    + _STATISTICS_RESULT_TYPES
+    + _VIEW_MODEL
+    + _EXCEPTIONS,
+)
 def test_symbol_importable_from_api_seam(name: str) -> None:
     api = importlib.import_module("data_quality_toolkit.api")
     assert hasattr(api, name), f"{name} missing from data_quality_toolkit.api"
@@ -61,6 +108,28 @@ def test_evaluators_are_the_same_object_from_both_paths() -> None:
 
     assert root.evaluate_drift_rate_threshold is api.evaluate_drift_rate_threshold
     assert root.evaluate_psi_threshold is api.evaluate_psi_threshold
+
+
+def test_builtin_quality_functions_are_the_same_object_from_both_paths() -> None:
+    import data_quality_toolkit as root
+    import data_quality_toolkit.api as api
+
+    assert root.get_builtin_quality_catalog is api.get_builtin_quality_catalog
+    assert root.emit_builtin_quality_dax is api.emit_builtin_quality_dax
+    assert (
+        root.validate_builtin_quality_semantic_contract
+        is api.validate_builtin_quality_semantic_contract
+    )
+
+
+def test_statistics_functions_are_the_same_object_from_both_paths() -> None:
+    import data_quality_toolkit as root
+    import data_quality_toolkit.api as api
+
+    assert root.stats_profile_csv is api.stats_profile_csv
+    assert root.select_statistical_test is api.select_statistical_test
+    assert root.run_statistical_test is api.run_statistical_test
+    assert root.compare_ab is api.compare_ab
 
 
 def test_evaluators_callable_and_pure() -> None:

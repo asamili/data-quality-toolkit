@@ -6,6 +6,140 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ## [Unreleased]
 
+No entries yet. Work that has not been assigned to a version is recorded here.
+
+## [2.10.0]
+
+Release candidate. DQT 2.10.0 has passed technical release-readiness, release
+packaging, and clean-room installation qualification. Its distributables and
+their SHA-256 checksums are the assets of the v2.10.0 GitHub Release, and
+`checksums.txt` lists them. Package metadata and the shared fallback version
+report `2.10.0`. This entry records the additive work since 2.9.6.
+
+### Added
+
+- Managed dataset-version lifecycle. Immutable `DatasetVersionRecord` contracts
+  with full-content SHA-256 identity, an order-independent recipe digest, and
+  one-parent lineage (unmanaged parents supported); a single atomic dataset
+  activation primitive that invalidates derived session state and rolls back on
+  failure; explicit confirmation of a previewed Preprocess result into a
+  registered version, published by exclusive create with the sidecar as the
+  registration boundary; managed-version discovery, explicit reopen, recipe
+  reprocessing, and bounded lineage presentation.
+- Bounded lifecycle diagnostics and operator-confirmed cleanup of verified
+  abandoned temporary artifacts. No automatic repair and no background deletion.
+- Active-version identity presentation. One shared, display-safe presentation
+  model used by both the Start panel and the downstream source callout; it
+  carries no absolute path, full UUID, content ID, family ID, or parent identity.
+- Export alignment with the active dataset. `EXPORT_CSV_PATH` became
+  dataset-derived state, and a Streamlit-free `export_alignment` service
+  classifies the effective Export source (active managed, active legacy,
+  explicit override, none) by lexical path comparison only.
+- Lifecycle metadata on export manifests. Optional `source_version_id`,
+  `source_family_id`, `source_content_id`, and a fixed `source_origin` marker
+  are threaded to `Artifact.meta`, all-or-nothing, with no manifest schema or
+  `schema_version` change and no CLI/public-API signature change.
+- `export_csv_managed` public API function.
+- Artifact handoff: the latest export is handed to the Artifact Center, a
+  manifest is emitted from a confirmed export, and Deliver manifests are loaded
+  without implicit writes.
+- Smart Data Overview preview with bounded semantic grouping, representative
+  samples, compact risk signals, and active-version-aware presentation.
+- Expanded EDA visual discovery: bounded Q-Q, Pareto, structural-missingness,
+  association, and correlation views plus type-aware visual guidance.
+- Statistics Lab execution coverage: paired t-test, one- and two-proportion
+  z-tests, and chi-square goodness-of-fit, independence, and homogeneity
+  runners, all routed through the existing `run_statistical_test` seam with
+  scipy still optional behind the `[stats]` extra.
+- Statistics Lab result visualization: bounded evidence charts, uncertainty
+  displays, and cautious interpretation guidance.
+- Preprocess power calculated operation, with improved power modes and
+  constants.
+
+### Changed
+
+- Deliver journey order: Quality History moved from Operate into Deliver, and
+  Deliver is ordered Export → Quality History → Artifact Center. All 16 pages,
+  routes, and url_paths are unchanged and the flat "Step N of 16" contract is
+  retained.
+- `SRC_RUN_ID` split into `SRC_SESSION_RUN_ID` (operator-entered Sessions Root
+  folder, never written by Export) and `SRC_EXPORT_RUN_ID` (read-only evidence
+  written only by Export). `PIPE_RUN_ID` removed. Core pipeline run IDs, the
+  export result model, manifests, and database schemas are untouched.
+- Removed stale Docker/Compose deployment definitions (`docker/` and the root
+  `.dockerignore`) that are not part of the supported 2.10.0 runtime surface.
+
+### Fixed
+
+- Version confirmation could silently overwrite an existing processed CSV,
+  recipe, or another writer's sidecar between reservation and finalization.
+  Final paths are now published with `os.link`, so an existing target is never
+  replaced or truncated; there is deliberately no overwrite-capable fallback,
+  and an unsupported filesystem fails closed while preserving unmanaged output.
+- Proportion tests merged distinct native values through text conversion.
+  Category identity is now type-aware, non-finite numeric group values are
+  classified as invalid rows, and collision-safe labels reject opaque
+  representations, control characters, and over-long text.
+- `ParentRef` rejected an unmanaged immediate parent; `version_id` is now
+  explicitly nullable and always serialized.
+- Preprocessing-created version records must retain parent and recipe
+  references, while valid schema-1 records stay compatible.
+- Managed and newly confirmed version labels now use one shared short-version
+  formatter; persisted identity is unchanged.
+- A first activation no longer clears an operator-entered Export path.
+- Artifact Center navigation used a bare url_path that real Streamlit cannot
+  resolve for a callable-based page; a shared page factory is now used, and a
+  missing `artifacts.json` renders as an informational empty state rather than
+  an error banner.
+- Export → Quality History handoff corrected; Quality History no longer claims a
+  Run ID control that does not exist on the page.
+- scipy-optional runtime paths and CI mypy failures in the statistics surface.
+- Export path spellings in tests are host-native.
+
+### Notes
+
+- The wheel and sdist were built once from the frozen public source snapshot and
+  are published unchanged; the release workflow verifies them against the
+  release manifest and never rebuilds them.
+- Technical MVP, technical release readiness, release packaging, and clean-room
+  installation qualification: passed.
+
+## [2.9.6] — UI journey and Statistics Lab track (not separately released; included in 2.10.0)
+
+Version 2.9.6 was not released separately; its changes first ship publicly in 2.10.0. Package metadata reported `2.9.6` at that stage.
+
+- Aligned the UI journey, help surface, and supporting docs around the accepted 16-page / 16-step operator journey.
+- Added the Statistics Lab Power & Sample Size tab for bounded mean, proportion, variance, and Cohen's d planning workflows.
+- Added the Statistics Lab Distributions tab for dependency-light distribution exploration and comparison workflows.
+- Added an informational Statistics Lab assumption-check display (normality via Shapiro-Wilk, equal variance via Levene, sample-size and missing-value summaries) to help operators interpret statistical tests. The panel is display/service only: it does not change test selection, recommendations, or any p-value verdict, and scipy stays optional behind the `[stats]` extra with structured unavailable statuses when absent.
+- Added a Wilcoxon signed-rank test for paired/dependent numeric columns in Statistics Lab as a user-selected paired nonparametric option. It is scipy-guarded behind the `[stats]` extra, drops incomplete pairs, and reports a structured result with interpretation and caveat. It does not change the automatic test-selection matrix, recommendations, or any p-value verdict threshold.
+- Added lightweight result download and workspace-save actions for Statistics Lab outputs, including CSV downloads where tabular results are available.
+- Aligned the Export and Quality History handoff around the export-created `dqt.db` at `<output_dir>/dqt.db`.
+- Aligned private version metadata and the shared fallback version to `2.9.6`.
+- Kept release actions out of scope: no package publication, tag, push, public release, or public snapshot work was performed.
+
+## [2.9.5] — built-in quality catalog track (not separately released; included in 2.10.0)
+
+Version 2.9.5 was not released separately; its changes first ship publicly in 2.10.0. At that stage, version metadata stayed at 2.9.0; the later v2.9.6 metadata alignment is tracked above. This work added a built-in current-star / proxy DQT quality semantic catalog in source, public API helpers, the additive `dqt kpi-builtin` CLI family, and exporter semantic-contract validation for star / Power BI package outputs. This does not complete the full canonical BI semantic model.
+
+- Added the statistics surface: dependency-light statistics kernel modules for descriptive summaries, distributions, intervals, effect size, bootstrap intervals, and power helpers, plus typed hypothesis contracts, a 14-test selection matrix, an explicit p-value engine, and numeric A/B orchestration.
+- Added public API/root exports for the statistics workflows: `stats_profile_csv`, `select_statistical_test`, `run_statistical_test`, and `compare_ab`, with typed result contracts for statistics profiles, test selection, test results, and A/B comparison results.
+- Added the additive `dqt stats` CLI family: `profile`, `select-test`, `test`, and `ab`. The commands preserve CLI stdout/stderr conventions, structured status results, and optional-dependency install hints.
+- Improved EDA Explorer in the UI with a missingness bar, correlation heatmap, configurable histogram bins, categorical top-N including an optional missing bucket, bounded scatter sampling, numeric-by-category distribution summaries, datetime trend confidence thresholding, an outlier bar, and reduced repeated table/chart noise.
+- Added Statistics Lab workflows for a DQT-native profile, hypothesis test selection, statistical test runner, and numeric A/B comparison while preserving the existing normality and group-comparison panels.
+- Preserved the optional-dependency boundary: scipy remains behind the existing `[stats]` extra, missing-scipy paths return structured unavailable statuses, and no new dependency was added for the statistics/API/CLI/EDA/UI work.
+- Deferred notebook/ipwidgets workflows, statsmodels-dependent advanced power/regression/posthoc branches, Bayesian branches, DB/SQL utilities, generated PDF/report workflows, public snapshot, tag, release, and version bump to later releases.
+- Added an up-front value-proposition / strategy anchor to the README and reconciled the visible footer version signal (was `v2.8.0`).
+- Sharpened the product vision and uniqueness framing in `docs/product.md` and `docs/capability_matrix.md`.
+- Kept the canonical DQT BI semantic model (the full named quality measure set) as a **planned gap**, not a completed feature, ahead of later BI work.
+- Added a beginner **Golden Path** onboarding guide and a **BI worked example** (`docs/guides/`), grounded in current CLI/API behavior.
+- Added the built-in DQT quality semantic API (`get_builtin_quality_catalog`, `emit_builtin_quality_dax`, `validate_builtin_quality_semantic_contract`) and its typed result contracts (`BuiltinQualityCatalogResult`, `BuiltinQualityKpi`, `BuiltinQualityDaxResult`, `SemanticContractValidationResult`) in `docs/api.md`.
+- Added the additive `dqt kpi-builtin` CLI family (`catalog`, `emit-dax [--out PATH]`, `validate-contract --package/--star/--path`) — stdout/JSON behavior, `--out`, validate-contract modes, and exit codes (0 / 2 contract-or-argparse / 1 runtime) — in `docs/cli.md`, clarifying that the generic `kpi-emit` / `kpi-graph` / `kpi-validate` commands remain for user-supplied catalogs.
+- Implemented built-in semantic-contract validation for the current star / Power BI package contract, and updated `docs/capability_matrix.md`: the built-in current-star quality semantic catalog, built-in quality DAX emission, and built-in semantic-contract validation are now marked **implemented**.
+- Clarified limitations: the built-in catalog is **current-star / proxy** scoped (Quality Score is a labeled proxy, `quality_score_proxy`), and the true Quality Score plus drift / PSI, duplicate-rate, failed-quality-gate-count, and Last Run Date measures remain **held**.
+- Wired the existing statistics confidence-interval kernel (mean t-interval and bootstrap mean CI) into Statistics Lab via the UI service; additive, no api/CLI surface change, scipy stays behind the `[stats]` extra.
+- Wired the existing closed-form power/sample-size kernel (`power_mean`, `power_prop`, `required_n_mean`, `required_n_prop`, `required_n_variance`, `required_n_cohend`) into a new bounded "Power & Sample size" Statistics Lab tab via the UI service; additive planning tool, no api/CLI surface change, scipy stays behind the `[stats]` extra.
+
 ## [2.9.0] - 2026-06-21
 
 ### Added
@@ -26,10 +160,8 @@ The format is inspired by Keep a Changelog and adapted for this project.
 
 ### Notes
 
-- First public release of v2.9.0: the sanitized public snapshot, the `v2.9.0` tag, and the GitHub Release (created by the release workflow on tag push) are published to the public repository.
-- Optional local AI (StoryLens) is **off by default**: no model is bundled, no model download or inference occurs on install or at runtime, and the AI path is not exposed through the CLI or public API.
-- The public snapshot applies the project's public/private boundary exclusions; it contains no internal coordination/governance files, secrets, or model artifacts.
-- Optional `storylens-ai` dependency (`transformers>=5.0.0,<6.0.0`, `torch>=2.12.0`) remains opt-in; not added to the default install.
+- **Private-only release.** No public snapshot update. No public release. No model download. No inference activation. No CLI/API/UI AI exposure. Private push remains postponed.
+- Optional `storylens-ai` dependency (`transformers>=5.0.0,<6.0.0`, `torch>=2.12.0`) remains opt-in; not added to default dependencies.
 
 ## [2.8.0] - 2026-06-18
 

@@ -28,9 +28,17 @@ class KPI(BaseModel):
     depends_on: list[str] = Field(
         default_factory=list, description="KPI dependencies (other KPI IDs)"
     )
-    description: str | None = Field(None, description="Optional description")
-    format_string: str | None = Field(None, description="DAX format string")
+    description: str | None = Field(default=None, description="Optional description")
+    format_string: str | None = Field(default=None, description="DAX format string")
     hidden: bool = Field(default=False, description="Hide from UI")
+    source_table: str | None = Field(default=None, description="Optional source table provenance")
+    source_columns: list[str] | None = Field(
+        default=None, description="Optional source column provenance"
+    )
+    aggregation_rule: str | None = Field(
+        default=None, description="Optional aggregation provenance"
+    )
+    support_status: str | None = Field(default=None, description="Optional support/proxy status")
 
 
 class Catalog(BaseModel):
@@ -40,7 +48,7 @@ class Catalog(BaseModel):
 
     kpis: list[KPI] = Field(..., description="List of KPI definitions")
     version: str = Field(default="1.0.0", description="Catalog version")
-    description: str | None = Field(None, description="Catalog description")
+    description: str | None = Field(default=None, description="Catalog description")
 
     def get_kpi(self, kpi_id: str) -> KPI | None:
         """Get KPI by ID (None if missing)."""

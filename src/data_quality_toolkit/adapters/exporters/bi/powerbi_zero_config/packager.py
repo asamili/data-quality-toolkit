@@ -10,6 +10,7 @@ from typing import Any, TypedDict, cast
 
 import pandas as pd
 
+from data_quality_toolkit.domain.semantics.schema import Catalog
 from data_quality_toolkit.utils.logging import get_logger
 
 __all__ = ["validate_relationships", "validate_package"]
@@ -26,6 +27,15 @@ class ValidationSummary(TypedDict, total=False):
     relationships_count: int
 
 
+class _SemanticContractSummary(TypedDict, total=False):
+    valid: bool
+    errors: list[str]
+    warnings: list[str]
+    checked_kpis: int
+    checked_tables: list[str]
+    checked_columns: int
+
+
 # ------------------------ constants ------------------------ #
 
 STAR_DIR = "star"
@@ -35,6 +45,28 @@ TIME_TABLES = {"dim_time"}  # tables expected under time/
 MODEL_PBIT = "model.pbit"
 PARAMETERS_JSON = "parameters.json"
 RELATIONSHIPS_JSON = "relationships.json"
+
+_FACT_ISSUES_REQUIRED_COLUMNS = [
+    "run_id",
+    "dataset_id",
+    "column_id",
+    "issue_type",
+    "severity",
+    "category",
+    "message",
+]
+
+_REQUIRED_STAR_TABLES = [
+    "dim_dataset",
+    "dim_column",
+    "fact_profile_runs",
+    "fact_quality_metrics",
+    "fact_issues",
+]
+
+_STAR_TABLE_REQUIRED_COLUMNS = {
+    "fact_issues": _FACT_ISSUES_REQUIRED_COLUMNS,
+}
 
 
 # ------------------------ low-level helpers ------------------------ #
@@ -71,6 +103,7 @@ def _required_files() -> list[str]:
         f"{STAR_DIR}/dim_column.csv",
         f"{STAR_DIR}/fact_profile_runs.csv",
         f"{STAR_DIR}/fact_quality_metrics.csv",
+        f"{STAR_DIR}/fact_issues.csv",
         f"{TIME_DIR}/dim_time.csv",
     ]
 
@@ -126,6 +159,23 @@ def _check_parameters(package_path: Path) -> list[str]:
     except ValueError as e:
         # json.JSONDecodeError is a subclass of ValueError; no need to list both (Sonar S5713)
         errors.append(f"Invalid parameters.json: {e}")
+    return errors
+
+
+def _check_required_star_columns(star_dir: Path) -> list[str]:
+    """Validate explicit package-contract table columns."""
+    errors: list[str] = []
+    for table, required_columns in _STAR_TABLE_REQUIRED_COLUMNS.items():
+        csv_path = star_dir / f"{table}.csv"
+        if not csv_path.exists():
+            continue
+        headers = _csv_headers(csv_path)
+        if headers is None:
+            errors.append(f"Cannot read {STAR_DIR}/{table}.csv headers")
+            continue
+        missing = [col for col in required_columns if col not in headers]
+        if missing:
+            errors.append(f"{STAR_DIR}/{table}.csv missing required columns: {missing}")
     return errors
 
 
@@ -272,6 +322,154 @@ def _validate_relationships_list(
         _validate_relationship_entry(rel, headers_index, errors)
 
 
+def _looks_like_powerbi_package(path: Path) -> bool:
+    """Return True when path has the package layout rather than a bare star directory."""
+    return (path / STAR_DIR).is_dir()
+
+
+def _star_dir_for_contract(path: Path) -> Path:
+    """Resolve the star CSV directory for a package or a bare star directory."""
+    return path / STAR_DIR if _looks_like_powerbi_package(path) else path
+
+
+def _star_relpath(table: str, *, package_layout: bool) -> str:
+    """Return a human-readable relative CSV path for validation errors."""
+    filename = f"{table}.csv"
+    return f"{STAR_DIR}/{filename}" if package_layout else filename
+
+
+def _check_required_star_files(star_dir: Path, *, package_layout: bool) -> list[str]:
+    """Validate required star CSV files for package or bare-star semantic checks."""
+    errors: list[str] = []
+    for table in _REQUIRED_STAR_TABLES:
+        if not (star_dir / f"{table}.csv").exists():
+            errors.append(
+                f"Missing required file: {_star_relpath(table, package_layout=package_layout)}"
+            )
+    return errors
+
+
+def _headers_for_semantic_table(
+    table: str,
+    star_dir: Path,
+    headers_cache: dict[str, list[str] | None],
+    errors: list[str],
+    *,
+    package_layout: bool,
+) -> list[str] | None:
+    """Load and cache a source table header for semantic-contract validation."""
+    if table in headers_cache:
+        return headers_cache[table]
+
+    csv_path = star_dir / f"{table}.csv"
+    relpath = _star_relpath(table, package_layout=package_layout)
+    if not csv_path.exists():
+        errors.append(f"Missing source table CSV for semantic contract: {relpath}")
+        headers_cache[table] = None
+        return None
+
+    headers = _csv_headers(csv_path)
+    if headers is None:
+        errors.append(f"Cannot read semantic source table headers: {relpath}")
+        headers_cache[table] = None
+        return None
+
+    headers_cache[table] = headers
+    return headers
+
+
+def _source_column_ref(
+    kpi_id: str,
+    source_table: str | None,
+    source_column: str,
+    errors: list[str],
+) -> tuple[str, str] | None:
+    """Resolve a KPI source column to (table, column)."""
+    if "." in source_column:
+        table, column = source_column.split(".", 1)
+        table = table.strip()
+        column = column.strip()
+        if table and column:
+            return table, column
+        errors.append(f"KPI '{kpi_id}' has malformed source column: {source_column}")
+        return None
+
+    if source_table:
+        return source_table, source_column
+
+    errors.append(
+        f"KPI '{kpi_id}' has unqualified source column without source_table: {source_column}"
+    )
+    return None
+
+
+def _validate_semantic_contract(
+    catalog: Catalog, package_or_star_dir: Path
+) -> _SemanticContractSummary:
+    """
+    Validate KPI source provenance against exported star/package CSV headers.
+
+    Internal helper for package-contract checks. It intentionally stays out of
+    module __all__ and CLI/API surfaces.
+    """
+    root = Path(package_or_star_dir)
+    package_layout = _looks_like_powerbi_package(root)
+    star_dir = _star_dir_for_contract(root)
+
+    errors: list[str] = []
+    warnings: list[str] = []
+    checked_tables: set[str] = set()
+    checked_columns = 0
+    headers_cache: dict[str, list[str] | None] = {}
+
+    if package_layout:
+        req_errs, req_warns = _check_required(root)
+        errors.extend(req_errs)
+        warnings.extend(req_warns)
+        errors.extend(_check_parameters(root))
+    else:
+        errors.extend(_check_required_star_files(star_dir, package_layout=False))
+
+    errors.extend(_check_required_star_columns(star_dir))
+
+    for kpi in catalog.kpis:
+        if kpi.source_table:
+            checked_tables.add(kpi.source_table)
+            _headers_for_semantic_table(
+                kpi.source_table,
+                star_dir,
+                headers_cache,
+                errors,
+                package_layout=package_layout,
+            )
+
+        for source_column in kpi.source_columns or []:
+            source_ref = _source_column_ref(kpi.id, kpi.source_table, source_column, errors)
+            if source_ref is None:
+                continue
+            table, column = source_ref
+            checked_tables.add(table)
+            checked_columns += 1
+            headers = _headers_for_semantic_table(
+                table,
+                star_dir,
+                headers_cache,
+                errors,
+                package_layout=package_layout,
+            )
+            if headers is not None and column not in headers:
+                errors.append(f"KPI '{kpi.id}' source column not found: {table}.{column}")
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+        "checked_kpis": len(catalog.kpis),
+        "checked_tables": sorted(checked_tables),
+        "checked_columns": checked_columns,
+    }
+
+
 # ------------------------ public API ------------------------ #
 
 
@@ -368,7 +566,10 @@ def validate_package(package_dir: Path) -> ValidationSummary:
     # 3) Parameters sanity
     errors.extend(_check_parameters(package_path))
 
-    # 4) CSV readability
+    # 4) Explicit package-contract columns
+    errors.extend(_check_required_star_columns(package_path / STAR_DIR))
+
+    # 5) CSV readability
     csv_files = _collect_csvs(package_path)
     errors.extend(_check_csv_readability(csv_files))
 

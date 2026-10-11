@@ -10,7 +10,7 @@ data-quality-toolkit/
 │   │   └── ports.py           # Port seam (Option B layering)
 │   ├── adapters/
 │   │   ├── cli/               # Command-line interface (dqt entrypoint)
-│   │   ├── ui/                # Streamlit dashboard UI — 11-step product spine (optional [ui] extra)
+│   │   ├── ui/                # Streamlit dashboard UI — 16-page local journey (optional [ui] extra)
 │   │   ├── loaders/           # CSV loading and validation
 │   │   ├── exporters/         # Star-schema CSV, Power BI, dim_time, xlsx/duckdb/plots
 │   │   ├── reports/           # Static drift dashboard + drift-history report
@@ -28,7 +28,7 @@ data-quality-toolkit/
 
 > Module-by-module detail lives in `MODULES.md` (the primary architecture map).
 > `lineage/` currently sits outside the `domain/application/adapters` import-linter
-> contracts — a known boundary review item deferred to gate DQT-ARCH-G5.
+> contracts — a known boundary review item deferred to a later architecture review.
 
 ## CLI Structure
 
@@ -39,6 +39,24 @@ stable while command code is modular:
 - `adapters/cli/commands/` owns the per-command handlers and their parser registration (one module per command group, e.g. `profile`, `drift`, `drift_history`, `dashboard`, `ui`).
 - `adapters/cli/utils/` owns shared parser pieces (`parser.py`) and the Streamlit launcher (`streamlit_launcher.py`).
 - `dqt dashboard` and `dqt ui` share a single Streamlit launcher (`launch_streamlit_app`). The launcher keeps `import streamlit` behind a runtime guard, so importing the CLI never requires Streamlit.
+
+## Streamlit UI Journey
+
+The optional `[ui]` extra is a local Streamlit presentation adapter, not a
+required runtime dependency for the CLI/API. The navigation registry in
+`adapters/ui/app.py` and the shared step labels in `adapters/ui/journey.py`
+define the current 16-page order: Start / Load Dataset, Data Overview, EDA
+Explorer, Statistics Lab, Quality Score, Preprocess Studio, Pipeline Runner,
+Drift Monitoring, Export, Quality History, Artifact Center, KPI Catalog, Dim
+Time, Manifest Viewer, Settings / Governance, and Help / About.
+
+Statistics Lab is the numbers-focused UI page. It presents descriptive
+statistics, statistical tests, theoretical Distributions, and Power & Sample
+Size planning over the existing statistics services. Browser downloads remain
+lightweight in-memory outputs, while workspace saves are explicit opt-in writes
+under the configured Workspace Root. Export and Quality History stay separate:
+Export can create/update `dqt.db`, and Quality History reads that path for
+trends and run comparison.
 
 ## Unified Monitoring (v2.6.0)
 

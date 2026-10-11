@@ -1,374 +1,71 @@
-# Power BI Incremental Refresh Configuration
+# Power BI Incremental Refresh with DQT Outputs
 
-## 🔄 Overview
+## Overview
 
-Incremental refresh enables Power BI to efficiently update large datasets by refreshing only new or changed data. The Data Quality Toolkit automatically configures incremental refresh policies for optimal performance and reduced refresh times.
+Power BI's **native incremental refresh** updates large models by refreshing only new or
+changed partitions. DQT does not implement incremental refresh — it produces clean, BI-ready
+tables that you then wire into Power BI's own incremental-refresh feature.
 
-## 🎯 Benefits
+> **Scope.** This page explains how DQT's exported tables support a Power BI incremental-refresh
+> setup. The refresh policy itself is configured by you in Power BI Desktop / Service.
 
-- **Faster Refreshes**: Only process new/changed data
-- **Reduced Load**: Lower impact on source systems
-- **Historical Data**: Maintain years of history efficiently
-- **Resource Optimization**: Smaller refresh windows
-- **Cost Savings**: Reduced compute and transfer costs
+## What DQT provides
 
-## 📋 Prerequisites
+`dqt export` writes a star schema, and `dqt build-pbi` assembles a zero-config Power BI package
+under the output directory (default `dist/powerbi_package/`):
 
-### Requirements
-- Power BI Pro or Premium license
-- Date column in fact tables
-- RangeStart and RangeEnd parameters
-- Configured refresh policy
-
-### Supported Scenarios
-- Time-based fact tables
-- Event logs and transactions
-- Sensor/telemetry data
-- Audit trails
-- Any date-partitioned data
-
-## 🔧 Configuration
-
-### 1. Parameters Setup
-
-The toolkit automatically creates these Power Query parameters:
-
-```powerquery
-// Generated in parameters.json
-RangeStart = #datetime(2024, 1, 1, 0, 0, 0)  // Type: DateTime
-RangeEnd = #datetime(2025, 12, 31, 23, 59, 59)  // Type: DateTime
-```
-
-**Location**: `dist/powerbi_package/parameters.json`
-
-### 2. Filter Configuration
-
-Each fact table query includes date filtering:
-
-```powerquery
-// Automatically applied to fact tables
-let
-    Source = Csv.Document(...),
-    Filtered = Table.SelectRows(Source, each
-        [transaction_date] >= RangeStart and
-        [transaction_date] < RangeEnd
-    )
-in
-    Filtered
-```
-
-### 3. Policy Definition
-
-Configure refresh policy in `config/incremental_refresh.yaml`:
-
-```yaml
-incremental_refresh:
-  fact_sales:
-    enabled: true
-    historical_period:
-      value: 3
-      unit: Years
-    incremental_period:
-      value: 10
-      unit: Days
-    detect_data_changes: false
-    only_refresh_complete_periods: true
-
-  fact_events:
-    enabled: true
-    historical_period:
-      value: 1
-      unit: Years
-    incremental_period:
-      value: 1
-      unit: Days
-    detect_data_changes: true
-    detect_column: modified_date
-```
-
-## 📊 Implementation Steps
-
-### Step 1: Generate Configuration
+- `star/` — `dim_dataset.csv`, `dim_column.csv`, `fact_profile_runs.csv`, `fact_quality_metrics.csv`
+- `time/dim_time.csv` — the time dimension (`dqt gen-dim-time`, fiscal-aware)
+- `relationships.json` — star relationships (fact → dimension, many-to-one, single cross-filter)
+- `parameters.json` — a single **`BaseFolder`** Power Query parameter (folder where the CSVs live)
+- `model.pbit` — copied only if a template is bundled; otherwise a `model.pbit.README` placeholder
+- `README.txt` — load instructions
 
 ```bash
-# Generate incremental refresh configuration
-python scripts/configure_incremental_refresh.py \
-  --input config/incremental_refresh.yaml \
-  --output dist/powerbi_package/
+dqt export data/orders.csv --outdir dist/
+dqt build-pbi --star dist/star --out dist/powerbi_package
 ```
 
-### Step 2: Apply in Power BI
+## What DQT does NOT provide
 
-1. Open the generated `.pbit` file
-2. Navigate to each fact table
-3. Right-click → Incremental refresh
-4. Configure using generated settings
-5. Publish to Power BI Service
+DQT does **not** generate any of the following — configure them yourself in Power BI Desktop /
+Service:
 
-### Step 3: Verify Setup
+- Incremental-refresh policies, partitions, or refresh schedules
+- `RangeStart` / `RangeEnd` parameters — the emitted `parameters.json` defines **only** `BaseFolder`
+- Service refresh settings, deployment rules, or `.pbit` incremental-refresh automation
+- Any `config/*.yaml` refresh configuration (none is read by DQT)
 
-```dax
-// Test query to verify filtering
-EVALUATE
-SUMMARIZE(
-    fact_sales,
-    "Min Date", MIN(fact_sales[transaction_date]),
-    "Max Date", MAX(fact_sales[transaction_date]),
-    "Row Count", COUNTROWS(fact_sales)
-)
-```
+## Configuring incremental refresh in Power BI
 
-## 🎛️ Policy Settings
+1. Load the DQT package (`model.pbit`, or the CSVs under `star/` and `time/`), entering the
+   `BaseFolder` parameter value when prompted.
+2. Add `RangeStart` and `RangeEnd` **DateTime** parameters in Power Query.
+3. Filter each fact query on its date column between `RangeStart` (inclusive) and `RangeEnd`
+   (exclusive). Keep the filter foldable so it pushes down to the source.
+4. On the fact table, set up Incremental refresh (historical window + incremental window) and
+   publish to the Service.
 
-### Historical Period
-- **Purpose**: Data to keep permanently
-- **Recommended**: 2-3 years
-- **Format**: Number + Years/Months
+> Tip: relate facts to `dim_time` on `time_id`. DQT already scaffolds this relationship in
+> `relationships.json` when the fact carries a `time_id` column.
 
-### Incremental Period
-- **Purpose**: Data to refresh regularly
-- **Recommended**: 7-30 days
-- **Format**: Number + Days
+## Validation
 
-### Detect Data Changes
-- **Purpose**: Identify modified rows
-- **Requires**: Last modified column
-- **Performance**: May impact refresh time
+DQT ships no incremental-refresh validator. Validate inside Power BI: confirm `RangeStart` /
+`RangeEnd` are typed `DateTime`, that the date filter folds to the source, and that a development
+refresh returns the expected partitions before publishing.
 
-### Only Refresh Complete Periods
-- **Purpose**: Avoid partial period data
-- **Default**: True
-- **Use Case**: Daily/monthly aggregations
+## External references
 
-## 📈 Refresh Strategies
+- [Microsoft: Incremental refresh overview](https://learn.microsoft.com/power-bi/connect-data/incremental-refresh-overview)
+- [Microsoft: Query folding](https://learn.microsoft.com/power-query/query-folding-basics)
 
-### 1. Rolling Window (Default)
-```yaml
-strategy: rolling_window
-historical: 3 Years
-incremental: 10 Days
-```
-- Keeps 3 years of history
-- Refreshes last 10 days
-- Suitable for most scenarios
-
-### 2. Archive Pattern
-```yaml
-strategy: archive
-historical: 5 Years
-incremental: 1 Month
-archive_after: 1 Year
-```
-- Long-term historical storage
-- Monthly refresh for recent data
-- Archives older partitions
-
-### 3. Real-time Pattern
-```yaml
-strategy: realtime
-historical: 6 Months
-incremental: 1 Day
-polling_interval: 1 Hour
-```
-- Near real-time updates
-- Shorter historical window
-- Frequent refresh cycles
-
-### 4. Hybrid Pattern
-```yaml
-strategy: hybrid
-current_year: Daily
-previous_year: Weekly
-historical: Monthly
-```
-- Variable refresh frequencies
-- Optimizes for data patterns
-- Balances performance/freshness
-
-## 🔍 Monitoring and Validation
-
-### Refresh History
-
-Check refresh performance:
-
-```sql
--- Power BI Service Admin API
-GET https://api.powerbi.com/v1.0/myorg/datasets/{datasetId}/refreshes
-```
-
-### Partition Information
-
-```dax
-// View partition details
-EVALUATE
-INFO.PARTITIONS()
-```
-
-### Performance Metrics
-
-Monitor these KPIs:
-- Refresh duration
-- Rows processed
-- Partition count
-- Data volume
-- Error rate
-
-## 🚨 Common Issues
-
-### Issue: Parameters Not Recognized
-
-**Symptom**: RangeStart/RangeEnd not filtering data
-
-**Solution**:
-```powerquery
-// Ensure parameter types
-RangeStart = #datetime(2024, 1, 1, 0, 0, 0) meta [IsParameterQuery=true, Type="DateTime"]
-RangeEnd = #datetime(2025, 12, 31, 23, 59, 59) meta [IsParameterQuery=true, Type="DateTime"]
-```
-
-### Issue: Duplicate Data
-
-**Symptom**: Same records appear multiple times
-
-**Solution**:
-1. Check date column consistency
-2. Verify filter logic
-3. Ensure unique constraints
-4. Review overlap periods
-
-### Issue: Missing Recent Data
-
-**Symptom**: Latest data not appearing
-
-**Solution**:
-1. Verify incremental period covers today
-2. Check time zone settings
-3. Confirm source data availability
-4. Review refresh schedule
-
-### Issue: Slow Refresh Performance
-
-**Symptom**: Refresh takes too long
-
-**Solution**:
-1. Reduce incremental period
-2. Add indexes on date columns
-3. Optimize source queries
-4. Enable query folding
-
-## ⚡ Performance Optimization
-
-### 1. Query Folding
-Ensure filters push down to source:
-
-```powerquery
-// Good: Foldable
-Table.SelectRows(Source, each [date] >= RangeStart)
-
-// Bad: Non-foldable
-Table.SelectRows(Source, each Date.From([date]) >= Date.From(RangeStart))
-```
-
-### 2. Partition Sizing
-- Target: 10-50 million rows per partition
-- Avoid: Too many small partitions
-- Balance: Processing time vs. granularity
-
-### 3. Source Optimization
-- Add indexes on filter columns
-- Partition source tables
-- Use columnar storage
-- Implement CDC if available
-
-## 📊 Advanced Configuration
-
-### Custom Date Columns
-
-```yaml
-date_columns:
-  fact_sales: order_date
-  fact_inventory: snapshot_date
-  fact_events: event_timestamp
-```
-
-### Multiple Date Filters
-
-```yaml
-complex_filter:
-  fact_orders:
-    primary: order_date
-    secondary: ship_date
-    logic: "order_date >= RangeStart OR ship_date >= RangeStart"
-```
-
-### Time Zone Handling
-
-```yaml
-timezone:
-  source: "UTC"
-  target: "America/New_York"
-  conversion: automatic
-```
-
-## 🔐 Security Considerations
-
-### Data Retention
-- Comply with retention policies
-- Implement data purging
-- Document retention rules
-
-### Access Control
-- Limit parameter modification
-- Secure refresh credentials
-- Audit refresh activities
-
-## 📋 Validation Checklist
-
-Before deploying incremental refresh:
-
-- [ ] RangeStart/RangeEnd parameters created
-- [ ] Date filters applied to queries
-- [ ] Policy configured for each table
-- [ ] Test refresh in development
-- [ ] Verify data completeness
-- [ ] Monitor initial refreshes
-- [ ] Document configuration
-- [ ] Set up alerting
-
-## 🛠️ Troubleshooting Script
-
-```python
-# scripts/validate_incremental_refresh.py
-from data_quality_toolkit.exporters.bi import validate_incremental_refresh
-
-# Validate configuration
-issues = validate_incremental_refresh(
-    config_path="config/incremental_refresh.yaml",
-    model_path="dist/powerbi_package/model.pbit"
-)
-
-if issues:
-    print("Issues found:")
-    for issue in issues:
-        print(f"  - {issue}")
-else:
-    print("✅ Incremental refresh configuration valid")
-```
-
-## 📚 Related Documentation
+## Related documentation
 
 - [Date Table Configuration](date_table.md)
 - [RLS Testing Guide](rls_testing.md)
-- [Performance Tuning](../performance/tuning.md)
-- [Power BI Best Practices](../powerbi_best_practices.md)
-
-## 🔗 External Resources
-
-- [Microsoft: Incremental Refresh](https://docs.microsoft.com/power-bi/connect-data/incremental-refresh-overview)
-- [Power BI REST API](https://docs.microsoft.com/rest/api/power-bi/)
-- [Query Folding Guide](https://docs.microsoft.com/power-query/query-folding-basics)
 
 ---
 
-**Last Updated**: August 2025
-**Toolkit Version**: 0.0.0
+**Last Updated**: June 2026
+**Toolkit Version**: 2.10.0

@@ -1,4 +1,4 @@
-"""Smoke tests for the G1 UI restructure: page modules and the app shell router.
+"""Smoke tests for the UI restructure: page modules and the app shell router.
 
 Verifies each feature page exposes a callable ``render`` entry point and that
 ``app.main`` registers all pages with ``st.navigation``/``st.Page`` — without

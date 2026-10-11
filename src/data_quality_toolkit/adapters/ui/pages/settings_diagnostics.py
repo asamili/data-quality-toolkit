@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from data_quality_toolkit.adapters.ui import journey
+from data_quality_toolkit.adapters.ui.components.errors import redact_message_paths
+from data_quality_toolkit.adapters.ui.components.page_guidance import render_page_guidance
 from data_quality_toolkit.adapters.ui.components.page_shell import (
     render_page_header,
     render_section_header,
@@ -27,7 +30,16 @@ def _render_settings_governance(st: Any) -> None:
         st,
         "Settings / Governance",
         "Truthful, read-only runtime, capability, and governance information.",
-        step_label="Step 10 of 11 — Settings / Governance",
+        step_label=journey.step_label("settings_diagnostics"),
+    )
+    render_page_guidance(
+        st,
+        purpose="View truthful runtime, capability, and governance information.",
+        inputs="None — reads the current environment.",
+        workflow="Review versions, optional dependencies, thresholds, and the privacy/compute "
+        "posture.",
+        safety="Optional local AI is default-off; no secrets or absolute paths are exposed.",
+        next_step="Help / About",
     )
 
     render_section_header(st, "Versions")
@@ -58,9 +70,9 @@ def _render_settings_governance(st: Any) -> None:
     if st.button("Run writable-directory probe", key=_PROBE_BTN):
         success, err = diagnostics.probe_writable_dir(probe_path)
         if success:
-            st.success(f"Writable: {probe_path}")
+            st.success(f"Writable: {redact_message_paths(probe_path)}")
         else:
-            st.error(f"Not writable: {err}")
+            st.error(f"Not writable: {redact_message_paths(err)}")
 
 
 def render() -> None:

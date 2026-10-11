@@ -168,6 +168,45 @@ def test_cli_missing_file_returns_code_2(tmp_path: Path):
     assert "Error:" in r.stderr
 
 
+def test_cli_export_star_outdir_is_existing_file_returns_code_2(tmp_path: Path):
+    """--outdir pointed at an existing file is contained, not a traceback."""
+    csv = _csv(tmp_path)
+    blocker = tmp_path / "blocked-target"
+    blocker.write_text("pre-existing operator file\n", encoding="utf-8")
+
+    r = _run_cli("export-star", str(csv), "--outdir", str(blocker))
+
+    assert r.returncode == 2, r.stderr
+    assert "Traceback" not in r.stderr
+    assert "FileExistsError" not in r.stderr
+    assert "as a directory" in r.stderr
+    # no success payload on stdout
+    assert r.stdout.strip() == ""
+    # the conflicting file survives untouched, and nothing else is written
+    assert blocker.is_file()
+    assert blocker.read_text(encoding="utf-8") == "pre-existing operator file\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["blocked-target", "cli_small.csv"]
+
+
+def test_cli_export_star_outdir_under_existing_file_returns_code_2(tmp_path: Path):
+    """A path component that is a file is contained the same way.
+
+    Windows reports FileExistsError for the conflicting component while POSIX
+    reports NotADirectoryError; both reach the one CLI boundary.
+    """
+    csv = _csv(tmp_path)
+    blocker = tmp_path / "blocked-target"
+    blocker.write_text("pre-existing operator file\n", encoding="utf-8")
+
+    r = _run_cli("export-star", str(csv), "--outdir", str(blocker / "nested"))
+
+    assert r.returncode == 2, r.stderr
+    assert "Traceback" not in r.stderr
+    assert ("as a directory" in r.stderr) or ("existing file" in r.stderr)
+    assert r.stdout.strip() == ""
+    assert blocker.read_text(encoding="utf-8") == "pre-existing operator file\n"
+
+
 def test_cli_profile_with_sep_encoding_na_values(tmp_path: Path):
     """
     Ensure the CLI correctly honors --sep, --encoding, and --na-values.

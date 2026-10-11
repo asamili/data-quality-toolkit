@@ -45,7 +45,7 @@ Captured 2026-05-22 (numpy 1.26.4, pandas 2.3.3, psutil 7.2.2). Raw data in
 - **Internal Baseline Only:** These benchmarks are used to detect relative regressions during development. They are not absolute performance guarantees.
 - **Machine Dependent:** Results vary significantly based on CPU, RAM speed, and Disk I/O. Always include system metadata when sharing results.
 - **Single-Threaded:** DQT profiling is currently single-threaded (pandas-based). Multi-core systems will not see linear speedups without architectural changes.
-- **Memory Boundaries:** Default `MAX_ROWS_IN_MEMORY` is 1,000,000. Datasets exceeding this require `SAMPLE_SIZE` env to enable I/O-layer sampling (`nrows`).
+- **Memory Boundaries:** Default `MAX_ROWS_IN_MEMORY` is 1,000,000, and a load still above it after sampling is refused with an error. Setting `SAMPLE_SIZE` in the environment brings a larger dataset under the ceiling: the loader reads the file in full and then randomly samples it down to that many rows (seeded per dataset, so the sample is repeatable). It is not an I/O-layer `nrows` read.
 
 ## Available Harnesses
 

@@ -21,7 +21,7 @@ def test_validation_error_subclassing():
 def test_constants_values_and_exports():
     const = importlib.import_module("data_quality_toolkit.shared.constants")
 
-    # Basic values — VERSION derives from installed package metadata (DQT-FIX-004)
+    # Basic values — VERSION derives from installed package metadata
     from importlib.metadata import version as _pkg_version
 
     assert const.VERSION == _pkg_version("data-quality-toolkit")
@@ -35,6 +35,22 @@ def test_constants_values_and_exports():
     # __all__ export surface sanity
     for name in const.__all__:
         assert hasattr(const, name), f"Exported {name} missing on module"
+
+
+def test_version_fallback_matches_private_track(monkeypatch):
+    import importlib.metadata
+
+    const = importlib.import_module("data_quality_toolkit.shared.constants")
+
+    def missing_package(_: str) -> str:
+        raise importlib.metadata.PackageNotFoundError("data-quality-toolkit")
+
+    with monkeypatch.context() as m:
+        m.setattr(importlib.metadata, "version", missing_package)
+        reloaded = importlib.reload(const)
+        assert reloaded.VERSION == "2.10.0"
+
+    importlib.reload(const)
 
 
 def test_exceptions_hierarchy_and_raise():

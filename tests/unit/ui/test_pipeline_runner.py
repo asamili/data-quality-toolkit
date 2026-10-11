@@ -11,7 +11,10 @@ from data_quality_toolkit.adapters.ui.pages.pipeline_runner import (
 from data_quality_toolkit.adapters.ui.state.context import DatasetContext
 from data_quality_toolkit.adapters.ui.state.keys import (
     DATASET_CONTEXT,
+    PIPE_CONFIRM_EXEC,
     PIPE_RUN_BTN,
+    SRC_EXPORT_RUN_ID,
+    SRC_SESSION_RUN_ID,
 )
 
 _PATCH_EXEC = "data_quality_toolkit.adapters.ui.pages.pipeline_runner._run_elt_pipeline"
@@ -103,10 +106,56 @@ def test_render_does_not_leak_absolute_paths() -> None:
     assert "C:\\Users" not in st.texts()
 
 
+# ── operator-flow structure (flow map + numbered stages + guidance) ──────────
+
+
+def test_render_shows_flow_map_caption() -> None:
+    st = FakeSt()
+    with patch(_PATCH_EXEC):
+        _render_pipeline_runner(st, {DATASET_CONTEXT: _CTX})
+    text = st.texts()
+    assert "Flow: 1 Check dataset readiness" in text
+    assert "5 Run legacy scaffold (optional, gated)" in text
+
+
+def test_render_shows_numbered_stages_in_order() -> None:
+    st = FakeSt()
+    with patch(_PATCH_EXEC):
+        _render_pipeline_runner(st, {DATASET_CONTEXT: _CTX})
+    text = st.texts()
+    stages = [
+        "1 · Dataset readiness",
+        "2 · Run configuration",
+        "3 · Step selection",
+        "4 · Dry-run preview",
+        "5 · Existing execution scaffold (advanced)",
+    ]
+    positions = [text.index(stage) for stage in stages]
+    assert positions == sorted(positions)
+
+
+def test_step_selection_caption_explains_preview_scope() -> None:
+    st = FakeSt()
+    with patch(_PATCH_EXEC):
+        _render_pipeline_runner(st, {DATASET_CONTEXT: _CTX})
+    text = st.texts()
+    assert "Checkboxes control which steps appear in the dry-run plan below" in text
+    assert "nothing runs and nothing is written" in text
+
+
+def test_stage_captions_state_nothing_runs_until_click() -> None:
+    st = FakeSt()
+    with patch(_PATCH_EXEC):
+        _render_pipeline_runner(st, {DATASET_CONTEXT: _CTX})
+    text = st.texts()
+    assert "previewing is always safe" in text
+    assert "Nothing runs until you tick the confirmation box and click the run button" in text
+
+
 def test_execution_gated_until_confirmed() -> None:
     st = FakeSt()
-    st.text_values["pipe_run_id"] = "run-1"
-    st.text_values["pipe_sessions_root"] = "sessions"
+    st.text_values["src_session_run_id"] = "run-1"
+    st.text_values["src_sessions_root"] = "sessions"
     st.button_values[PIPE_RUN_BTN] = True  # user clicks run
     # confirm checkbox stays unchecked (defaults to value=False)
     with patch(_PATCH_EXEC) as mock_exec:
@@ -117,11 +166,59 @@ def test_execution_gated_until_confirmed() -> None:
 
 def test_execution_runs_only_when_confirmed_and_clicked() -> None:
     st = FakeSt()
-    st.text_values["pipe_run_id"] = "run-1"
-    st.text_values["pipe_sessions_root"] = "sessions"
+    st.text_values["src_session_run_id"] = "run-1"
+    st.text_values["src_sessions_root"] = "sessions"
     st.button_values[PIPE_RUN_BTN] = True
     st.checkbox_values["pipe_confirm_exec"] = True
     with patch(_PATCH_EXEC, return_value=({"status": "success"}, None)) as mock_exec:
         _render_pipeline_runner(st, {DATASET_CONTEXT: _CTX})
     mock_exec.assert_called_once()
     assert st.called("success")
+
+
+# ── P5B: session-run identity, never export-run identity ────────────────────
+
+
+def test_scaffold_reads_the_session_run_id_as_the_session_folder() -> None:
+    st = FakeSt()
+    st.text_values[SRC_SESSION_RUN_ID] = "session-folder-1"
+    st.text_values["src_sessions_root"] = "sessions"
+    st.button_values[PIPE_RUN_BTN] = True
+    st.checkbox_values[PIPE_CONFIRM_EXEC] = True
+
+    with patch(_PATCH_EXEC, return_value=({"status": "success"}, None)) as mock_exec:
+        _render_pipeline_runner(st, {DATASET_CONTEXT: _CTX})
+
+    mock_exec.assert_called_once_with("session-folder-1", "sessions")
+
+
+def test_scaffold_never_uses_the_export_run_id_as_a_session_folder() -> None:
+    st = FakeSt()
+    # An export-run ID present in shared state must be invisible to this page.
+    st.text_values["src_sessions_root"] = "sessions"
+    st.button_values[PIPE_RUN_BTN] = True
+    st.checkbox_values[PIPE_CONFIRM_EXEC] = True
+    state: dict[str, Any] = {
+        DATASET_CONTEXT: _CTX,
+        SRC_EXPORT_RUN_ID: "run-from-an-export",
+    }
+
+    with patch(_PATCH_EXEC) as mock_exec:
+        _render_pipeline_runner(st, state)
+
+    # No Session Run ID was entered, so the run is refused rather than silently
+    # falling back to the export-run ID as a folder name.
+    mock_exec.assert_not_called()
+    assert st.called("error")
+
+
+def test_session_run_input_is_the_only_run_id_control() -> None:
+    st = FakeSt()
+    _render_pipeline_runner(st, {DATASET_CONTEXT: _CTX})
+
+    run_id_keys = [
+        call[2].get("key")
+        for call in st.calls
+        if call[0] == "text_input" and "run" in str(call[2].get("key", ""))
+    ]
+    assert run_id_keys == [SRC_SESSION_RUN_ID]

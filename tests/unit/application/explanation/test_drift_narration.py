@@ -1,4 +1,4 @@
-"""Focused G27H-A deterministic drift-narration + provenance tests.
+"""Focused deterministic drift-narration + provenance tests.
 
 The drift narrators are pure: equal inputs produce equal outputs, they attach
 deterministic provenance, and they never leak DB paths, raw bin labels, raw

@@ -1,7 +1,7 @@
 """Unit tests for the dashboard UI helpers (eda + services) and the app shell.
 
 No live Streamlit required. Helper functions moved from app.py into
-adapters/ui/services during the G1 UI restructure; imports point at their
+adapters/ui/services during the UI restructure; imports point at their
 canonical homes.
 """
 

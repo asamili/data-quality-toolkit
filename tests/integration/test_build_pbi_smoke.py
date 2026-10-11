@@ -57,6 +57,21 @@ def _write_star(tmp: Path) -> Path:
         ]
     ).to_csv(star / "fact_quality_metrics.csv", index=False)
 
+    # fact_issues
+    pd.DataFrame(
+        [
+            {
+                "run_id": "r1",
+                "dataset_id": "ds1",
+                "column_id": "ds1:id",
+                "issue_type": "nulls",
+                "severity": "warning",
+                "category": "completeness",
+                "message": "fixture issue",
+            }
+        ]
+    ).to_csv(star / "fact_issues.csv", index=False)
+
     return star
 
 
@@ -88,6 +103,7 @@ def test_build_pbi_end_to_end(tmp_path: Path):
     assert (package_dir / "star" / "dim_column.csv").exists()
     assert (package_dir / "star" / "fact_profile_runs.csv").exists()
     assert (package_dir / "star" / "fact_quality_metrics.csv").exists()
+    assert (package_dir / "star" / "fact_issues.csv").exists()
     assert (package_dir / "time" / "dim_time.csv").exists()
     assert (package_dir / "README.txt").exists()
 

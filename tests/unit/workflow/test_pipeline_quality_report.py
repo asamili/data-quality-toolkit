@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 def test_quality_report_written(tmp_path: Path, monkeypatch: object) -> None:
@@ -102,6 +102,36 @@ def test_quality_report_artifacts_subset(tmp_path: Path) -> None:
     assert "relationships" not in report["artifacts"]
     assert "dim_dataset" in report["artifacts"]
     assert "fact_issues" in report["artifacts"]
+
+
+def test_quality_report_artifacts_are_export_root_relative(tmp_path: Path) -> None:
+    """Artifact locators survive moving the export folder and name no host path."""
+    from data_quality_toolkit.application.workflow.pipeline import run_export_star
+
+    csv_file = tmp_path / "src" / "data.csv"
+    csv_file.parent.mkdir()
+    csv_file.write_text("x,y\n1,2\n", encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    out = run_export_star(str(csv_file), output_dir=str(out_dir))
+    report_text = Path(out["export_paths"]["quality_report"]).read_text(encoding="utf-8")
+    artifacts = json.loads(report_text)["artifacts"]
+
+    assert artifacts == {
+        name: f"star/{name}.csv"
+        for name in (
+            "dim_dataset",
+            "dim_column",
+            "fact_profile_runs",
+            "fact_quality_metrics",
+            "fact_issues",
+        )
+    }
+    for locator in artifacts.values():
+        assert ".." not in PurePosixPath(locator).parts
+        assert (out_dir / locator).is_file()
+    for form in {str(tmp_path), tmp_path.as_posix(), json.dumps(str(tmp_path))[1:-1]}:
+        assert form not in report_text
 
 
 def test_history_record_includes_breakdown_fields(tmp_path: Path) -> None:

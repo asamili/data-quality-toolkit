@@ -1,5 +1,6 @@
 """Phase 3: Semantics and KPI management."""
 
+from .builtin_quality import build_builtin_quality_catalog, get_builtin_quality_catalog
 from .catalog_loader import load_catalog
 from .dag import build_graph, topo_sort
 from .dax_emitter import emit_dax, write_dax, write_tmsl
@@ -10,6 +11,8 @@ from .validators import validate_semantics
 
 __all__ = [
     "load_catalog",
+    "build_builtin_quality_catalog",
+    "get_builtin_quality_catalog",
     "build_graph",
     "topo_sort",
     "emit_dax",

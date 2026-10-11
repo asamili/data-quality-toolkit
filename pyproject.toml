@@ -1,16 +1,19 @@
 [build-system]
-requires = ["setuptools>=71.0", "wheel", "build"]
+requires = ["setuptools>=71.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "data-quality-toolkit"
-version = "2.9.0"
+version = "2.10.0"
 description = "CSV-first data quality toolkit for BI and reporting workflows: profile, assess, export, and compare run-to-run quality trends."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 license = { file = "LICENSE" }
 authors = [{ name = "Data Team" }]
 keywords = ["data-quality", "power-bi", "data-profiling", "data-pipeline", "business-intelligence"]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+]
 
 # Core dependencies for Phase 1 & 2
 dependencies = [
@@ -31,17 +34,12 @@ dependencies = [
 
     # Utilities
     "pyyaml>=6.0",
-    "jsonschema>=4.17.0",
-    "typing-extensions>=4.7.0",
-    "packaging>=23.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.3",
     "pytest-cov>=4.1.0",
-    "pytest-xdist>=3.3.0",
-    "pytest-mock>=3.12.0",
     "ruff>=0.1.0",
     "mypy>=1.5.0",
     "black>=26.3.1",
@@ -53,23 +51,12 @@ dev = [
 ]
 
 viz = [
-    "graphviz>=0.20",  # For rendering graphs
     "matplotlib>=3.7.0",  # Drift PNG plots: dqt drift-history plot
 ]
 
 test = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
-    "pytest-mock>=3.12.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-timeout>=2.1.0",
-]
-
-docs = [
-    "sphinx>=7.0.0",
-    "sphinx-rtd-theme>=1.3.0",
-    "myst-parser>=2.0.0",
-    "autodoc-pydantic>=2.0.0",
 ]
 
 powerbi = [
@@ -87,6 +74,14 @@ stats = [
 
 duckdb = [
     "duckdb>=1.0.0",  # SQLite->DuckDB drift-history mirror: dqt drift-history export-duckdb
+]
+
+# Optional faster manifest serialization backends. Both are selected by existing
+# settings and neither is ever required: SERDE_IMPL defaults to "pydantic" and
+# JSON_WRITER defaults to "json", which use pydantic + stdlib json only.
+serde = [
+    "msgspec>=0.20.0",  # Manifest serializer backend: SERDE_IMPL=msgspec
+    "orjson>=3.11.7",  # Manifest JSON writer backend: JSON_WRITER=orjson
 ]
 
 storylens-ai = [
@@ -114,12 +109,7 @@ include = ["data_quality_toolkit*"]
 
 [tool.setuptools.package-data]
 data_quality_toolkit = [
-    "*.yaml",
-    "*.json",
-    "templates/*",
-    "templates/**/*",
     "adapters/exporters/bi/templates/*",
-    "static/*",
     "py.typed"
 ]
 
@@ -145,7 +135,6 @@ fixable = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B018", "S101", "S108"]  # Allow asserts, expressions, and /tmp paths in tests
-"src/data_quality_toolkit/cli/main.py" = ["B018"]
 "scripts/*" = ["S101"]  # Allow asserts in scripts
 
 # mccabe: give the already-selected C90 rule an enforced ceiling
@@ -218,7 +207,6 @@ omit = [
     "*/tests/*",
     "*/__init__.py",
     "*/templates/*",
-    "*/static/*",
 ]
 
 [tool.coverage.report]
@@ -247,7 +235,7 @@ output = "coverage.xml"
 
 # ===== Import-linter: Architecture Boundary Contracts =====
 # Run with: lint-imports --config pyproject.toml
-# These contracts encode the Option B layered architecture (DQT-FULLSTACK-RESTRUCTURE-001B).
+# These contracts encode the Option B layered architecture.
 # Restructure complete (001C-A through 001C-G). All paths reflect the final layout.
 #
 # Layer model (final — Option B pragmatic layering, not strict hexagonal):
@@ -258,27 +246,34 @@ output = "coverage.xml"
 
 [tool.importlinter]
 root_packages = ["data_quality_toolkit"]
+# External packages are graphed so presentation-framework containment
+# (Streamlit) can be enforced statically, not merely by convention.
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Domain modules must not import adapters, application, or delivery layers"
+# Whole-package rule: source and forbidden lists are whole packages rather than an enumerated
+# subset of subpackages. The enumerated form silently exempted every package
+# added after it was written (adapters.reports, adapters.notifications,
+# application.explanation, application.monitoring, lineage), so the rule decayed
+# as the repository grew. Naming the package roots makes the contract
+# self-maintaining: a new subpackage on either side is covered on creation.
+name = "Domain must not import adapters, application, lineage, or the public API seam"
 type = "forbidden"
 source_modules = [
-    "data_quality_toolkit.domain.assessment",
-    "data_quality_toolkit.domain.profiling",
-    "data_quality_toolkit.domain.semantics",
-    "data_quality_toolkit.domain.statistics",
+    "data_quality_toolkit.domain",
 ]
 forbidden_modules = [
-    "data_quality_toolkit.adapters.loaders",
-    "data_quality_toolkit.adapters.exporters",
-    "data_quality_toolkit.adapters.storage",
-    "data_quality_toolkit.adapters.cli",
-    "data_quality_toolkit.adapters.ui",
-    "data_quality_toolkit.application.workflow",
+    "data_quality_toolkit.adapters",
+    "data_quality_toolkit.application",
+    "data_quality_toolkit.lineage",
     "data_quality_toolkit.api",
 ]
 
 [[tool.importlinter.contracts]]
+# Whole-package rule: widened from an enumerated subpackage list to the package roots, for the
+# same decay reason recorded on the domain contract above. shared/ and utils/
+# stay the cross-cutting kernel: they may depend on stdlib and third-party
+# packages freely, but on no module that owns business meaning.
 name = "Shared kernel must not import any business module"
 type = "forbidden"
 source_modules = [
@@ -286,21 +281,15 @@ source_modules = [
     "data_quality_toolkit.utils",
 ]
 forbidden_modules = [
-    "data_quality_toolkit.domain.assessment",
-    "data_quality_toolkit.domain.profiling",
-    "data_quality_toolkit.domain.semantics",
-    "data_quality_toolkit.domain.statistics",
-    "data_quality_toolkit.adapters.loaders",
-    "data_quality_toolkit.adapters.exporters",
-    "data_quality_toolkit.adapters.storage",
-    "data_quality_toolkit.application.workflow",
-    "data_quality_toolkit.adapters.cli",
-    "data_quality_toolkit.adapters.ui",
+    "data_quality_toolkit.domain",
+    "data_quality_toolkit.adapters",
+    "data_quality_toolkit.application",
+    "data_quality_toolkit.lineage",
     "data_quality_toolkit.api",
 ]
 
 [[tool.importlinter.contracts]]
-# H1 DOCUMENTED EXCEPTION (DQT-FULLSTACK-RESTRUCTURE-001B HOLD H1):
+# DOCUMENTED EXCEPTION:
 # workflow/pipeline.py (application layer) imports loaders, exporters, and storage
 # (adapter layer) directly. In strict hexagonal architecture this coupling would be
 # inverted via port interfaces. Option B is pragmatic layering, not strict hexagonal.
@@ -337,7 +326,7 @@ ignore_imports = [
 ]
 
 [[tool.importlinter.contracts]]
-# DQT-ARCH-G5D DECISION: lineage/ kept as top-level cross-cutting package.
+# ARCHITECTURE DECISION: lineage/ kept as top-level cross-cutting package.
 # Prophylactic boundary: lineage must not import adapter, application, or delivery layers.
 # Only shared kernel (shared, utils) and self-internal imports are permitted.
 name = "Lineage package must not import adapters, application, or delivery layers"
@@ -359,7 +348,7 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
-# G20B: Lock StoryLens optional AI non-exposure by import-linter contract.
+# Lock StoryLens optional AI non-exposure by import-linter contract.
 # Public API and CLI command modules must not import StoryLens AI internals.
 # Non-exposure was previously held only by convention + runtime tests;
 # this contract makes it a static, machine-checked boundary.
@@ -386,4 +375,97 @@ forbidden_modules = [
 ]
 ignore_imports = [
     "data_quality_toolkit.adapters.cli.utils.streamlit_launcher -> data_quality_toolkit.adapters.ui.app",
+]
+
+[[tool.importlinter.contracts]]
+# Static managed-export containment: managed Export/API siblings accept
+# only the shared VerifiedManagedExportSource; API and workflow layers must never
+# import the UI layer to obtain trust or provenance types.
+name = "Managed activation containment: API and workflow must not import the UI layer"
+type = "forbidden"
+source_modules = [
+    "data_quality_toolkit.api",
+    "data_quality_toolkit.application.workflow",
+]
+forbidden_modules = [
+    "data_quality_toolkit.adapters.ui",
+]
+
+# ===== Import/layer boundary hardening (whole-package contracts) =====
+# The three contracts below close enforcement gaps that were previously held by
+# module docstrings and review convention only. Each was validated against the
+# current import graph before being added, and none carries an ignore list.
+
+[[tool.importlinter.contracts]]
+# Rule 1. The UI tier is layered even though it lives under one package.
+# adapters/ui/services is this repository's de-facto application/use-case tier:
+# it owns coordination and state transitions and is deliberately kept in place
+# (see the module docstring on adapters/ui/services/__init__.py). Presentation
+# (app -> pages -> components) may depend on it; it must never depend upward on
+# presentation. Only these four modules are layered. adapters.ui.state is left
+# unlayered on purpose: services and state legitimately reference each other
+# across the session-state seam, and forcing them into this order would be a
+# false constraint.
+name = "UI presentation must depend on the ui/services application tier, never the reverse"
+type = "layers"
+layers = [
+    "data_quality_toolkit.adapters.ui.app",
+    "data_quality_toolkit.adapters.ui.pages",
+    "data_quality_toolkit.adapters.ui.components",
+    "data_quality_toolkit.adapters.ui.services",
+]
+
+[[tool.importlinter.contracts]]
+# Rule 2. Streamlit is a presentation framework, so only the render surface
+# (adapters.ui.app, adapters.ui.pages) and the CLI's subprocess launcher
+# (adapters.cli.utils.streamlit_launcher, which starts the dashboard rather than
+# rendering it) may import it. Every layer below presentation -- including the
+# ui/services application tier, whose docstrings have long declared it
+# "Streamlit-free" -- must stay framework-neutral, so the same behaviour stays
+# reachable from UI, CLI and API alike. This forbids one presentation framework,
+# not third-party dependencies in general.
+name = "Streamlit must not reach below the presentation layer"
+type = "forbidden"
+source_modules = [
+    "data_quality_toolkit.domain",
+    "data_quality_toolkit.shared",
+    "data_quality_toolkit.utils",
+    "data_quality_toolkit.application",
+    "data_quality_toolkit.lineage",
+    "data_quality_toolkit.api",
+    "data_quality_toolkit.adapters.loaders",
+    "data_quality_toolkit.adapters.exporters",
+    "data_quality_toolkit.adapters.storage",
+    "data_quality_toolkit.adapters.reports",
+    "data_quality_toolkit.adapters.notifications",
+    "data_quality_toolkit.adapters.ui.services",
+    "data_quality_toolkit.adapters.ui.components",
+    "data_quality_toolkit.adapters.ui.state",
+]
+forbidden_modules = [
+    "streamlit",
+]
+
+[[tool.importlinter.contracts]]
+# Rule 3. Backend layers must not import a delivery surface to reuse its
+# behaviour. The pre-existing managed-activation contract already pinned
+# api + application.workflow -> adapters.ui for the managed-trust finding; this
+# generalises the same direction to every backend package and to both delivery
+# surfaces, so genuinely multi-surface behaviour has to live below presentation
+# instead of being borrowed from it. The overlap with the managed-containment contract is
+# deliberate: that contract stays as the named record of its own finding.
+name = "Backend layers must not import the CLI or UI delivery surfaces"
+type = "forbidden"
+source_modules = [
+    "data_quality_toolkit.application",
+    "data_quality_toolkit.api",
+    "data_quality_toolkit.adapters.loaders",
+    "data_quality_toolkit.adapters.exporters",
+    "data_quality_toolkit.adapters.storage",
+    "data_quality_toolkit.adapters.reports",
+    "data_quality_toolkit.adapters.notifications",
+]
+forbidden_modules = [
+    "data_quality_toolkit.adapters.cli",
+    "data_quality_toolkit.adapters.ui",
 ]

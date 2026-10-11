@@ -312,7 +312,7 @@ class TestRealScipy:
 
 
 class TestAdvancedMetrics:
-    """PSI / Jensen-Shannon / Wasserstein added in v2.5.0-G24."""
+    """PSI / Jensen-Shannon / Wasserstein added in v2.5.0."""
 
     # ------------------------------------------------------------------
     # PSI — dependency-free
@@ -439,7 +439,7 @@ class TestAdvancedMetrics:
 
 
 class TestDistribution:
-    """Per-column distribution bins captured for plotting (v2.5.0-G29)."""
+    """Per-column distribution bins captured for plotting."""
 
     def _assert_valid_bins(self, dist: dict[str, Any], kind: str) -> None:
         assert dist["kind"] == kind

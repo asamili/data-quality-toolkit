@@ -21,6 +21,28 @@ logger = get_logger("dqt.exporters.bi.powerbi_zero_config.generator")
 
 DEFAULT_BASE: Final[str] = "./dist"
 
+_FACT_ISSUES_RELATIONSHIPS: Final[list[dict[str, Any]]] = [
+    {
+        "from": ["fact_issues", "dataset_id"],
+        "to": ["dim_dataset", "dataset_id"],
+        "type": "many-to-one",
+        "crossFilter": "single",
+    },
+    {
+        "from": ["fact_issues", "column_id"],
+        "to": ["dim_column", "column_id"],
+        "type": "many-to-one",
+        "crossFilter": "single",
+    },
+]
+
+_FACT_ISSUES_TABLE_SPEC: Final[dict[str, Any]] = {
+    "foreign_keys": [
+        ["dataset_id", "dim_dataset", "dataset_id"],
+        ["column_id", "dim_column", "column_id"],
+    ]
+}
+
 # ------------------------ small helpers ------------------------ #
 
 
@@ -40,6 +62,12 @@ def _csv_has_column(csv_path: Path, col: str) -> bool:
             return col in headers
     except Exception:
         return False
+
+
+def _has_fact_issues_relationship_columns(star_out: Path) -> bool:
+    """Return True when fact_issues can safely participate in the package model."""
+    fact_issues = star_out / "fact_issues.csv"
+    return _csv_has_column(fact_issues, "dataset_id") and _csv_has_column(fact_issues, "column_id")
 
 
 def render_template(template_path: Path, context: dict[str, Any]) -> str:
@@ -128,68 +156,128 @@ def _write_parameters(
     return out
 
 
+def _relationship_exists(relationships: list[Any], candidate: dict[str, Any]) -> bool:
+    """Return True if a relationship already has the same from/to endpoints."""
+    return any(
+        isinstance(rel, dict)
+        and rel.get("from") == candidate["from"]
+        and rel.get("to") == candidate["to"]
+        for rel in relationships
+    )
+
+
+def _add_fact_issues_relationships(payload: dict[str, Any]) -> dict[str, Any]:
+    """Add fact_issues table metadata and relationships to a relationships payload."""
+    tables = payload.setdefault("tables", {})
+    if isinstance(tables, dict):
+        fact_spec = tables.setdefault("fact_issues", {})
+        if isinstance(fact_spec, dict):
+            foreign_keys = fact_spec.setdefault("foreign_keys", [])
+            if isinstance(foreign_keys, list):
+                for fk in _FACT_ISSUES_TABLE_SPEC["foreign_keys"]:
+                    if fk not in foreign_keys:
+                        foreign_keys.append(fk)
+
+    relationships = payload.setdefault("relationships", [])
+    if isinstance(relationships, list):
+        for rel in _FACT_ISSUES_RELATIONSHIPS:
+            if not _relationship_exists(relationships, rel):
+                relationships.append(rel)
+
+    return payload
+
+
+def _render_relationships_content(
+    template_dir: Path,
+    *,
+    include_time_rel: bool,
+    include_fact_issues_rel: bool,
+) -> str:
+    """Render or build relationships.json and apply internal package-contract metadata."""
+    tpl = template_dir / "relationships.json.j2"
+    if tpl.exists():
+        content = render_template(tpl, {"include_time_rel": include_time_rel})
+        if not include_fact_issues_rel:
+            return content
+        try:
+            template_payload = json.loads(content)
+        except ValueError:
+            return content
+        if not isinstance(template_payload, dict):
+            return content
+        return json.dumps(_add_fact_issues_relationships(template_payload), indent=2)
+
+    payload: dict[str, Any] = {
+        "tables": {
+            "dim_dataset": {"primary_key": ["dataset_id"]},
+            "dim_column": {
+                "primary_key": ["column_id"],
+                "foreign_keys": [["dataset_id", "dim_dataset", "dataset_id"]],
+            },
+            "fact_profile_runs": {
+                "foreign_keys": [["dataset_id", "dim_dataset", "dataset_id"]],
+            },
+            "fact_quality_metrics": {
+                "foreign_keys": [["column_id", "dim_column", "column_id"]],
+            },
+            "dim_time": {"primary_key": ["time_id"]},
+        },
+        "relationships": [
+            {
+                "from": ["dim_column", "dataset_id"],
+                "to": ["dim_dataset", "dataset_id"],
+                "type": "many-to-one",
+                "crossFilter": "single",
+            },
+            {
+                "from": ["fact_profile_runs", "dataset_id"],
+                "to": ["dim_dataset", "dataset_id"],
+                "type": "many-to-one",
+                "crossFilter": "single",
+            },
+            {
+                "from": ["fact_quality_metrics", "column_id"],
+                "to": ["dim_column", "column_id"],
+                "type": "many-to-one",
+                "crossFilter": "single",
+            },
+        ],
+    }
+
+    if include_fact_issues_rel:
+        _add_fact_issues_relationships(payload)
+
+    if include_time_rel:
+        relationships_list: list[dict[str, Any]] = cast(
+            list[dict[str, Any]], payload["relationships"]
+        )
+        relationships_list.append(
+            {
+                "from": ["fact_profile_runs", "time_id"],
+                "to": ["dim_time", "time_id"],
+                "type": "many-to-one",
+                "crossFilter": "single",
+            }
+        )
+
+    return json.dumps(payload, indent=2)
+
+
 def _write_relationships(
     template_dir: Path,
     output_dir: Path,
     files_created: list[str],
     *,
     include_time_rel: bool = False,
+    include_fact_issues_rel: bool = False,
 ) -> Path:
     """Write relationships.json from template or default scaffold."""
-    tpl = template_dir / "relationships.json.j2"
     out = output_dir / "relationships.json"
-    if tpl.exists():
-        content = render_template(tpl, {"include_time_rel": include_time_rel})
-    else:
-        payload: dict[str, Any] = {
-            "tables": {
-                "dim_dataset": {"primary_key": ["dataset_id"]},
-                "dim_column": {
-                    "primary_key": ["column_id"],
-                    "foreign_keys": [["dataset_id", "dim_dataset", "dataset_id"]],
-                },
-                "fact_profile_runs": {
-                    "foreign_keys": [["dataset_id", "dim_dataset", "dataset_id"]],
-                },
-                "fact_quality_metrics": {
-                    "foreign_keys": [["column_id", "dim_column", "column_id"]],
-                },
-                "dim_time": {"primary_key": ["time_id"]},
-            },
-            "relationships": [
-                {
-                    "from": ["dim_column", "dataset_id"],
-                    "to": ["dim_dataset", "dataset_id"],
-                    "type": "many-to-one",
-                    "crossFilter": "single",
-                },
-                {
-                    "from": ["fact_profile_runs", "dataset_id"],
-                    "to": ["dim_dataset", "dataset_id"],
-                    "type": "many-to-one",
-                    "crossFilter": "single",
-                },
-                {
-                    "from": ["fact_quality_metrics", "column_id"],
-                    "to": ["dim_column", "column_id"],
-                    "type": "many-to-one",
-                    "crossFilter": "single",
-                },
-            ],
-        }
-        if include_time_rel:
-            relationships_list: list[dict[str, Any]] = cast(
-                list[dict[str, Any]], payload["relationships"]
-            )
-            relationships_list.append(
-                {
-                    "from": ["fact_profile_runs", "time_id"],
-                    "to": ["dim_time", "time_id"],
-                    "type": "many-to-one",
-                    "crossFilter": "single",
-                }
-            )
-        content = json.dumps(payload, indent=2)
+    content = _render_relationships_content(
+        template_dir,
+        include_time_rel=include_time_rel,
+        include_fact_issues_rel=include_fact_issues_rel,
+    )
 
     out.write_text(content, encoding="utf-8")
     files_created.append(str(out))
@@ -306,7 +394,14 @@ def generate_powerbi_package(
 
     # 5. relationships.json (decide conditionally)
     include_time_rel = has_time and _csv_has_column(star_out / "fact_profile_runs.csv", "time_id")
-    _write_relationships(template_dir, output_dir, files_created, include_time_rel=include_time_rel)
+    include_fact_issues_rel = _has_fact_issues_relationship_columns(star_out)
+    _write_relationships(
+        template_dir,
+        output_dir,
+        files_created,
+        include_time_rel=include_time_rel,
+        include_fact_issues_rel=include_fact_issues_rel,
+    )
 
     # 6. README
     _write_readme(output_dir, base_folder)

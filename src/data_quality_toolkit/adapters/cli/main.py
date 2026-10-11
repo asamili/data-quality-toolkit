@@ -18,13 +18,16 @@ shared helpers *through this module* at call time, so tests that
 from __future__ import annotations
 
 import argparse
+import codecs
 import importlib
 import json
 import logging
+import pkgutil
 import subprocess  # noqa: F401  (retained: tests patch ``cli.subprocess.run``)
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from types import ModuleType
 from typing import Any, cast
 
 from data_quality_toolkit.adapters.cli.utils.parser import (
@@ -50,8 +53,11 @@ from data_quality_toolkit.shared.result_types import (
     PsiThresholdResult,
 )
 from data_quality_toolkit.shared.settings import (  # noqa: F401  (re-export for cmd_settings_show/tests)
+    SettingsValidationError,
+    describe_invalid_settings,
     load_settings,
 )
+from data_quality_toolkit.shared.text_redaction import redact_paths
 from data_quality_toolkit.utils.logging import setup_logging
 
 # Backward-compatible aliases for names that moved to utils.parser (kept so any
@@ -225,6 +231,7 @@ def read_drift_columns_sqlite(
     run_id: str | None = None,
     column_name: str | None = None,
     drift_detected: bool | int | None = None,
+    run_ids: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Proxy to api.read_drift_columns_sqlite (lazy import for monkeypatching)."""
     from data_quality_toolkit.api import read_drift_columns_sqlite as _impl
@@ -234,6 +241,7 @@ def read_drift_columns_sqlite(
         run_id=run_id,
         column_name=column_name,
         drift_detected=drift_detected,
+        run_ids=run_ids,
     )
 
 
@@ -242,6 +250,7 @@ def read_drift_distributions_sqlite(
     *,
     run_id: str | None = None,
     column_name: str | None = None,
+    run_ids: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Proxy to api.read_drift_distributions_sqlite (lazy import for monkeypatching)."""
     from data_quality_toolkit.api import read_drift_distributions_sqlite as _impl
@@ -250,6 +259,7 @@ def read_drift_distributions_sqlite(
         db_path,
         run_id=run_id,
         column_name=column_name,
+        run_ids=run_ids,
     )
 
 
@@ -361,6 +371,38 @@ def evaluate_psi_threshold(
     return _impl(columns, max_psi=max_psi)
 
 
+def stats_profile_csv(path: str, **kw: Any) -> dict[str, Any]:
+    """Proxy to api.stats_profile_csv (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import stats_profile_csv as _impl
+
+    return dict(_impl(path, **kw))
+
+
+def select_statistical_test(
+    variable_type: str,
+    group_structure: str,
+    **kw: Any,
+) -> dict[str, Any]:
+    """Proxy to api.select_statistical_test (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import select_statistical_test as _impl
+
+    return dict(_impl(variable_type, group_structure, **kw))
+
+
+def run_statistical_test(test_key: str, **kw: Any) -> dict[str, Any]:
+    """Proxy to api.run_statistical_test (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import run_statistical_test as _impl
+
+    return dict(_impl(test_key, **kw))
+
+
+def compare_ab(*args: Any, **kw: Any) -> dict[str, Any]:
+    """Proxy to api.compare_ab (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import compare_ab as _impl
+
+    return dict(_impl(*args, **kw))
+
+
 def kpi_validate_catalog(config_path: str) -> dict[str, Any]:
     """Proxy to application.workflow.kpi.validate_kpi_catalog (lazy import for monkeypatching)."""
     from data_quality_toolkit.application.workflow.kpi import validate_kpi_catalog
@@ -380,6 +422,29 @@ def kpi_export_graph(config_path: str, out: str, graph_format: str = "mermaid") 
     from data_quality_toolkit.application.workflow.kpi import export_kpi_graph
 
     return export_kpi_graph(config_path, out, graph_format=graph_format)  # type: ignore[arg-type]
+
+
+def get_builtin_quality_catalog() -> dict[str, Any]:
+    """Proxy to api.get_builtin_quality_catalog (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import get_builtin_quality_catalog as _impl
+
+    return dict(_impl())
+
+
+def emit_builtin_quality_dax(output_path: str | None = None) -> dict[str, Any]:
+    """Proxy to api.emit_builtin_quality_dax (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import emit_builtin_quality_dax as _impl
+
+    return dict(_impl(output_path=output_path))
+
+
+def validate_builtin_quality_semantic_contract(
+    path: str, *, input_mode: str = "auto"
+) -> dict[str, Any]:
+    """Proxy to api.validate_builtin_quality_semantic_contract (lazy import for monkeypatching)."""
+    from data_quality_toolkit.api import validate_builtin_quality_semantic_contract as _impl
+
+    return dict(_impl(path, input_mode=input_mode))  # type: ignore[arg-type]
 
 
 def manifest_create(run_id: str, sessions_root: str) -> Any:
@@ -477,6 +542,7 @@ _assess = importlib.import_module("data_quality_toolkit.adapters.cli.commands.as
 _export = importlib.import_module("data_quality_toolkit.adapters.cli.commands.export")
 _powerbi = importlib.import_module("data_quality_toolkit.adapters.cli.commands.powerbi")
 _kpi = importlib.import_module("data_quality_toolkit.adapters.cli.commands.kpi")
+_kpi_builtin = importlib.import_module("data_quality_toolkit.adapters.cli.commands.kpi_builtin")
 _compare = importlib.import_module("data_quality_toolkit.adapters.cli.commands.compare")
 _drift = importlib.import_module("data_quality_toolkit.adapters.cli.commands.drift")
 _drift_history = importlib.import_module("data_quality_toolkit.adapters.cli.commands.drift_history")
@@ -484,6 +550,51 @@ _plan = importlib.import_module("data_quality_toolkit.adapters.cli.commands.plan
 _chart = importlib.import_module("data_quality_toolkit.adapters.cli.commands.chart")
 _dashboard = importlib.import_module("data_quality_toolkit.adapters.cli.commands.dashboard")
 _ui = importlib.import_module("data_quality_toolkit.adapters.cli.commands.ui")
+_stats = importlib.import_module("data_quality_toolkit.adapters.cli.commands.stats")
+_CORE_COMMAND_MODULES = frozenset(
+    module.__name__
+    for module in (
+        _meta,
+        _pipeline,
+        _profile,
+        _assess,
+        _export,
+        _powerbi,
+        _kpi,
+        _kpi_builtin,
+        _compare,
+        _drift,
+        _drift_history,
+        _plan,
+        _chart,
+        _dashboard,
+        _ui,
+        _stats,
+    )
+)
+
+
+def _discover_command_extensions() -> tuple[ModuleType, ...]:
+    """Import the optional command extensions shipped in the ``commands`` package.
+
+    Any module there beyond the core set above that exposes
+    ``register(subparsers)`` is an extension; a distribution may ship none. They
+    are found by listing the package, so an extension that is present is imported
+    normally and a failure inside it propagates instead of reading as absence.
+    """
+    package = importlib.import_module("data_quality_toolkit.adapters.cli.commands")
+    extensions = []
+    for info in sorted(pkgutil.iter_modules(package.__path__), key=lambda found: found.name):
+        name = f"{package.__name__}.{info.name}"
+        if info.ispkg or name in _CORE_COMMAND_MODULES:
+            continue
+        module = importlib.import_module(name)
+        if callable(getattr(module, "register", None)):
+            extensions.append(module)
+    return tuple(extensions)
+
+
+_extensions = _discover_command_extensions()
 
 # Re-export handlers so ``cli.main.cmd_*`` identity is preserved (tests assert
 # ``ns.func is cli.cmd_X`` and call ``cli.cmd_X(...)`` directly).
@@ -500,6 +611,9 @@ cmd_gen_dim_time = _powerbi.cmd_gen_dim_time
 cmd_kpi_emit = _kpi.cmd_kpi_emit
 cmd_kpi_graph = _kpi.cmd_kpi_graph
 cmd_kpi_validate = _kpi.cmd_kpi_validate
+cmd_kpi_builtin_catalog = _kpi_builtin.cmd_kpi_builtin_catalog
+cmd_kpi_builtin_emit_dax = _kpi_builtin.cmd_kpi_builtin_emit_dax
+cmd_kpi_builtin_validate_contract = _kpi_builtin.cmd_kpi_builtin_validate_contract
 cmd_compare = _compare.cmd_compare
 cmd_drift = _drift.cmd_drift
 cmd_drift_history = _drift_history.cmd_drift_history
@@ -514,6 +628,15 @@ cmd_plan = _plan.cmd_plan
 cmd_chart = _chart.cmd_chart
 cmd_dashboard = _dashboard.cmd_dashboard
 cmd_ui = _ui.cmd_ui
+cmd_stats_profile = _stats.cmd_stats_profile
+cmd_stats_select_test = _stats.cmd_stats_select_test
+cmd_stats_test = _stats.cmd_stats_test
+cmd_stats_ab = _stats.cmd_stats_ab
+# Extension handlers are re-exported the same way, never shadowing a core name.
+for _extension in _extensions:
+    for _handler_name in dir(_extension):
+        if _handler_name.startswith("cmd_"):
+            globals().setdefault(_handler_name, getattr(_extension, _handler_name))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -567,7 +690,11 @@ def build_parser() -> argparse.ArgumentParser:
     _plan.register(sub)
     _chart.register(sub)
     _dashboard.register(sub)
+    _stats.register(sub)
     _ui.register(sub)
+    _kpi_builtin.register_kpi_builtin(sub)
+    for extension in _extensions:
+        extension.register(sub)
 
     return p
 
@@ -575,19 +702,54 @@ def build_parser() -> argparse.ArgumentParser:
 _SUPPORTED_CSV_EXTENSIONS: frozenset[str] = frozenset({".csv"})
 
 
+def _redact_cli_paths(text: object) -> str:
+    """Redact absolute paths in human-facing CLI error text.
+
+    Basename-preserving: an absolute path becomes ``<path:basename>``; a bare
+    root or otherwise unparseable path becomes ``<path>``. Applied only to the
+    human (text) error surface — the ``--json-errors`` programmatic output and
+    the shared error contract keep raw paths.
+    """
+    return redact_paths(text, keep=lambda leaf: f"<path:{leaf}>", drop="<path>")
+
+
 def _print_error_info(info: ErrorInfo, *, json_errors: bool = False) -> None:
     """Print structured ErrorInfo to stderr."""
     if json_errors:
         sys.stderr.write(_json_dump({"error": info}) + "\n")
         return
-    print(f"Error: {info['message']}", file=sys.stderr)
+    print(f"Error: {_redact_cli_paths(info['message'])}", file=sys.stderr)
     if hint := info.get("hint"):
         lines = hint.splitlines()
         print(f"  Hint: {lines[0]}", file=sys.stderr)
         for line in lines[1:]:
             print(f"  {line}", file=sys.stderr)
     if detail := (info.get("metadata") or {}).get("detail"):
-        print(detail, file=sys.stderr)
+        print(_redact_cli_paths(detail), file=sys.stderr)
+
+
+def _invalid_dir_target_error_info(exc: OSError) -> ErrorInfo:
+    """Describe an expected "this path cannot be a directory" operator error.
+
+    ``FileExistsError`` (the given path is itself an existing file) and
+    ``NotADirectoryError`` (a component of it is) are ordinary operator-input
+    conditions for a directory option such as ``--outdir`` or ``--sessions-root``,
+    not internal failures. The raw path stays in the ErrorInfo, as the shared
+    error contract does; :func:`_print_error_info` redacts the human surface.
+    """
+    target = exc.filename or exc.filename2 or ""
+    located = f" '{target}'" if target else ""
+    if isinstance(exc, NotADirectoryError):
+        message = f"cannot create directory{located}: a component of the path is an existing file."
+    else:
+        message = f"cannot use{located} as a directory: a file already exists at that path."
+    info: ErrorInfo = {
+        "code": "INVALID_DIR_TARGET",
+        "message": message,
+        "exc_type": type(exc).__name__,
+        "hint": "pass a directory path, or remove or rename the conflicting file.",
+    }
+    return info
 
 
 def _print_csv_hint(args: Any) -> None:
@@ -628,6 +790,30 @@ def _validate_csv_extension(args: Any) -> str | None:
     return None
 
 
+def _validate_csv_encoding(args: Any) -> str | None:
+    """Return an error message if ``--encoding`` is not a text encoding name, else None.
+
+    The CSV readers resolve the name through Python's codec registry, which raises a
+    raw ``LookupError`` for an unknown name or a non-text codec such as ``base64``.
+    Resolving it here first reports that as operator input before any file is read,
+    and never substitutes another encoding. Only the lookup failure is handled; the
+    supplied value is not shown.
+    """
+    encoding = getattr(args, "encoding", None)
+    if encoding is None:
+        return None
+    try:
+        is_text = codecs.lookup(encoding)._is_text_encoding
+    except LookupError:
+        is_text = False
+    if is_text:
+        return None
+    return (
+        "Unsupported --encoding: not a known text encoding (the supplied value is not shown)."
+        " Use a standard encoding name such as 'utf-8' or 'latin-1'."
+    )
+
+
 def _handle_value_error(e: ValueError, args: Any, *, json_errors: bool = False) -> int:
     """Handle ValueError from pipeline, with a specific branch for ParserError."""
     if json_errors:
@@ -647,7 +833,7 @@ def _handle_value_error(e: ValueError, args: Any, *, json_errors: bool = False) 
         return 1
     # pd.errors.ParserError is a ValueError subclass — give a targeted message
     if type(e).__name__ == "ParserError":
-        print(f"Error: CSV could not be parsed: {e}", file=sys.stderr)
+        print(f"Error: CSV could not be parsed: {_redact_cli_paths(str(e))}", file=sys.stderr)
         print(
             "  Hint: check that all rows have the same number of columns"
             " and the correct delimiter (try --sep).",
@@ -655,7 +841,7 @@ def _handle_value_error(e: ValueError, args: Any, *, json_errors: bool = False) 
         )
         return 1
     info = to_error_info(e)
-    print(f"Error: {info['message']}", file=sys.stderr)
+    print(f"Error: {_redact_cli_paths(info['message'])}", file=sys.stderr)
     _print_csv_hint(args)
     return 1
 
@@ -676,8 +862,34 @@ def _apply_log_level_override(args: argparse.Namespace) -> None:
                 logging.getLogger(name).setLevel(logging.ERROR)
 
 
+def _invalid_settings_exit() -> int | None:
+    """Return 2 after reporting invalid environment-backed settings, else ``None``.
+
+    Settings come from the process environment (and an opted-in ``.env``), which
+    the operator controls, so a rejected value is operator input: it is reported
+    like an invalid ``dqt.yaml`` -- a bounded ``Error:`` line and exit 2 -- rather
+    than escaping as a traceback. Only the settings validation failure is handled;
+    the supplied value is never printed.
+    """
+    try:
+        load_settings()
+    except SettingsValidationError as e:
+        print(f"Error: invalid DQT configuration: {describe_invalid_settings(e)}.", file=sys.stderr)
+        print(
+            "  Hint: correct the environment variable (or the .env entry when"
+            " DQT_LOAD_ENV is enabled); the supplied value is not shown.",
+            file=sys.stderr,
+        )
+        return 2
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main entry point."""
+    settings_exit = _invalid_settings_exit()
+    if settings_exit is not None:
+        return settings_exit
+
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -686,10 +898,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _apply_dqt_config(args)
     except ConfigError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"Error: {_redact_cli_paths(str(e))}", file=sys.stderr)
         return 2
 
-    path_error = _validate_csv_path(args) or _validate_csv_extension(args)
+    path_error = (
+        _validate_csv_path(args) or _validate_csv_extension(args) or _validate_csv_encoding(args)
+    )
     if path_error is not None:
         print(f"Error: {path_error}", file=sys.stderr)
         return 2
@@ -707,6 +921,11 @@ def main(argv: list[str] | None = None) -> int:
     except PermissionError as e:
         _print_error_info(to_error_info(e), json_errors=getattr(args, "json_errors", False))
         return 13
+    except (FileExistsError, NotADirectoryError) as e:
+        _print_error_info(
+            _invalid_dir_target_error_info(e), json_errors=getattr(args, "json_errors", False)
+        )
+        return 2
     except UnicodeDecodeError as e:
         _print_error_info(to_error_info(e), json_errors=getattr(args, "json_errors", False))
         return 22

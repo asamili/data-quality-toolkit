@@ -1,4 +1,4 @@
-"""Focused G27H-A drift-monitoring contract tests.
+"""Focused drift-monitoring contract tests.
 
 Covers the additive ``RunRow.alpha`` projection and the contract-level
 missing-probability formatting helper. No database, no Streamlit.

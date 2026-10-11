@@ -1,4 +1,4 @@
-"""Phase 6D: minimal project-level configuration via ./dqt.yaml.
+"""Minimal project-level configuration via ./dqt.yaml.
 
 Opt-in: when ./dqt.yaml is absent, callers see an empty config and behavior
 is unchanged. Only a fixed set of CLI defaults is supported.

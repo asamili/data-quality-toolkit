@@ -3,14 +3,27 @@
 This module deliberately keeps full local paths out of display rows. Callers may
 retain full paths internally for existing write/read behavior, but the rows
 returned here contain only conservative, review-oriented metadata.
+
+Path redaction itself is not owned here: both the message form
+(``redact_message_paths``) and the value form (``redact_path_to_basename``) come
+from :mod:`data_quality_toolkit.shared.text_redaction`, the single authority for
+that policy. ``redact_path_to_basename`` is re-exported for the existing UI
+importers of this module.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
+
+from data_quality_toolkit.lineage.manifest.reader import load_manifest
+from data_quality_toolkit.shared.settings import settings
+from data_quality_toolkit.shared.text_redaction import (
+    redact_message_paths,
+    redact_path_to_basename,
+)
 
 CATEGORY_ORDER: tuple[str, ...] = (
     "data export",
@@ -76,17 +89,79 @@ class ArtifactDisplayRow:
         }
 
 
-def redact_path_to_basename(value: object) -> str:
-    """Return a host-independent basename, stripping POSIX and Windows paths."""
-    if value is None:
-        return ""
-    text = str(value).strip()
-    if not text:
-        return ""
-    normalized = text.replace("\\", "/").rstrip("/")
-    if not normalized:
-        return ""
-    return normalized.rsplit("/", 1)[-1]
+def session_manifest_path(sessions_root: str, run_id: str) -> str | None:
+    """Return ``<Sessions Root>/<Session Run ID>/<MANIFEST_FILE>``, or ``None`` when blank.
+
+    Pure path construction — touches no filesystem entry.
+    """
+    root = str(sessions_root or "").strip()
+    run = str(run_id or "").strip()
+    if not root or not run:
+        return None
+    return str(Path(root) / run / settings.manifest_file)
+
+
+def manifest_file_name() -> str:
+    """Return the configured manifest filename (``MANIFEST_FILE``), basename only.
+
+    The single UI source for naming and recognising the manifest, so display text
+    and categorisation follow the configured file rather than a literal name.
+    """
+    return redact_path_to_basename(settings.manifest_file)
+
+
+def session_directory_exists(sessions_root: str, run_id: str) -> bool:
+    """Return whether the session directory already exists (read-only check)."""
+    root = str(sessions_root or "").strip()
+    run = str(run_id or "").strip()
+    if not root or not run:
+        return False
+    try:
+        return (Path(root) / run).is_dir()
+    except OSError:
+        return False
+
+
+def load_manifest_dict(manifest_path: str | Path) -> tuple[dict[str, Any] | None, str | None]:
+    """Load an existing manifest read-only through the canonical lineage reader.
+
+    Returns ``(manifest, None)`` on success, ``(None, None)`` when the file does
+    not exist (callers decide the guidance), and ``(None, redacted_error)`` on a
+    read or schema-validation failure. Never creates a directory or file.
+    """
+    try:
+        manifest = load_manifest(manifest_path)
+    except FileNotFoundError:
+        return None, None
+    except Exception as exc:
+        return None, redact_message_paths(str(exc)) or type(exc).__name__
+    return manifest.model_dump(mode="json", by_alias=True), None
+
+
+def resolve_manifest_artifact_path(manifest_path: str | Path, raw_path: object) -> str | None:
+    """Resolve a manifest artifact path for internal local reads.
+
+    Relative values resolve against the manifest file's parent directory (never
+    the process CWD); a relative path escaping that directory returns ``None``
+    so callers mark it unavailable. Absolute values pass through unchanged to
+    preserve existing manifest source-path semantics. Raw manifest values are
+    never modified; display stays basename-first.
+    """
+    raw = str(raw_path or "").strip()
+    if not raw:
+        return None
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        return raw
+    manifest_dir = Path(manifest_path).parent
+    try:
+        base = manifest_dir.resolve(strict=False)
+        resolved = (manifest_dir / candidate).resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not resolved.is_relative_to(base):
+        return None
+    return str(resolved)
 
 
 def safe_artifact_label(value: object, fallback: str) -> str:
@@ -128,7 +203,7 @@ def infer_artifact_category(key: object, basename: str) -> str:
         return "visual evidence"
     if (
         "manifest" in haystack
-        or name == "artifacts.json"
+        or name == manifest_file_name().lower()
         or key_text == "relationships"
         or name == "relationships.json"
     ):

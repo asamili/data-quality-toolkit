@@ -66,13 +66,15 @@ print(result["package_dir"], result["files"])
 manifest = create_manifest(run_id="20240101-123456", sessions_root="dist/sessions/")
 print(manifest["run_id"], len(manifest["artifacts"]))
 
-# ELT Pipeline: create an orchestration object for complex extract/transform/load workflows.
+# ELT step scaffold: records a step plan. DQT is not an ELT engine — extract/transform/
+# load/assess are declared only; no data is read, transformed, or written for them.
+# Only .manifest() does real work. status == "success" means the scaffold completed.
 pipeline = create_elt_pipeline(run_id="manual-run-001", sessions_root="dist/sessions/")
-pipeline.extract("data/raw.csv")
-pipeline.load("data/silver.csv")
-pipeline.assess()
+pipeline.extract("data/raw.csv")   # recorded; "data/raw.csv" is not read
+pipeline.load("data/silver.csv")   # recorded; nothing is written to it
+pipeline.assess()                  # recorded; use assess_csv() to actually assess
 result = pipeline.run()
-print(result.status)
+print(result.status, [s.type for s in result.steps_executed])
 ```
 
 Optional CSV-parsing kwargs (`sep`, `encoding`, `na_values`, `sample_size`) are accepted by all CSV functions.
@@ -398,6 +400,72 @@ No secrets, environment values, webhook URL, or full local DB path appear in the
   with a redacted message.
 - `NotificationError` and `WebhookSecurityError` are part of the `DQTError` family.
 
+## Built-in DQT Quality Semantic Catalog
+
+DQT ships a small, **built-in current-star quality semantic catalog** describing the
+quality measures it can express over its own star-schema / Power BI package outputs.
+These three additive functions expose it; they are separate from the generic,
+user-supplied KPI catalog APIs (`kpi_validate`, `kpi_emit`, `kpi_graph`), which are
+unchanged.
+
+```python
+from data_quality_toolkit import (
+    get_builtin_quality_catalog,
+    emit_builtin_quality_dax,
+    validate_builtin_quality_semantic_contract,
+)
+
+# Catalog: JSON-ready summary of the built-in quality measures. No disk writes.
+catalog = get_builtin_quality_catalog()
+print(catalog["version"], catalog["measure_count"])   # e.g. "1", 11
+for m in catalog["measures"]:
+    print(m["id"], m["title"], m["support_status"], m["source_columns"])
+
+# Emit DAX for the built-in catalog. output_path=None returns the text without writing.
+result = emit_builtin_quality_dax()
+print(result["output_path"])      # None
+print(result["measure_count"])    # 11
+print(result["dax"][:40])         # "MEASURE 'Quality'[Quality Score (proxy)]..."
+
+# With a path, the DAX is written and the resolved path is returned.
+result = emit_builtin_quality_dax("dist/builtin/quality_measures.dax")
+print(result["output_path"])      # "dist/builtin/quality_measures.dax"
+
+# Validate that a star / Power BI package satisfies the built-in quality contract.
+result = validate_builtin_quality_semantic_contract("dist/powerbi_package")
+print(result["valid"], result["input_mode"])          # True, "package"
+print(result["checked_files"], result["checked_measures"])
+
+# Validate a star directory directly, or auto-detect with input_mode="auto" (default).
+result = validate_builtin_quality_semantic_contract("dist/star", input_mode="star")
+```
+
+**What each returns (high level):**
+
+- `get_builtin_quality_catalog()` → `{"version", "measure_count", "measures"}`. Each
+  measure carries `id`, `title`, `grain`, `unit`, `source_table`, `source_columns`,
+  `aggregation_rule`, `support_status`, and `description`.
+- `emit_builtin_quality_dax(output_path=None)` → `{"dax", "measure_count", "output_path"}`.
+  `output_path=None` returns the DAX text and leaves `output_path` as `None` (no write);
+  passing a path writes the file and returns its string path.
+- `validate_builtin_quality_semantic_contract(path, input_mode="auto")` →
+  `{"valid", "errors", "warnings", "checked_files", "checked_measures", "input_mode", "path"}`.
+  `input_mode` is `"auto"` (package when `<path>/star/` exists, else star), `"package"`, or
+  `"star"`. A failing contract returns `valid=False` with human-readable `errors` (it does
+  not raise for contract mismatches).
+
+**Scope and boundary:**
+
+- Validation targets **only** the built-in DQT quality semantic contract. The broad,
+  internal `_validate_semantic_contract` helper is an implementation detail and is **not**
+  part of the public API.
+- The catalog is **current-star / proxy** scoped. Its Quality Score measure is the
+  labeled `quality_score_proxy` (title *"Quality Score (proxy)"*, `support_status`
+  `"proxy-current-star"`) — **not** the true assessment `quality_score`. The following
+  measures are intentionally **held** and are not present in the catalog: a true Quality
+  Score, drift / PSI semantic measures, a duplicate-rate measure, a failed-quality-gate
+  count, and a Last Run Date.
+
 ## Public API Boundary and Typed Result Contracts
 
 ### Canonical API seam
@@ -428,6 +496,10 @@ backward-compatible.
 | `DimTimeResult` | `generate_dim_time` |
 | `KpiEmitResult` | `kpi_emit` |
 | `KpiGraphResult` | `kpi_graph` |
+| `BuiltinQualityCatalogResult` | `get_builtin_quality_catalog` |
+| `BuiltinQualityKpi` | nested in `BuiltinQualityCatalogResult.measures` |
+| `BuiltinQualityDaxResult` | `emit_builtin_quality_dax` |
+| `SemanticContractValidationResult` | `validate_builtin_quality_semantic_contract` |
 | `SummarizeDriftTrendsResult` | `summarize_drift_trends_sqlite` |
 | `DriftHistoryXlsxExportResult` | `export_drift_history_xlsx` |
 | `MonitoringDuckdbExportResult` | `export_monitoring_duckdb` |

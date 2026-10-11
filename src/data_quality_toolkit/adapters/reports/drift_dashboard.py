@@ -428,9 +428,11 @@ def build_drift_dashboard(
     The run-level overview (trend summary + recent runs) is built through the
     shared monitoring view-model ``build_monitoring_overview`` (which itself reads
     only via the root ``data_quality_toolkit.api`` seam). Column-level rows and,
-    when ``include_plots`` is true, distribution bins are fetched database-wide
-    via ``read_drift_columns_sqlite`` / ``read_drift_distributions_sqlite``. A
-    missing or empty database yields a valid zero dashboard rather than raising.
+    when ``include_plots`` is true, distribution bins are fetched via
+    ``read_drift_columns_sqlite`` / ``read_drift_distributions_sqlite``:
+    database-wide when unfiltered, and scoped to exactly the overview's runs when
+    ``current_dataset_id`` or ``limit`` filters them. A missing or empty database
+    yields a valid zero dashboard rather than raising.
     """
     from data_quality_toolkit.application.monitoring.view_model import (
         build_monitoring_overview,
@@ -439,15 +441,17 @@ def build_drift_dashboard(
     overview = build_monitoring_overview(
         db_path, current_dataset_id=current_dataset_id, limit=limit
     )
+    scoped = current_dataset_id is not None or limit is not None
+    run_ids = [run.run_id for run in overview.runs if run.run_id is not None] if scoped else None
 
     from data_quality_toolkit.api import read_drift_columns_sqlite
 
-    columns = read_drift_columns_sqlite(db_path)
+    columns = read_drift_columns_sqlite(db_path, run_ids=run_ids)
     distributions: list[dict[str, Any]] | None = None
     if include_plots:
         from data_quality_toolkit.api import read_drift_distributions_sqlite
 
-        distributions = read_drift_distributions_sqlite(db_path)
+        distributions = read_drift_distributions_sqlite(db_path, run_ids=run_ids)
     return render_drift_dashboard(
         summary=overview.summary.to_dict(),
         runs=[run.to_dict() for run in overview.runs],

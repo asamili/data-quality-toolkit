@@ -1,4 +1,4 @@
-"""Tests for --no-json flag (DQT-PATCH-004): stdout machine JSON suppression."""
+"""Tests for --no-json flag: stdout machine JSON suppression."""
 
 from __future__ import annotations
 

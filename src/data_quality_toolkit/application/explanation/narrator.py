@@ -302,7 +302,7 @@ def explain_export_artifacts(
 
 
 # ----------------------------------------------------------------------------
-# Drift-monitoring narrators (G27H-A). Pure + deterministic. Each attaches
+# Drift-monitoring narrators. Pure + deterministic. Each attaches
 # deterministic ExplanationProvenance and is specific to the Drift Explorer's
 # drift-history workflow (distinct from generic Run-History/export advice).
 # ----------------------------------------------------------------------------

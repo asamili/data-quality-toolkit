@@ -1,0 +1,145 @@
+name: Release Publish
+
+# Publishes an already-staged DRAFT GitHub Release. It never builds artifacts,
+# never creates a tag and never creates a release: the exact wheel, sdist and
+# checksums.txt are uploaded to a draft beforehand, and this workflow verifies
+# every byte against release/manifests/<version>.json before making it public.
+# Pushing a tag publishes nothing. All decisions are made by
+# scripts/release_verify.py, which fails closed.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing annotated release tag with a staged draft release (e.g. v2.10.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dqt-release-publish
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  guard:
+    name: Repository and ref guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require the public repository and main
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.ref }}
+        run: |
+          test "$REPOSITORY" = "asamili/data-quality-toolkit"
+          test "$REF" = "refs/heads/main"
+
+  publish:
+    name: Verify and publish draft release
+    needs: guard
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+    env:
+      TAG: ${{ inputs.tag }}
+      REPOSITORY: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate context and manifest
+        run: |
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "REFUSED: malformed tag input"; exit 1
+          fi
+          manifest="release/manifests/${TAG#v}.json"
+          python scripts/release_verify.py --manifest "$manifest" context \
+            --repository "$REPOSITORY" --ref "$GITHUB_REF" --tag "$TAG"
+          echo "MANIFEST=$manifest" >> "$GITHUB_ENV"
+          echo "WORK=$RUNNER_TEMP/release" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/release/assets"
+
+      - name: Locate the staged draft release
+        run: |
+          gh api --paginate --slurp "repos/$REPOSITORY/releases?per_page=100" > "$WORK/releases.json"
+          python scripts/release_verify.py --manifest "$MANIFEST" release \
+            --release-json "$WORK/releases.json" --phase draft \
+            --write-plan "$WORK/plan.tsv" --write-id "$WORK/release_id"
+
+      - name: Download the exact draft assets
+        run: |
+          while IFS=$'\t' read -r asset_id asset_name; do
+            gh api -H "Accept: application/octet-stream" \
+              "repos/$REPOSITORY/releases/assets/$asset_id" > "$WORK/assets/$asset_name"
+          done < "$WORK/plan.tsv"
+
+      - name: Verify assets, checksums and archive structure
+        run: python scripts/release_verify.py --manifest "$MANIFEST" assets --dir "$WORK/assets"
+
+      - name: Verify tag, source commit and frozen snapshot
+        run: python scripts/release_verify.py --manifest "$MANIFEST" source --repo-dir . --tag "$TAG"
+
+      - name: Verify release body
+        run: |
+          python scripts/release_verify.py --manifest "$MANIFEST" body \
+            --changelog CHANGELOG.md --write "$WORK/body.md"
+
+      - name: Require CI success on this exact commit
+        run: |
+          gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&per_page=100" \
+            > "$WORK/ci_runs.json"
+          python scripts/release_verify.py --manifest "$MANIFEST" ci \
+            --runs-json "$WORK/ci_runs.json" --sha "$GITHUB_SHA"
+
+      - name: Apply the governed body to the draft
+        run: |
+          release_id="$(cat "$WORK/release_id")"
+          gh api -X PATCH "repos/$REPOSITORY/releases/$release_id" \
+            -F "body=@$WORK/body.md" > /dev/null
+
+      - name: Re-verify the draft immediately before publication
+        run: |
+          release_id="$(cat "$WORK/release_id")"
+          gh api "repos/$REPOSITORY/releases/$release_id" > "$WORK/draft_final.json"
+          python scripts/release_verify.py --manifest "$MANIFEST" release \
+            --release-json "$WORK/draft_final.json" --phase draft \
+            --expect-plan "$WORK/plan.tsv" --check-body
+
+      - name: Publish (draft -> public)
+        run: |
+          release_id="$(cat "$WORK/release_id")"
+          gh api -X PATCH "repos/$REPOSITORY/releases/$release_id" -F draft=false > /dev/null
+
+      - name: Read back the published release
+        run: |
+          release_id="$(cat "$WORK/release_id")"
+          gh api "repos/$REPOSITORY/releases/$release_id" > "$WORK/published.json"
+          python scripts/release_verify.py --manifest "$MANIFEST" release \
+            --release-json "$WORK/published.json" --phase published \
+            --expect-plan "$WORK/plan.tsv" --check-body
+          python - "$WORK/published.json" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, sys
+          r = json.load(open(sys.argv[1], encoding="utf-8"))
+          print(f"release {r['id']} {r['tag_name']} draft={r['draft']} prerelease={r['prerelease']}")
+          print(r["html_url"])
+          for a in r["assets"]:
+              print(f"- {a['name']} {a['size']} {a.get('digest')}")
+          PY

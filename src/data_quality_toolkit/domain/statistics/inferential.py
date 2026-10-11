@@ -26,11 +26,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from data_quality_toolkit.domain.statistics.effect_size import cohen_d as _cohen_d
+
 __all__ = [
     "check_normality",
     "compare_two_groups",
     "compare_multi_group",
     "ab_compare",
+    "wilcoxon_signed_rank",
 ]
 
 _UNAVAILABLE_REASON = (
@@ -44,6 +47,15 @@ MAX_ROWS = 200_000
 MIN_GROUP_N = 3
 NORMALITY_SAMPLE_N = 5000
 NORMALITY_HARD_CAP = 5_000_000
+# Minimum clean pairs for a meaningful Wilcoxon signed-rank test.
+WILCOXON_MIN_PAIRS = 3
+
+_VALID_ALTERNATIVES = ("two-sided", "greater", "less")
+_WILCOXON_CAVEAT = (
+    "For paired/dependent numeric samples; tests whether the paired differences are "
+    "centered at zero. This is not the same as Mann-Whitney U, which is for independent "
+    "samples."
+)
 
 
 def _import_scipy_stats() -> Any | None:
@@ -66,16 +78,12 @@ def _is_numeric(series: pd.Series) -> bool:
 
 
 def _cohens_d(a: np.ndarray, b: np.ndarray) -> float:
-    """Pooled-SD Cohen's d (simple effect size). Returns 0.0 when SD is zero."""
-    na, nb = a.size, b.size
-    if na < 2 or nb < 2:
-        return 0.0
-    var_a = float(np.var(a, ddof=1))
-    var_b = float(np.var(b, ddof=1))
-    pooled = np.sqrt(((na - 1) * var_a + (nb - 1) * var_b) / (na + nb - 2))
-    if pooled == 0:
-        return 0.0
-    return float((np.mean(a) - np.mean(b)) / pooled)
+    """Pooled-SD Cohen's d (simple effect size). Returns 0.0 when SD is zero.
+
+    Delegates to ``effect_size.cohen_d`` so the pooled-SD formula has a single
+    implementation in the kernel; behavior is unchanged.
+    """
+    return _cohen_d(a, b)
 
 
 # ---------------------------------------------------------------------------
@@ -533,5 +541,116 @@ def compare_multi_group(
         base["interpretation"] = (
             f"Neither ANOVA nor Kruskal-Wallis is significant at alpha={alpha:g}; "
             "no strong evidence that groups differ."
+        )
+    return base
+
+
+# ---------------------------------------------------------------------------
+# Wilcoxon signed-rank (paired / dependent numeric samples)
+# ---------------------------------------------------------------------------
+
+
+def _wilcoxon_base(alpha: float, alternative: str) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "reason": None,
+        "alpha": alpha,
+        "scipy_available": True,
+        "test_name": "Wilcoxon signed-rank",
+        "method": "wilcoxon_signed_rank",
+        "alternative": alternative,
+        "statistic": None,
+        "p_value": None,
+        "n_pairs": 0,
+        "n_nonzero_differences": 0,
+        "significant": None,
+        "interpretation": "",
+        "caveat": _WILCOXON_CAVEAT,
+        "warnings": [],
+    }
+
+
+def wilcoxon_signed_rank(
+    sample_a: Any,
+    sample_b: Any,
+    *,
+    alpha: float = 0.05,
+    alternative: str = "two-sided",
+) -> dict[str, Any]:
+    """Wilcoxon signed-rank test for two paired numeric samples.
+
+    Pairs are formed positionally; rows where either side is non-finite are dropped
+    together. Zero differences are handled by scipy's default ``zero_method="wilcox"``
+    (they are discarded), so ``n_nonzero_differences`` must be positive. Statuses:
+    ``ok`` / ``unavailable`` / ``invalid_input`` / ``insufficient_data`` / ``error``.
+    Never raises except on invalid ``alpha``.
+    """
+    _validate_alpha(alpha)
+    if alternative not in _VALID_ALTERNATIVES:
+        base = _wilcoxon_base(alpha, alternative)
+        base["status"] = "invalid_input"
+        base["reason"] = f"alternative must be one of {_VALID_ALTERNATIVES}, got {alternative!r}"
+        base["interpretation"] = base["reason"]
+        return base
+
+    base = _wilcoxon_base(alpha, alternative)
+
+    stats_mod = _import_scipy_stats()
+    if stats_mod is None:
+        base["status"] = "unavailable"
+        base["scipy_available"] = False
+        base["reason"] = _UNAVAILABLE_REASON
+        base["interpretation"] = _UNAVAILABLE_REASON
+        return base
+
+    a = np.asarray(sample_a, dtype=float).ravel()
+    b = np.asarray(sample_b, dtype=float).ravel()
+    if a.size != b.size:
+        base["status"] = "invalid_input"
+        base["reason"] = f"paired samples must have equal length; got {a.size} and {b.size}"
+        base["interpretation"] = base["reason"]
+        return base
+
+    finite = np.isfinite(a) & np.isfinite(b)
+    a, b = a[finite], b[finite]
+    n_pairs = int(a.size)
+    base["n_pairs"] = n_pairs
+    if n_pairs < WILCOXON_MIN_PAIRS:
+        base["status"] = "insufficient_data"
+        base["reason"] = f"need at least {WILCOXON_MIN_PAIRS} complete pairs, got {n_pairs}"
+        base["interpretation"] = base["reason"]
+        return base
+
+    diffs = a - b
+    n_nonzero = int(np.count_nonzero(diffs))
+    base["n_nonzero_differences"] = n_nonzero
+    if n_nonzero == 0:
+        base["status"] = "insufficient_data"
+        base["reason"] = "all paired differences are zero; the signed-rank test is undefined"
+        base["interpretation"] = base["reason"]
+        return base
+
+    try:
+        result = stats_mod.wilcoxon(a, b, alternative=alternative)
+        statistic = float(result.statistic)
+        p_value = float(result.pvalue)
+    except ValueError as exc:
+        base["status"] = "error"
+        base["reason"] = f"Wilcoxon signed-rank could not be computed: {exc}"
+        base["interpretation"] = base["reason"]
+        return base
+
+    base["statistic"] = round(statistic, 6)
+    base["p_value"] = round(p_value, 6)
+    base["significant"] = bool(p_value < alpha)
+    if p_value < alpha:
+        base["interpretation"] = (
+            f"p={p_value:.4g} < alpha={alpha:g}: evidence that the paired differences are "
+            "not centered at zero."
+        )
+    else:
+        base["interpretation"] = (
+            f"p={p_value:.4g} >= alpha={alpha:g}: no strong evidence that the paired "
+            "differences differ from zero."
         )
     return base

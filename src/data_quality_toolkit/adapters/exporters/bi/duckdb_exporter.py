@@ -5,7 +5,7 @@ existing drift-monitoring SQLite database **read-only** and writes a standalone
 DuckDB database file containing the drift-history tables (``drift_runs``,
 ``drift_columns``, ``drift_column_distributions``).
 
-Scope guarantees (DQT-v2.7.0-G20):
+Scope guarantees:
 - DuckDB is export/mirror only — never a live monitoring backend.
 - The source SQLite database is never mutated: it is opened with the
   ``mode=ro`` URI flag, and only ``SELECT`` / ``PRAGMA`` statements run against it.

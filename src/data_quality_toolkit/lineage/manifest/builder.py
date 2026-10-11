@@ -12,7 +12,7 @@ import tempfile
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, Protocol, cast
+from typing import Any, Final, Literal, Protocol, cast
 
 from data_quality_toolkit.lineage.manifest.collector import collect
 from data_quality_toolkit.lineage.manifest.schemas import (
@@ -24,6 +24,7 @@ from data_quality_toolkit.lineage.manifest.schemas import (
     StepSummary,
     Summary,
 )
+from data_quality_toolkit.shared.exceptions import DQTError
 from data_quality_toolkit.shared.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -183,6 +184,15 @@ def _coerce_severity(value: str) -> SeverityT | None:
     return None
 
 
+def resolve_manifest_path(session_dir: Path | str) -> Path:
+    """Return where :func:`build_and_write` writes the manifest for *session_dir*.
+
+    The filename is the configured ``MANIFEST_FILE`` (default ``artifacts.json``),
+    so callers that report the written manifest never assume a literal name.
+    """
+    return Path(session_dir) / settings.manifest_file
+
+
 def build_and_write(
     run_id: str,
     session_dir: pathlib.Path,
@@ -217,13 +227,94 @@ def build_and_write(
         gates=gates or Gates(status="skipped", failures=[]),
     )
 
-    manifest_path = session_dir / settings.manifest_file
+    manifest_path = resolve_manifest_path(session_dir)
     _atomic_write_json(manifest_path, json.loads(manifest.model_dump_json(by_alias=True)))
     return manifest
 
 
+class ManifestRebuildRefusedError(DQTError, ValueError):
+    """Raised when a rebuild would discard evidence the existing manifest records.
+
+    Also a ``ValueError`` so existing callers report it as a bounded failure: the
+    CLI's ``ValueError`` handler prints one redacted ``Error:`` line and exits 1,
+    and the UI rebuild actions render any exception instead of their success text.
+    """
+
+
+# Evidence categories a manifest can record, in stable reporting order. Derived
+# summary fields (health, rows, bytes) are deliberately not categories: a rebuild
+# never recomputes them, so counting them as evidence would refuse every rebuild.
+_EVIDENCE_LABELS: Final[dict[str, str]] = {
+    "datasets": "dataset entries",
+    "artifacts": "artifact entries",
+    "provenance": "artifact provenance metadata",
+    "gates": "gate results",
+}
+
+
+def _evidence(
+    datasets: Sequence[Dataset], artifacts: Sequence[Artifact], gates: Gates
+) -> frozenset[str]:
+    """Return the evidence categories present in manifest content."""
+    found: set[str] = set()
+    if datasets:
+        found.add("datasets")
+    if artifacts:
+        found.add("artifacts")
+    if any(artifact.meta for artifact in artifacts):
+        found.add("provenance")
+    if gates.status != "skipped" or gates.failures:
+        found.add("gates")
+    return frozenset(found)
+
+
+def _existing_evidence(manifest_path: Path) -> frozenset[str]:
+    """Return the evidence categories recorded by the manifest already on disk.
+
+    A missing file records nothing, so first-time creation is unaffected. Content
+    that is not a valid manifest records nothing the schema can vouch for, so a
+    rebuild can still replace (repair) it. Any other read failure propagates.
+    """
+    try:
+        data = manifest_path.read_bytes()
+    except FileNotFoundError:
+        return frozenset()
+    try:
+        existing = Manifest.model_validate_json(data)
+    except ValueError:
+        return frozenset()
+    return _evidence(existing.datasets, existing.artifacts, existing.gates)
+
+
+def _refuse_evidence_loss(manifest_path: Path, proposed: frozenset[str]) -> None:
+    """Refuse, before any write, a rebuild that drops a whole evidence category.
+
+    Counts may change freely; only a category the existing manifest records and
+    the rebuilt content lacks entirely is treated as a destructive downgrade.
+    """
+    missing = _existing_evidence(manifest_path) - proposed
+    lost = [key for key in _EVIDENCE_LABELS if key in missing]
+    if not lost:
+        return
+    labels = ", ".join(_EVIDENCE_LABELS[key] for key in lost)
+    raise ManifestRebuildRefusedError(
+        f"Manifest rebuild refused: the existing manifest records {labels}, but the "
+        "rebuild found none in this session. The existing manifest was left unchanged.",
+        hint=(
+            "Rebuild reads the session's recorded lineage (meta/lineage.jsonl) and gate "
+            "log (meta/gates.jsonl). Re-run the workflow that produced the manifest to "
+            "regenerate it."
+        ),
+        metadata={"lost_evidence": lost},
+    )
+
+
 def build_manifest(run_id: str, sessions_root: Path | str) -> Manifest:
-    """Public entrypoint: build a manifest for <run_id> using lineage + FS."""
+    """Public entrypoint: build a manifest for <run_id> using lineage + FS.
+
+    Raises :class:`ManifestRebuildRefusedError`, before anything is written, when
+    the existing manifest records an evidence category the rebuild lacks entirely.
+    """
     session_dir = Path(sessions_root) / run_id
 
     # 1) collect from lineage + filesystem (normalized to sessions/<run_id>/...)
@@ -240,6 +331,11 @@ def build_manifest(run_id: str, sessions_root: Path | str) -> Manifest:
 
     # 4) gates (if present). If not, default to "skipped"
     gates = _read_gates(session_dir)
+
+    # 5) refuse before writing if this rebuild would discard recorded evidence
+    _refuse_evidence_loss(
+        session_dir / settings.manifest_file, _evidence(datasets, artifacts, gates)
+    )
 
     return build_and_write(
         run_id=run_id,

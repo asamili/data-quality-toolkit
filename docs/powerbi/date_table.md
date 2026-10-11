@@ -15,65 +15,68 @@ The date table enables:
 
 ## 📊 Required Fields
 
-The generated `dim_time.csv` includes these essential columns:
+The generated `dim_time.csv` includes these columns (always present unless noted):
 
 | Column | Type | Description | Example |
 |--------|------|-------------|---------|
 | **time_id** | Integer | Primary key (YYYYMMDD format) | 20250819 |
-| **date** | Date | Actual date value | 2025-08-19 |
+| **date** | String | ISO date value (`YYYY-MM-DD`) | 2025-08-19 |
 | **year** | Integer | Calendar year | 2025 |
-| **quarter** | Integer | Calendar quarter (1-4) | 3 |
 | **month** | Integer | Month number (1-12) | 8 |
-| **month_name** | String | Full month name | August |
-| **month_short** | String | Abbreviated month | Aug |
-| **week_iso** | Integer | ISO week number (1-53) | 34 |
 | **day** | Integer | Day of month (1-31) | 19 |
-| **day_of_week** | Integer | Day of week (1=Monday, 7=Sunday) | 2 |
+| **quarter** | Integer | Calendar quarter (1-4) | 3 |
+| **iso_year** | Integer | ISO 8601 week-numbering year | 2025 |
+| **week_iso** | Integer | ISO week number (1-53) | 34 |
+| **dow_iso** | Integer | ISO day of week (1=Monday … 7=Sunday) | 2 |
+| **dow** | Integer | Day of week under the configured `--week-start` | 2 |
 | **day_name** | String | Full day name | Tuesday |
-| **day_short** | String | Abbreviated day | Tue |
-| **is_weekend** | Boolean | Weekend flag | false |
-| **is_holiday** | Boolean | Holiday flag (configurable) | false |
-| **fiscal_year** | Integer | Fiscal year (configurable) | 2026 |
-| **fiscal_quarter** | Integer | Fiscal quarter (1-4) | 1 |
-| **fiscal_month** | Integer | Fiscal month (1-12) | 2 |
+| **month_name** | String | Full month name | August |
+| **is_weekend** | Boolean | Weekend flag (Sat/Sun) | false |
+| **week_start_date** | String | Start-of-week date for the configured week start | 2025-08-18 |
+| **fiscal_year** | Integer | Fiscal year — only when `--fiscal` is set | 2026 |
+| **fiscal_quarter** | Integer | Fiscal quarter (1-4) — only when `--fiscal` is set | 1 |
+
+> The time dimension is calendar/fiscal only. There is **no** holiday column or holiday
+> calendar: `is_holiday`, abbreviated names (`month_short` / `day_short`), and `fiscal_month`
+> are not generated.
 
 ## 🔧 Generation Process
 
 ### Using the CLI
 
 ```bash
-# Generate date table for specific range
-python scripts/generate_dim_time.py \
+# Generate the time dimension into an output directory (writes dim_time.csv)
+dqt gen-dim-time \
   --start 2020-01-01 \
   --end 2025-12-31 \
-  --fiscal-start 10 \
-  --holidays US \
-  --output dist/star/dim_time.csv
+  --fiscal 10 \
+  --week-start 1 \
+  --out dist/time
 ```
 
 ### Parameters
 
-- `--start`: Start date (default: 3 years ago)
-- `--end`: End date (default: 2 years future)
-- `--fiscal-start`: Fiscal year start month (default: 1)
-- `--holidays`: Holiday calendar (US, UK, EU, custom)
-- `--week-start`: Week start day (1=Monday, 7=Sunday)
-- `--output`: Output file path
+- `--start`: Inclusive start date, `YYYY-MM-DD` (default: `2018-01-01`)
+- `--end`: Inclusive end date, `YYYY-MM-DD` (default: `2030-12-31`)
+- `--fiscal`: Fiscal year start month, `1`–`12` (default: calendar year, no fiscal offset)
+- `--week-start`: Week start day, `1`=Monday … `7`=Sunday (default: `1`)
+- `--out`: Output **directory** for `dim_time.csv` (default: `dist/time`)
+- `--json`: Emit a JSON summary (path + arguments) on stdout
 
 ### Programmatic Generation
 
 ```python
-from data_quality_toolkit.exporters.bi import generate_date_table
+from data_quality_toolkit import generate_dim_time
 
-dim_time = generate_date_table(
-    start_date="2020-01-01",
-    end_date="2025-12-31",
-    fiscal_year_start_month=10,
-    holidays="US",
-    week_starts_monday=True
+# Writes dim_time.csv into the output directory and returns a result with its path
+result = generate_dim_time(
+    "2020-01-01",
+    "2025-12-31",
+    week_start=1,
+    fiscal_year_start=10,
+    output_dir="dist/time",
 )
-
-dim_time.to_csv("dist/star/dim_time.csv", index=False)
+print(result["path"])
 ```
 
 ## ⚙️ Power BI Configuration
@@ -82,7 +85,7 @@ dim_time.to_csv("dist/star/dim_time.csv", index=False)
 
 The date table is automatically included in the Power BI package at:
 ```
-dist/powerbi_package/star/dim_time.csv
+dist/powerbi_package/time/dim_time.csv
 ```
 
 ### 2. Mark as Date Table
@@ -103,18 +106,20 @@ The toolkit automatically creates relationships:
 
 ### 4. Sort Columns
 
-Configure sort orders for proper display:
+Configure sort orders for proper display. DQT does not emit these — author them in Power BI
+against the generated `dim_time` columns:
 
 ```dax
-// DAX expressions automatically generated
+// Author in Power BI (DQT does not generate these)
 Month Name = SORT BY dim_time[month]
-Day Name = SORT BY dim_time[day_of_week]
+Day Name = SORT BY dim_time[dow]
 Quarter = "Q" & dim_time[quarter]
 ```
 
 ## 📈 Time Intelligence Measures
 
-The toolkit generates standard time intelligence DAX measures:
+DQT does **not** emit DAX measures. The `dim_time` table it generates is what enables the
+standard Power BI time-intelligence measures below once you author them in your model:
 
 ### Year-to-Date (YTD)
 ```dax
@@ -198,7 +203,7 @@ RETURN
 **Symptom**: Fiscal calculations incorrect
 
 **Solution**:
-- Regenerate with correct `--fiscal-start`
+- Regenerate with correct `--fiscal`
 - Update fiscal year measures
 - Verify fiscal_year column values
 
@@ -226,36 +231,16 @@ RETURN
 
 ## 📊 Advanced Features
 
-### Custom Holidays
+### Calendar and Fiscal Support
 
-Create custom holiday configuration:
+The generated dimension covers a standard Gregorian calendar plus an **optional** fiscal
+overlay (`--fiscal <month>`), which adds `fiscal_year` and `fiscal_quarter`. ISO 8601 week
+fields (`iso_year`, `week_iso`, `dow_iso`) are always included, and `--week-start` controls
+the `dow` / `week_start_date` anchoring.
 
-```yaml
-# config/holidays.yaml
-holidays:
-  - name: "Company Holiday"
-    date: "2025-07-01"
-  - name: "Fiscal Year End"
-    date: "2025-09-30"
-    is_business_day: false
-```
-
-### Multiple Calendars
-
-Support for multiple calendar types:
-- Standard (Gregorian)
-- Fiscal (configurable)
-- 4-4-5 Retail
-- ISO Week
-- Custom business calendars
-
-### Special Periods
-
-Additional period markers:
-- Peak seasons
-- Blackout dates
-- Promotional periods
-- Quarter/Year end flags
+> Not currently generated: holiday calendars, 4-4-5 retail calendars, custom business
+> calendars, and special-period markers (peak / blackout / promotional). Add these as Power BI
+> calculated columns if you need them.
 
 ## 🔍 Validation Checklist
 
@@ -268,23 +253,21 @@ Before using the date table:
 - [ ] Sort orders configured
 - [ ] Time intelligence measures work
 - [ ] Fiscal year alignment correct
-- [ ] Holiday flags accurate
 
 ## 📚 Related Documentation
 
+- [BI Worked Example](../guides/bi_worked_example.md)
 - [Incremental Refresh Setup](incremental_refresh.md)
-- [Time Intelligence DAX Patterns](../dax/time_intelligence.md)
-- [Fiscal Calendar Configuration](../config/fiscal_calendar.md)
-- [Power BI Best Practices](../powerbi_best_practices.md)
+- [RLS Testing Guide](rls_testing.md)
 
 ## 🆘 Troubleshooting
 
 For additional help:
-1. Check the [FAQ](../faq.md#date-table)
-2. Review [example notebooks](../../examples/03_date_table_setup.ipynb)
+1. Review the [Quickstart notebook](../../examples/01_quickstart.ipynb)
+2. See the [CLI Reference](../cli.md) and [Python API](../api.md)
 3. Open a GitHub issue
 
 ---
 
-**Last Updated**: August 2025
-**Toolkit Version**: 0.0.0
+**Last Updated**: June 2026
+**Toolkit Version**: 2.10.0

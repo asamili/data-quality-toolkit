@@ -26,6 +26,7 @@ _SUBCOMMANDS = [
     "plan",
     "profile",
     "settings",
+    "stats",
     "ui",
     "version",
 ]

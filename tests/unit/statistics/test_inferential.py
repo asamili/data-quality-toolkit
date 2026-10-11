@@ -39,6 +39,9 @@ class FakeStats:
     def kruskal(self, *arrays: Any) -> SimpleNamespace:
         return SimpleNamespace(statistic=4.0, pvalue=self.p)
 
+    def wilcoxon(self, a: Any, b: Any, alternative: str = "two-sided") -> SimpleNamespace:
+        return SimpleNamespace(statistic=7.0, pvalue=self.p)
+
 
 def _patch(monkeypatch: pytest.MonkeyPatch, fake: FakeStats | None) -> None:
     monkeypatch.setattr(inferential, "_import_scipy_stats", lambda: fake)
@@ -198,6 +201,102 @@ class TestOrchestration:
 def test_invalid_alpha_raises(alpha: float) -> None:
     with pytest.raises(ValueError, match="alpha"):
         inferential.check_normality(pd.Series([1.0, 2.0, 3.0]), alpha=alpha)
+
+
+# ── Wilcoxon signed-rank (paired) ────────────────────────────────────────────
+
+
+class TestWilcoxon:
+    def test_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, None)
+        result = inferential.wilcoxon_signed_rank([1.0, 2.0, 3.0], [2.0, 1.0, 5.0])
+        assert result["status"] == "unavailable"
+        assert result["scipy_available"] is False
+
+    def test_ok_significant(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats(p=0.01))
+        result = inferential.wilcoxon_signed_rank(
+            [1.0, 2.0, 3.0, 4.0], [2.0, 4.0, 1.0, 9.0], alpha=0.05
+        )
+        assert result["status"] == "ok"
+        assert result["test_name"] == "Wilcoxon signed-rank"
+        assert result["significant"] is True
+        assert result["n_pairs"] == 4
+        assert result["n_nonzero_differences"] == 4
+        assert "not centered at zero" in result["interpretation"]
+
+    def test_ok_not_significant_wording(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats(p=0.9))
+        result = inferential.wilcoxon_signed_rank([1.0, 2.0, 3.0, 4.0], [2.0, 4.0, 1.0, 9.0])
+        assert result["significant"] is False
+        assert "no strong evidence" in result["interpretation"]
+        assert "not the same as Mann-Whitney" in result["caveat"]
+
+    def test_invalid_alternative(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        result = inferential.wilcoxon_signed_rank(
+            [1.0, 2.0, 3.0], [3.0, 2.0, 1.0], alternative="up"
+        )
+        assert result["status"] == "invalid_input"
+
+    def test_unequal_length_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        result = inferential.wilcoxon_signed_rank([1.0, 2.0, 3.0], [1.0, 2.0])
+        assert result["status"] == "invalid_input"
+        assert "equal length" in result["reason"]
+
+    def test_missing_pairs_dropped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats(p=0.2))
+        a = [1.0, 2.0, np.nan, 4.0, 5.0]
+        b = [2.0, 4.0, 1.0, np.nan, 10.0]
+        result = inferential.wilcoxon_signed_rank(a, b)
+        assert result["status"] == "ok"
+        assert result["n_pairs"] == 3  # two rows dropped for missing values
+
+    def test_insufficient_pairs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        result = inferential.wilcoxon_signed_rank([1.0, 2.0], [2.0, 1.0])
+        assert result["status"] == "insufficient_data"
+
+    def test_all_zero_differences(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch(monkeypatch, FakeStats())
+        result = inferential.wilcoxon_signed_rank([1.0, 2.0, 3.0], [1.0, 2.0, 3.0])
+        assert result["status"] == "insufficient_data"
+        assert result["n_nonzero_differences"] == 0
+
+    def test_scipy_valueerror_becomes_error_status(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class Raiser(FakeStats):
+            def wilcoxon(self, a: Any, b: Any, alternative: str = "two-sided") -> Any:
+                raise ValueError("boom")
+
+        _patch(monkeypatch, Raiser())
+        result = inferential.wilcoxon_signed_rank([1.0, 2.0, 3.0, 4.0], [2.0, 5.0, 1.0, 9.0])
+        assert result["status"] == "error"
+        assert "boom" in result["reason"]
+
+    @pytest.mark.parametrize("alpha", [0.0, 1.0, -0.1, 1.5])
+    def test_invalid_alpha_raises(self, alpha: float) -> None:
+        with pytest.raises(ValueError, match="alpha"):
+            inferential.wilcoxon_signed_rank([1.0, 2.0, 3.0], [3.0, 2.0, 1.0], alpha=alpha)
+
+    def test_real_scipy_detects_paired_shift(self) -> None:
+        pytest.importorskip("scipy")
+        rng = np.random.default_rng(7)
+        before = rng.normal(10, 2, 60)
+        after = before + rng.normal(3, 1, 60)  # consistent positive shift
+        result = inferential.wilcoxon_signed_rank(before, after)
+        assert result["status"] == "ok"
+        assert result["p_value"] < 0.05
+        assert result["significant"] is True
+
+    def test_real_scipy_no_shift(self) -> None:
+        pytest.importorskip("scipy")
+        rng = np.random.default_rng(7)
+        before = rng.normal(10, 2, 60)
+        after = before + rng.normal(0, 1, 60)  # symmetric noise, no location shift
+        result = inferential.wilcoxon_signed_rank(before, after)
+        assert result["status"] == "ok"
+        assert result["p_value"] >= 0.05
 
 
 # ── Cohen's d math ───────────────────────────────────────────────────────────

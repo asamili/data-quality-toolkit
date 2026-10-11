@@ -140,7 +140,7 @@ def test_compare_success_stdout_is_valid_json(monkeypatch, capsys):
 
 
 def test_compare_success_stdout_preserves_breakdown_fields(monkeypatch, capsys):
-    """Breakdown fields added by DQT-FIX-005 must pass through stdout JSON intact."""
+    """Breakdown fields must pass through stdout JSON intact."""
     _patch(monkeypatch, _SUCCESS_RESULT)
     cli.cmd_compare(_ns())
     out = capsys.readouterr().out
@@ -163,7 +163,7 @@ def test_compare_success_stdout_preserves_score_and_run_ids(monkeypatch, capsys)
 
 
 # ---------------------------------------------------------------------------
-# DQT-FIX-008: severity / category breakdown deltas in stderr
+# Severity / category breakdown deltas in stderr
 # ---------------------------------------------------------------------------
 
 _SUCCESS_RESULT_MINIMAL = {

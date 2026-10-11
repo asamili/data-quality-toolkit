@@ -246,6 +246,9 @@ def export_drift_plots(
     # Query only the seams each requested chart needs (distributions are never read).
     need_runs = "drift-rate" in charts
     need_columns = ("psi-by-column" in charts) or ("top-drifted" in charts)
+    # A filtered export scopes column charts to exactly the filtered runs, so the
+    # runs are read whenever column charts need that scope.
+    scoped = current_dataset_id is not None or limit is not None
 
     from data_quality_toolkit.api import (
         read_drift_columns_sqlite,
@@ -255,7 +258,7 @@ def export_drift_plots(
 
     runs = (
         read_drift_runs_sqlite(db_path, limit=limit, current_dataset_id=current_dataset_id)
-        if need_runs
+        if need_runs or (need_columns and scoped)
         else []
     )
     summary = (
@@ -263,7 +266,8 @@ def export_drift_plots(
         if need_runs
         else {}
     )
-    columns = read_drift_columns_sqlite(db_path) if need_columns else []
+    run_ids = [r["run_id"] for r in runs] if scoped else None
+    columns = read_drift_columns_sqlite(db_path, run_ids=run_ids) if need_columns else []
 
     model = build_plot_model(runs=runs, summary=summary, columns=columns)
 

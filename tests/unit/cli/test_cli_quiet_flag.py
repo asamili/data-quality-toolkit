@@ -1,4 +1,4 @@
-"""Tests for --quiet flag (DQT-PATCH-003-A): log suppression shorthand."""
+"""Tests for --quiet flag: log suppression shorthand."""
 
 from __future__ import annotations
 

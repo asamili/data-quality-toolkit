@@ -1,4 +1,4 @@
-"""Contract tests for the st-free UI service modules (G1 restructure).
+"""Contract tests for the st-free UI service modules (UI restructure).
 
 Pins the two structural rules of adapters/ui/services:
 1. No module-level or nested streamlit import — services stay UI-framework-free.
@@ -9,12 +9,18 @@ Pins the two structural rules of adapters/ui/services:
 from __future__ import annotations
 
 import inspect
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 
+from data_quality_toolkit.adapters.ui.components.downloads import (
+    csv_download_button,
+    json_download_button,
+)
 from data_quality_toolkit.adapters.ui.services import (
     artifacts,
     assessment,
@@ -24,6 +30,7 @@ from data_quality_toolkit.adapters.ui.services import (
     kpi,
     pipeline,
     preprocessing,
+    statistics,
 )
 from data_quality_toolkit.adapters.ui.services.assessment import (
     _load_profile_chunked,
@@ -51,12 +58,61 @@ from data_quality_toolkit.adapters.ui.services.pipeline import (
     _run_elt_pipeline,
 )
 
+
+class FakeDownloadSt:
+    """Tiny Streamlit recorder for download-button helper tests."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def download_button(self, *args: Any, **kwargs: Any) -> None:
+        self.calls.append((args, kwargs))
+
+
+# ── download components ──────────────────────────────────────────────────────
+
+
+def test_csv_download_helper_serializes_dataframe_without_index() -> None:
+    st = FakeDownloadSt()
+    df = pd.DataFrame({"name": ["alpha", "beta"], "value": [1, 2]})
+
+    csv_download_button(st, "Download table", df, "table.csv")
+
+    args, kwargs = st.calls[0]
+    assert args == ("Download table",)
+    assert kwargs["file_name"] == "table.csv"
+    assert kwargs["mime"] == "text/csv"
+    assert kwargs["data"].splitlines() == ["name,value", "alpha,1", "beta,2"]
+
+
+def test_json_download_helper_serializes_structured_payload() -> None:
+    st = FakeDownloadSt()
+
+    json_download_button(st, "Download JSON", {"path": Path("artifact.json")}, "artifact.json")
+
+    args, kwargs = st.calls[0]
+    assert args == ("Download JSON",)
+    assert kwargs["file_name"] == "artifact.json"
+    assert kwargs["mime"] == "application/json"
+    assert json.loads(kwargs["data"]) == {"path": "artifact.json"}
+
+
 # ── structural rule: services must not import streamlit ──────────────────────
 
 
 @pytest.mark.parametrize(
     "module",
-    [artifacts, assessment, compare, export, kpi, pipeline, diagnostics, preprocessing],
+    [
+        artifacts,
+        assessment,
+        compare,
+        export,
+        kpi,
+        pipeline,
+        diagnostics,
+        preprocessing,
+        statistics,
+    ],
 )
 def test_service_module_does_not_import_streamlit(module: object) -> None:
     src = inspect.getsource(module)  # type: ignore[arg-type]
@@ -110,6 +166,21 @@ def test_export_csv_to_dir_relative_outdir_returns_error() -> None:
     result, err = _export_csv_to_dir("/data/test.csv", "relative/path")
     assert result is None
     assert err is not None
+
+
+def test_export_csv_to_dir_exposes_quality_db_result(tmp_path: Path) -> None:
+    expected = {
+        "export_paths": {"quality_db": str(tmp_path / "dqt.db")},
+        "quality_db_path": str(tmp_path / "dqt.db"),
+        "quality_db_status": "persisted",
+        "quality_db_error": None,
+    }
+    with patch("data_quality_toolkit.api.export_csv", return_value=expected) as mock_export:
+        result, err = _export_csv_to_dir(str(tmp_path / "input.csv"), str(tmp_path))
+
+    assert err is None
+    assert result == expected
+    mock_export.assert_called_once()
 
 
 def test_run_kpi_validate_missing_file_returns_error() -> None:
@@ -230,11 +301,77 @@ def test_probe_writable_dir_missing() -> None:
     assert err is not None
 
 
+# ── statistics distribution service ─────────────────────────────────────────
+
+
+def test_statistics_distribution_service_computes_continuous_result() -> None:
+    pytest.importorskip("scipy")
+    result = statistics.theoretical_distribution_result(
+        "Normal",
+        "PDF",
+        x=0.0,
+        mu=0.0,
+        sigma=1.0,
+    )
+    assert result["status"] == "ok"
+    assert result["distribution"] == "Normal"
+    assert result["calculation"] == "PDF"
+    assert result["value"] == pytest.approx(0.3989422804, abs=1e-7)
+
+
+def test_statistics_distribution_service_computes_discrete_result() -> None:
+    pytest.importorskip("scipy")
+    result = statistics.theoretical_distribution_result(
+        "Binomial",
+        "PMF",
+        k=1,
+        n=3,
+        p=0.5,
+    )
+    assert result["status"] == "ok"
+    assert result["distribution"] == "Binomial"
+    assert result["calculation"] == "PMF"
+    assert result["value"] == pytest.approx(0.375)
+
+
+def test_statistics_distribution_service_computes_two_tail_critical_value() -> None:
+    pytest.importorskip("scipy")
+    result = statistics.theoretical_distribution_result(
+        "Normal",
+        "Critical value (two-tail)",
+        alpha=0.05,
+    )
+    assert result["status"] == "ok"
+    assert result["method"] == "confidence_level_to_z"
+    assert result["tail"] == "two-tail"
+    assert result["value"] == pytest.approx(1.9599639845, abs=1e-7)
+
+
+def test_statistics_distribution_service_invalid_input_is_safe() -> None:
+    result = statistics.theoretical_distribution_result(
+        "Normal",
+        "PDF",
+        x=0.0,
+        sigma=0.0,
+    )
+    assert result["status"] == "invalid_input"
+    assert "sigma" in str(result["reason"])
+
+
+def test_statistics_distribution_service_missing_scipy_is_safe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(statistics._distributions, "normal_pdf", lambda *_a, **_k: None)
+    result = statistics.theoretical_distribution_result("Normal", "PDF", x=0.0)
+    assert result["status"] == "unavailable"
+    assert "scipy is not installed" in str(result["reason"])
+
+
 # ── compare service tuple contract ───────────────────────────────────────────
 
 # Underlying workflow function — still valid for deep-patch tests.
 _MOCK_COMPARE_WORKFLOW = "data_quality_toolkit.application.workflow.compare.compare_last_two_runs"
-# G20B: compare service now routes through api.compare_runs_history.
+# Compare service now routes through api.compare_runs_history.
 _MOCK_COMPARE_API = "data_quality_toolkit.api.compare_runs_history"
 
 
@@ -269,7 +406,7 @@ def test_run_compare_exception_returns_error() -> None:
 
 
 def test_run_compare_routes_through_api() -> None:
-    """G20B: compare service routes through api.compare_runs_history, not workflow directly."""
+    """Compare service routes through api.compare_runs_history, not workflow directly."""
     fake = {"dataset_id": "sha1:abc", "score_delta": 0.05}
     with patch(_MOCK_COMPARE_API, return_value=fake) as mock_api:
         result, err = _run_compare("./dist/dqt.db", "sha1:abc")

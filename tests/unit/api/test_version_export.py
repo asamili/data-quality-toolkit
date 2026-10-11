@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.metadata
+import tomllib
+from pathlib import Path
 
 
 def test_version_exported() -> None:
@@ -20,9 +22,10 @@ def test_version_matches_metadata() -> None:
     assert d.__version__ == meta_version
 
 
-def test_version_matches_pyproject() -> None:
-    """Version reflects installed package metadata, not a hardcoded literal."""
-    import data_quality_toolkit as d
+def test_pyproject_version_aligned_to_release() -> None:
+    """Source package metadata is aligned to the v2.10.0 release."""
+    pyproject = Path(__file__).resolve().parents[3] / "pyproject.toml"
+    with pyproject.open("rb") as f:
+        data = tomllib.load(f)
 
-    meta_version = importlib.metadata.version("data-quality-toolkit")
-    assert d.__version__ == meta_version
+    assert data["project"]["version"] == "2.10.0"

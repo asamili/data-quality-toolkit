@@ -89,9 +89,32 @@ def test_happy_path_renders_results_with_scipy() -> None:
     st = FakeSt()
     _render_inferential(st, _DF)
     text = st.texts()
+    assert "Hypothesis Test Selection" in text
     assert "Normality check" in text
     assert "Group comparison" in text
-    assert "A/B comparison" in text
+    assert "Run Statistical Test" in text
+    assert "A/B Comparison" in text
     # Two-group comparison renders a results table and metric cards.
     assert st.called("dataframe")
     assert st.called("metric")
+
+
+def test_public_runner_unavailable_status_is_rendered(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(statistics_lab, "inferential_available", lambda: False)
+    monkeypatch.setattr(
+        statistics_lab,
+        "run_one_sample_numeric_test",
+        lambda *_args, **_kwargs: {
+            "status": "unavailable",
+            "test_key": "ONE_T",
+            "reason": "scipy is not installed",
+            "statistic": None,
+            "p_value": None,
+            "alpha": 0.05,
+            "reject_null": None,
+            "method": "hypothesis_test",
+        },
+    )
+    st = FakeSt()
+    _render_inferential(st, _DF)
+    assert "scipy is not installed" in st.texts()

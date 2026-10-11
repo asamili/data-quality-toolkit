@@ -77,6 +77,48 @@ class KpiGraphResult(TypedDict):
     nodes: int
 
 
+class BuiltinQualityKpi(TypedDict):
+    """One KPI entry returned by get_builtin_quality_catalog."""
+
+    id: str
+    title: str
+    grain: str
+    unit: str
+    source_table: str | None
+    source_columns: list[str]
+    aggregation_rule: str | None
+    support_status: str | None
+    description: str | None
+
+
+class BuiltinQualityCatalogResult(TypedDict):
+    """Return type of get_builtin_quality_catalog."""
+
+    version: str
+    measure_count: int
+    measures: list[BuiltinQualityKpi]
+
+
+class BuiltinQualityDaxResult(TypedDict):
+    """Return type of emit_builtin_quality_dax."""
+
+    dax: str
+    measure_count: int
+    output_path: str | None
+
+
+class SemanticContractValidationResult(TypedDict):
+    """Return type of validate_builtin_quality_semantic_contract."""
+
+    valid: bool
+    errors: list[str]
+    warnings: list[str]
+    checked_files: list[str]
+    checked_measures: list[str]
+    input_mode: str
+    path: str
+
+
 class SummarizeDriftTrendsResult(TypedDict):
     """Return type of summarize_drift_trends_sqlite."""
 
@@ -188,6 +230,83 @@ class DriftNotificationSendResult(TypedDict):
     status: int | None
     breached: bool
     redacted_url: str
+
+
+class StatisticsNumericSummary(TypedDict):
+    """One numeric-column row returned by stats_profile_csv."""
+
+    column: str
+    count: int
+    missing: int
+    missing_pct: float
+    mean: float | None
+    median: float | None
+    std: float | None
+    min: float | None
+    max: float | None
+    skew: float | None
+    kurtosis: float | None
+
+
+class StatisticsProfileSummary(TypedDict):
+    """Compact DataFrame profile returned by stats_profile_csv."""
+
+    n_rows: int
+    n_columns: int
+    memory_mb: float
+    dtypes: dict[str, int]
+    missing: dict[str, int]
+
+
+class StatisticsProfileResult(TypedDict, total=False):
+    """Return type of stats_profile_csv."""
+
+    status: Literal["ok", "invalid_input"]
+    path: str
+    columns: list[str]
+    profile: StatisticsProfileSummary
+    numeric_summary: list[StatisticsNumericSummary]
+    reason: str
+
+
+class StatisticalTestSelectionResult(TypedDict, total=False):
+    """Return type of select_statistical_test."""
+
+    status: str
+    test_key: str
+    alpha: float
+    alternative: str
+    method: str
+    explanation: str
+    warnings: list[str]
+    messages: list[str]
+    assumptions: dict[str, Any]
+
+
+class StatisticalTestResult(TypedDict, total=False):
+    """Return type of run_statistical_test."""
+
+    status: str
+    test_key: str
+    statistic: float | None
+    p_value: float | None
+    alpha: float
+    reject_null: bool | None
+    method: str
+    reason: str | None
+    alternative: str
+    warnings: list[str]
+    messages: list[str]
+    assumptions: dict[str, Any]
+    scipy_available: bool
+
+
+class ABComparisonResult(StatisticalTestResult, total=False):
+    """Return type of compare_ab."""
+
+    selection: StatisticalTestSelectionResult
+    variable_type: str
+    group_structure: str
 
 
 class CsvMeta(TypedDict):
@@ -353,6 +472,10 @@ __all__ = [
     "DimTimeResult",
     "KpiEmitResult",
     "KpiGraphResult",
+    "BuiltinQualityKpi",
+    "BuiltinQualityCatalogResult",
+    "BuiltinQualityDaxResult",
+    "SemanticContractValidationResult",
     "SummarizeDriftTrendsResult",
     "DriftRunRow",
     "DriftColumnRow",
@@ -361,6 +484,13 @@ __all__ = [
     "MonitoringDuckdbExportResult",
     "DriftPlotsExportResult",
     "DriftNotificationSendResult",
+    # Statistics / A-B public API contracts
+    "StatisticsNumericSummary",
+    "StatisticsProfileSummary",
+    "StatisticsProfileResult",
+    "StatisticalTestSelectionResult",
+    "StatisticalTestResult",
+    "ABComparisonResult",
     # Nested envelope contracts (G8C2G)
     "CsvMeta",
     "CsvProfileColumn",

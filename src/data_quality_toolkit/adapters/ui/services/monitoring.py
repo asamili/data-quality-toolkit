@@ -1,6 +1,6 @@
 """Drift-monitoring service wrappers for the Drift Explorer UI page.
 
-Streamlit-free seam between the page layer and the shared G2 monitoring
+Streamlit-free seam between the page layer and the shared monitoring
 view-model (``application.monitoring.view_model``). Each loader returns an
 ``(result, err)`` tuple so the page can stay free of bare try/except blocks,
 mirroring ``services.assessment``.
@@ -9,6 +9,11 @@ This module must not import streamlit, must not import ``adapters.storage``
 directly, must not calculate drift, and must not write to SQLite. All data
 access flows through the view-model builders, which themselves read only via
 the root ``data_quality_toolkit.api`` seam.
+
+Path redaction is not owned here. ``redact_path_to_basename`` is re-exported
+from :mod:`data_quality_toolkit.shared.text_redaction` (the single authority)
+for the Drift Explorer page, and ``_safe_error_message`` routes its output
+through the same shared policy the other UI error surfaces use.
 """
 
 from __future__ import annotations
@@ -34,19 +39,10 @@ from data_quality_toolkit.application.explanation import (
     explain_run_drift_status,
 )
 from data_quality_toolkit.shared.error_contract import to_error_info
-
-
-def redact_path_to_basename(path: str | None) -> str:
-    """Return only the basename of a path (directories stripped).
-
-    Platform-independent: strips both POSIX (``/``) and Windows (``\\``)
-    separators regardless of the host OS. Returns an empty string for ``None``
-    or a blank path.
-    """
-    if not path or not path.strip():
-        return ""
-    normalized = path.strip().replace("\\", "/")
-    return normalized.rsplit("/", 1)[-1]
+from data_quality_toolkit.shared.text_redaction import (
+    redact_message_paths,
+    redact_path_to_basename,
+)
 
 
 def _resolve_db_path(db_path_str: str) -> tuple[Path | None, str | None]:
@@ -62,7 +58,23 @@ def _resolve_db_path(db_path_str: str) -> tuple[Path | None, str | None]:
 
 
 def _safe_error_message(exc: Exception, db_path_str: str) -> str:
-    """Return a structured error message with the selected DB path redacted."""
+    """Return a structured error message with local filesystem paths redacted.
+
+    Two barriers, in order:
+
+    1. Defense in depth -- the *selected* DB path is replaced by its basename in
+       every separator spelling the caller may have typed. This also covers a
+       relative path, which the shared absolute-path policy deliberately leaves
+       alone.
+    2. Authority -- the result is then run through the shared
+       ``redact_message_paths`` policy, so *any* other absolute path the
+       exception carried (a journal/WAL sidecar, a temp directory, a chained
+       ``OSError`` filename) is reduced to its basename too, exactly as on every
+       other UI error surface.
+
+    The structured error code/type from ``to_error_info`` is unchanged; only the
+    human message text is scrubbed.
+    """
     message = to_error_info(exc)["message"]
     cleaned = db_path_str.strip()
     safe_name = redact_path_to_basename(cleaned) or "selected database"
@@ -70,12 +82,12 @@ def _safe_error_message(exc: Exception, db_path_str: str) -> str:
         cleaned,
         cleaned.replace("\\", "/"),
         cleaned.replace("/", "\\"),
-        str(Path(cleaned)),
+        str(Path(cleaned)) if cleaned else "",
     }
     for candidate in sorted(candidates, key=len, reverse=True):
         if candidate and candidate != safe_name:
             message = message.replace(candidate, safe_name)
-    return message
+    return redact_message_paths(message)
 
 
 def load_monitoring_overview(
@@ -280,6 +292,22 @@ def distributions_to_display_dicts(bins: list[DistributionBin]) -> list[dict[str
     ]
 
 
+def distribution_comparison_rows(bins: list[DistributionBin]) -> list[dict[str, Any]]:
+    """Return raw per-bin reference/current probabilities for a downloadable comparison.
+
+    Unlike ``distributions_to_display_dicts`` this keeps native numeric values (or
+    ``None``) so an exported CSV carries the underlying data, not display strings.
+    """
+    return [
+        {
+            "bin": item.bin_label or item.bin_index,
+            "reference_prob": item.reference_prob,
+            "current_prob": item.current_prob,
+        }
+        for item in bins
+    ]
+
+
 def evaluate_drift_rate_for_display(
     overview: MonitoringOverview, *, threshold: float
 ) -> dict[str, Any]:
@@ -293,7 +321,7 @@ def evaluate_psi_for_display(columns: list[ColumnDrift], *, threshold: float) ->
 
 
 # ----------------------------------------------------------------------------
-# Bounded deterministic StoryLens card builder (G27H-A). At most two cards:
+# Bounded deterministic StoryLens card builder. At most two cards:
 #   1. run/status (insufficient drift history, or latest-run drift status)
 #   2. one optional threshold/metric fact
 # db_path and other paths are never read into these facts.

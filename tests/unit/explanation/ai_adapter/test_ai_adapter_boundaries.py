@@ -108,7 +108,7 @@ class TestParentPackageBoundary:
         ), "AIAvailability must not be exported from explanation package"
 
 
-# ── G20B: import-linter contract presence ─────────────────────────────────────
+# ── AI isolation: import-linter contract presence ─────────────────────────────
 
 _PYPROJECT = Path(__file__).resolve().parents[4] / "pyproject.toml"
 
@@ -122,7 +122,7 @@ _AI_SOURCES = [
 ]
 
 
-class TestImportLinterContractG20B:
+class TestImportLinterAiIsolationContract:
     def test_ai_isolation_contract_present_in_pyproject(self) -> None:
         data = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
         contracts = data.get("tool", {}).get("importlinter", {}).get("contracts", [])
@@ -132,7 +132,7 @@ class TestImportLinterContractG20B:
         )
         assert (
             ai_contract is not None
-        ), "G20B AI isolation import-linter contract missing from pyproject.toml"
+        ), "AI isolation import-linter contract missing from pyproject.toml"
         for mod in _AI_FORBIDDEN:
             assert mod in ai_contract.get(
                 "forbidden_modules", []

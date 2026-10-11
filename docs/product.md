@@ -1,5 +1,10 @@
 # Product Brief
 
+### Vision
+DQT is a **governed data quality system** that connects validation, monitoring, and BI-ready insight in one CLI-first, server-less tool. What makes it distinct is the combination of: a pipeline-grade quality gate (`assess --fail-under`, exit code 2); drift monitoring built on a *single shared view-model* that keeps the static dashboard and the optional UI in agreement; BI-ready exports (star schema, zero-config Power BI package, semantic KPI / DAX, fiscal-aware time dimension); a 16-page local UI journey; and governed, default-off optional AI that never compromises determinism. DQT 2.10.0 sharpens this positioning and onboarding. DQT now ships a **built-in current-star quality semantic catalog** — a `quality_score_proxy` measure with built-in DAX emission and semantic-contract validation, reachable via `dqt kpi-builtin`. The *full* canonical BI semantic model (a true Quality Score, plus drift/PSI, duplicate-rate, failed-quality-gate-count, and Last Run Date measures) remains **held** for a later release.
+
+New to DQT? The [Golden Path guide](guides/golden_path.md) walks one dataset from load to BI-ready outputs.
+
 ### What it is
 Data Quality Toolkit (DQT) is a lightweight, CLI-first product for validating CSV datasets, profiling columns, detecting quality issues, and exporting structured artifacts for reporting, BI, and automation workflows.
 
@@ -21,8 +26,13 @@ CSV-based workflows often fail late. Data issues are discovered only after manua
 - Exports BI-ready artifacts including star-schema outputs
 - Produces a per-run `quality_report.json` summary for automation and review
 - Supports semantic KPI / DAX generation for BI-oriented workflows
+- Ships a built-in current-star quality semantic catalog — a proxy quality score (`quality_score_proxy`), DAX emission, and semantic-contract validation via `dqt kpi-builtin` (full canonical BI semantic measures remain held)
 - Tracks run-to-run quality trends from SQLite-backed run history
-- Provides an optional local Streamlit dashboard organized as an 11-step product spine: load and validate a dataset, data overview, EDA charts, a Statistics Lab (descriptive statistics plus scipy-guarded inferential tests and A/B comparison), an explainable quality score, a Preprocess Studio recipe workflow with before/after validation and JSON/CSV recipe export, a Pipeline Runner dry-run/evidence preview (legacy write-capable execution gated behind explicit confirmation), drift monitoring, an Artifact Center for outputs, and a Settings / Governance diagnostics area
+- Provides an optional local Streamlit dashboard organized as a 16-page product journey: Start / Load Dataset, Data Overview, EDA Explorer, Statistics Lab, Quality Score, Preprocess Studio, Pipeline Runner, Drift Monitoring, Export, Quality History, Artifact Center, KPI Catalog, Dim Time, Manifest Viewer, Settings / Governance, and Help / About
+- Gives Statistics Lab a focused numbers workspace: descriptive statistics, statistical tests, theoretical Distributions, Power & Sample Size planning, lightweight result downloads, and opt-in workspace saves where a Workspace Root is configured
+- Hands Export-created `dqt.db` files to Quality History for score trends, latest-run issues, and run comparison
+- Hands a successful confirmed UI Export to Artifact Center through a session-only Latest Export context — no manual path or ID re-entry — and writes an `artifacts.json` lineage manifest inside the confirmed export output directory (disclosed before confirmation; the public API default stays `emit_manifest=False` and the CLI stays opt-in via `--manifest`, so manifest-less exports remain fully usable)
+- Loads existing lineage manifests read-only in Artifact Center and Manifest Viewer (shared reader, basename-first display, manifest-relative artifact resolution); rebuilding `artifacts.json` is a separately confirmed write action limited to an existing session directory, and manifests remain private/local evidence
 
 ### Current product positioning
 DQT is best positioned today as:

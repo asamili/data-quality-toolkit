@@ -1,4 +1,4 @@
-"""Deterministic StoryLens wiring tests (G27G).
+"""Deterministic StoryLens wiring tests.
 
 Proves:
 - StoryLens caption is source-neutral (no "AI explanation" wording)
@@ -85,6 +85,9 @@ class FakeSt:
     def scatter_chart(self, *a: Any, **kw: Any) -> None:
         self._r("scatter_chart", *a, **kw)
 
+    def vega_lite_chart(self, *a: Any, **kw: Any) -> None:
+        self._r("vega_lite_chart", *a, **kw)
+
     def code(self, *a: Any, **kw: Any) -> None:
         self._r("code", *a, **kw)
 
@@ -118,6 +121,10 @@ class FakeSt:
 
     def columns(self, n: int) -> list[FakeSt]:
         return [FakeSt() for _ in range(n)]
+
+    def tabs(self, labels: list[str]) -> list[FakeSt]:
+        self._r("tabs", labels)
+        return [self for _ in labels]
 
     def set_text_input(self, label: str, value: str) -> FakeSt:
         self._text_input_vals[label] = value
@@ -213,7 +220,7 @@ def test_eda_explorer_renders_storylens_card() -> None:
 
 def test_eda_storylens_empty_on_bad_result() -> None:
     """_eda_storylens returns [] when result is None — no crash, no fabrication."""
-    from data_quality_toolkit.adapters.ui.pages.eda_explorer import _eda_storylens
+    from data_quality_toolkit.adapters.ui.eda_sections import _eda_storylens
 
     result = _eda_storylens(None, None)
     assert result == []
@@ -221,7 +228,7 @@ def test_eda_storylens_empty_on_bad_result() -> None:
 
 def test_eda_storylens_quality_score_present() -> None:
     """_eda_storylens returns a quality-score explanation for a clean result."""
-    from data_quality_toolkit.adapters.ui.pages.eda_explorer import _eda_storylens
+    from data_quality_toolkit.adapters.ui.eda_sections import _eda_storylens
 
     cards = _eda_storylens(_FAKE_RESULT, _FAKE_PROFILE)
     assert len(cards) >= 1
@@ -230,7 +237,7 @@ def test_eda_storylens_quality_score_present() -> None:
 
 def test_eda_storylens_adds_missing_value_card() -> None:
     """_eda_storylens appends a missing-value card when an issue is present."""
-    from data_quality_toolkit.adapters.ui.pages.eda_explorer import _eda_storylens
+    from data_quality_toolkit.adapters.ui.eda_sections import _eda_storylens
 
     result_with_issue: dict[str, Any] = {
         **_FAKE_RESULT,
@@ -247,7 +254,7 @@ def test_eda_storylens_adds_missing_value_card() -> None:
 
 def test_eda_storylens_bounded_max_two() -> None:
     """_eda_storylens returns at most 2 cards even with many issues."""
-    from data_quality_toolkit.adapters.ui.pages.eda_explorer import _eda_storylens
+    from data_quality_toolkit.adapters.ui.eda_sections import _eda_storylens
 
     many_issues = [
         {"type": "missing", "column": f"col{i}", "pct": 0.1 * i, "severity": "medium"}
@@ -267,7 +274,7 @@ def test_run_history_1_record_renders_not_enough_runs_card() -> None:
 
     one_record = [{"ts": "2025-01-01T00:00:00Z", "score": 0.90}]
     st = FakeSt()
-    st.set_text_input("Database path", "dqt.db")
+    st.set_text_input("Quality-history database", "dqt.db")
     st.set_text_input("Dataset ID", "sha1:abc")
 
     with (

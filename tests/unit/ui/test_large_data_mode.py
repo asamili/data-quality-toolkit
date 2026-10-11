@@ -7,17 +7,30 @@ All tests run without a live Streamlit instance.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from data_quality_toolkit.adapters.ui.pages.data_overview import (
     _LARGE_MODE_BANNER,
+    _MANAGED_FAIL_CLOSED_MESSAGE,
+    _SMART_PREVIEW_TITLE,
     _render_data_overview,
     _render_large_data_profile_overview,
 )
+from data_quality_toolkit.adapters.ui.services import managed_frame_loader as _mfl
 from data_quality_toolkit.adapters.ui.services.assessment import _load_profile_chunked
+from data_quality_toolkit.adapters.ui.services.managed_trust import (
+    commit_trust_root,
+    ensure_session_capability,
+    make_source_locator,
+)
+from data_quality_toolkit.adapters.ui.state.context import DatasetContext
+from data_quality_toolkit.adapters.ui.state.keys import DATASET_CONTEXT
+from data_quality_toolkit.shared.managed_export_source import MANAGED_FULL_MAX_SOURCE_BYTES
 
 # ---------------------------------------------------------------------------
 # Minimal Streamlit test double
@@ -239,6 +252,14 @@ def test_render_large_data_profile_overview_shows_download_button() -> None:
     assert st.called("download_button")
 
 
+def test_render_large_data_profile_overview_shows_save_button() -> None:
+    """Opt-in Save-to-Workspace button is wired without touching the browser download."""
+    st = FakeSt()
+    _render_large_data_profile_overview(st, _FAKE_ENVELOPE)
+    assert st.called("button")  # save-to-workspace button rendered
+    assert st.called("download_button")  # browser download preserved
+
+
 def test_render_large_data_profile_overview_no_eda_selectbox() -> None:
     """Large mode must not render EDA (no selectbox for column explorer)."""
     st = FakeSt()
@@ -446,7 +467,7 @@ def test_render_data_overview_empty_csv_shows_info_before_checkbox() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Issue-level StoryLens explanations (DQT-V2.9-G2A-SL2)
+# Issue-level StoryLens explanations
 # ---------------------------------------------------------------------------
 
 # score >= 0.90 → quality-score card is "ok" severity (no st.warning from the
@@ -531,3 +552,254 @@ def test_render_data_overview_unsupported_or_incomplete_issue_skipped() -> None:
     assert st.called("metric")  # page still rendered, no raise
     assert "missing" not in _all_text(st, "warning")  # no missing-value card
     assert not st.called("info")  # no constant-column card
+
+
+# ---------------------------------------------------------------------------
+# Managed root-first dispatch: FULL / LARGE / source-size behavior
+# ---------------------------------------------------------------------------
+
+_MOCK_MANAGED_FRAME = "data_quality_toolkit.adapters.ui.pages.data_overview.get_managed_frame"
+_MOCK_MANAGED_ASSESS = "data_quality_toolkit.adapters.ui.pages.data_overview.get_managed_assessment"
+_MANAGED_ABS = "C:\\workspace\\versions\\v1\\data.csv"
+
+
+@pytest.fixture(autouse=True)
+def _clean_managed_caches() -> Any:
+    _mfl.clear_managed_caches()
+    yield
+    _mfl.clear_managed_caches()
+
+
+def _trusted_session(
+    *, large: bool = False, size: int = 2048, absolute: str = _MANAGED_ABS
+) -> dict[str, Any]:
+    state: dict[str, Any] = {}
+    capability = ensure_session_capability(state)
+    commit_trust_root(
+        state,
+        capability,
+        version_id=str(uuid.uuid4()),
+        family_id=str(uuid.uuid4()),
+        content_id="sha256:" + "a" * 64,
+        root_content_id="sha256:" + "b" * 64,
+        parent_version_id=None,
+        version_label="cleaned v2",
+        locator=make_source_locator(
+            display_name="data.csv",
+            relative_posix="versions/v1/data.csv",
+            absolute_path=absolute,
+        ),
+        size_bytes=size,
+        modified_ns=10,
+        large_file_mode=large,
+    )
+    return state
+
+
+def _managed_envelope() -> dict[str, Any]:
+    return {"profile": _FAKE_PROFILE, "assessment": _FAKE_ASSESSMENT}
+
+
+def test_managed_full_dispatches_through_managed_loader() -> None:
+    st = FakeSt()
+    session = _trusted_session()
+    with (
+        patch(_MOCK_MANAGED_FRAME, return_value=_FAKE_DF) as mock_frame,
+        patch(_MOCK_MANAGED_ASSESS, return_value=_managed_envelope()) as mock_assess,
+        patch(_MOCK_LOAD_DF) as mock_full,
+        patch(_MOCK_LOAD_CHUNKED) as mock_chunked,
+    ):
+        _render_data_overview(st, session)
+    mock_frame.assert_called_once()
+    mock_assess.assert_called_once()
+    mock_full.assert_not_called()
+    mock_chunked.assert_not_called()
+    assert st.called("metric")
+
+
+def test_managed_large_routes_to_profile_only_from_trusted_source() -> None:
+    st = FakeSt()
+    session = _trusted_session(large=True)
+    with (
+        patch(_MOCK_LOAD_CHUNKED, return_value=(_FAKE_ENVELOPE, None)) as mock_chunked,
+        patch(_MOCK_MANAGED_FRAME) as mock_frame,
+        patch(_MOCK_LOAD_DF) as mock_full,
+    ):
+        _render_data_overview(st, session)
+    mock_chunked.assert_called_once()
+    assert mock_chunked.call_args[0][0] == _MANAGED_ABS  # trusted machine path, root-first
+    mock_frame.assert_not_called()  # LARGE never materializes a DataFrame
+    mock_full.assert_not_called()
+    assert st.called("warning")  # profile-only banner
+    assert not st.called("metric")
+
+
+def test_managed_mirror_without_trust_fails_closed() -> None:
+    st = FakeSt()
+    session: dict[str, Any] = {
+        DATASET_CONTEXT: DatasetContext(
+            source_path=_MANAGED_ABS,
+            display_name="data.csv",
+            size_bytes=2048,
+            modified_ns=10,
+            managed=True,
+            version_id=str(uuid.uuid4()),
+            family_id=str(uuid.uuid4()),
+            content_id="sha256:" + "a" * 64,
+            root_content_id="sha256:" + "b" * 64,
+            version_label="cleaned v2",
+        )
+    }
+    with (
+        patch(_MOCK_MANAGED_FRAME) as mock_frame,
+        patch(_MOCK_LOAD_DF) as mock_full,
+        patch(_MOCK_LOAD_CHUNKED) as mock_chunked,
+    ):
+        _render_data_overview(st, session)
+    mock_frame.assert_not_called()
+    mock_full.assert_not_called()
+    mock_chunked.assert_not_called()
+    assert st.called("error")
+    assert _MANAGED_FAIL_CLOSED_MESSAGE in _all_text(st, "error")
+
+
+def test_manual_path_cannot_override_valid_managed_trust() -> None:
+    st = FakeSt()
+    st.set_text_input("CSV path", "C:/manual/other.csv")
+    session = _trusted_session()
+    with (
+        patch(_MOCK_MANAGED_FRAME, return_value=_FAKE_DF) as mock_frame,
+        patch(_MOCK_MANAGED_ASSESS, return_value=_managed_envelope()),
+        patch(_MOCK_LOAD_DF) as mock_full,
+    ):
+        _render_data_overview(st, session)
+    mock_frame.assert_called_once()
+    mock_full.assert_not_called()
+    assert not st.called("text_input")  # manual override input never rendered
+
+
+def test_managed_full_above_size_ceiling_is_refused() -> None:
+    st = FakeSt()
+    session = _trusted_session(size=MANAGED_FULL_MAX_SOURCE_BYTES + 1)
+    with patch(_MOCK_LOAD_DF) as mock_full:
+        _render_data_overview(st, session)
+    mock_full.assert_not_called()
+    assert st.called("error")
+    error_text = _all_text(st, "error")
+    assert "size ceiling" in error_text
+    assert _MANAGED_ABS not in error_text  # privacy-safe refusal
+
+
+def test_managed_full_exactly_at_size_ceiling_is_permitted(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    csv = tmp_path / "versions" / "v1" / "data.csv"
+    csv.parent.mkdir(parents=True)
+    csv.write_text("n,c\n1,a\n", encoding="utf-8")
+    session = _trusted_session(size=MANAGED_FULL_MAX_SOURCE_BYTES, absolute=str(csv.resolve()))
+    monkeypatch.setattr(_mfl, "_revalidate", lambda root: None)
+    st = FakeSt()
+    with (
+        patch(_MOCK_MANAGED_ASSESS, return_value=_managed_envelope()),
+        patch(_MOCK_LOAD_DF) as mock_full,
+    ):
+        _render_data_overview(st, session)
+    mock_full.assert_not_called()
+    assert not st.called("error")  # exactly at the boundary is permitted
+    assert st.called("metric")
+
+
+def test_unmanaged_flow_is_unchanged_when_no_trust_exists() -> None:
+    st = FakeSt()
+    st.set_text_input("CSV path", "data.csv")
+    with (
+        patch(_MOCK_LOAD_DF, return_value=(_FAKE_DF, _FAKE_RESULT, None)) as mock_full,
+        patch(_MOCK_MANAGED_FRAME) as mock_frame,
+    ):
+        _render_data_overview(st, {})
+    mock_full.assert_called_once()
+    mock_frame.assert_not_called()
+    assert st.called("metric")
+
+
+# ---------------------------------------------------------------------------
+# Smart Preview inside large-file mode
+# ---------------------------------------------------------------------------
+# The preview is additive: it reads the same approximate chunked profile the
+# page already holds, never materializes a DataFrame, and never upgrades a
+# sample-derived reading into a dataset-wide claim.
+
+
+def _preview_text(st: FakeSt) -> str:
+    """Return only the text rendered from the Smart Preview subheader onward."""
+    whole = " ".join(
+        str(value) for _, args, _ in st.calls for value in args if isinstance(value, str)
+    )
+    marker = whole.find(_SMART_PREVIEW_TITLE)
+    return whole[marker:] if marker >= 0 else ""
+
+
+def test_large_mode_renders_the_smart_preview_from_the_chunked_profile() -> None:
+    st = FakeSt()
+    _render_large_data_profile_overview(st, _FAKE_ENVELOPE)
+    preview = _preview_text(st)
+    assert preview
+    assert "bounded sample" in preview
+    assert "4 rows × 3 columns" in preview
+
+
+def test_large_mode_smart_preview_does_not_materialize_a_dataframe() -> None:
+    st = FakeSt()
+    with (
+        patch(_MOCK_LOAD_DF) as mock_full,
+        patch(_MOCK_MANAGED_FRAME) as mock_frame,
+    ):
+        _render_large_data_profile_overview(st, _FAKE_ENVELOPE)
+    mock_full.assert_not_called()
+    mock_frame.assert_not_called()
+    assert "no full DataFrame is loaded" in _preview_text(st)
+
+
+def test_large_mode_smart_preview_never_claims_an_exact_fact() -> None:
+    st = FakeSt()
+    _render_large_data_profile_overview(st, _FAKE_ENVELOPE)
+    preview = _preview_text(st)
+    assert "Shape (bounded sample)" in preview
+    assert "Shape (fact)" not in preview
+
+
+def test_large_mode_approximate_profile_line_is_still_rendered_first() -> None:
+    """The preview is inserted after — not before — the existing shape line."""
+    st = FakeSt()
+    _render_large_data_profile_overview(st, _FAKE_ENVELOPE)
+    first_write = st.call_args("write")[0]
+    assert any("Dataset Profile (approximate)" in str(a) for a in first_write)
+
+
+def test_large_mode_smart_preview_adds_no_download_or_input_control() -> None:
+    st = FakeSt()
+    _render_large_data_profile_overview(st, _FAKE_ENVELOPE)
+    assert st.call_count("download_button") == 1  # pre-existing column-analysis download only
+    assert not st.called("number_input")  # chunk-size input belongs to the outer branch
+    assert not st.called("selectbox")
+
+
+def test_large_mode_empty_profile_keeps_the_safe_no_column_state() -> None:
+    envelope = {**_FAKE_ENVELOPE, "profile": {"rows": 0, "cols": 0, "columns": []}}
+    st = FakeSt()
+    _render_large_data_profile_overview(st, envelope)
+    preview = _preview_text(st)
+    assert "No columns are available to group." in preview
+    assert st.called("info")  # existing "No column data available." state preserved
+    assert not st.called("dataframe")  # and still no table is drawn
+
+
+def test_managed_large_mode_passes_the_managed_identity_to_the_preview() -> None:
+    st = FakeSt()
+    session = _trusted_session(large=True)
+    with patch(_MOCK_LOAD_CHUNKED, return_value=(_FAKE_ENVELOPE, None)):
+        _render_data_overview(st, session)
+    preview = _preview_text(st)
+    assert "Managed version" in preview
+    assert "large-file profile mode" in preview
+    assert _MANAGED_ABS not in preview

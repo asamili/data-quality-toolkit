@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from data_quality_toolkit.adapters.ui import journey
+from data_quality_toolkit.adapters.ui.components.page_guidance import render_page_guidance
 from data_quality_toolkit.adapters.ui.components.page_shell import (
     render_page_header,
     render_section_header,
@@ -18,16 +20,22 @@ _WORKFLOW = (
     "1. **Start / Load Dataset** — select a local CSV once; later pages reuse it.\n"
     "2. **Data Overview** — shape, quality score, issue count, and column health.\n"
     "3. **EDA Explorer** — charts and visual exploration.\n"
-    "4. **Statistics Lab** — descriptive statistics and tables (the numbers).\n"
-    "5. **Quality Score / Rule Breakdown** — how the score is calculated and why.\n"
+    "4. **Statistics Lab** — descriptive statistics, statistical tests, Distributions, "
+    "and Power & Sample Size; result tables can be downloaded or saved to Workspace.\n"
+    "5. **Quality Score** — how the score is calculated and why.\n"
     "6. **Preprocess Studio** — dependency-free, in-memory recipe workflow with "
     "before/after validation and recipe export.\n"
     "7. **Pipeline Runner** — dry-run and evidence workflow with a CLI-equivalent "
     "preview; legacy write-capable execution stays behind explicit confirmation.\n"
     "8. **Drift Monitoring** — read-only drift evidence from a local monitoring database.\n"
-    "9. **Artifact Center** — review generated artifacts, basenames only.\n"
-    "10. **Settings / Governance** — truthful runtime, capability, and threshold info.\n"
-    "11. **Help / About** — this page."
+    "9. **Export** — guided CLI/API handoff plus confirmed server-side star export.\n"
+    "10. **Quality History** — read the `dqt.db` created by Export and compare runs.\n"
+    "11. **Artifact Center** — review generated artifacts, basenames only.\n"
+    "12. **KPI Catalog** — validate a catalog and download or save BI artifacts.\n"
+    "13. **Dim Time** — generate a fiscal-aware time dimension CSV.\n"
+    "14. **Manifest Viewer** — inspect lineage manifest summaries with safe path display.\n"
+    "15. **Settings / Governance** — truthful runtime, capability, and threshold info.\n"
+    "16. **Help / About** — this page."
 )
 
 
@@ -37,7 +45,15 @@ def _render_help_about(st: Any) -> None:
         st,
         "Help / About",
         "How the dashboard works and how it handles your data.",
-        step_label="Step 11 of 11 — Help / About",
+        step_label=journey.step_label("help_about"),
+    )
+    render_page_guidance(
+        st,
+        purpose="Orient yourself in the guided journey and understand where each page fits.",
+        inputs="None.",
+        workflow="Follow the page order from dataset selection through analysis, preparation, "
+        "operation, and delivery.",
+        next_step="Start / Load Dataset",
     )
 
     render_section_header(st, "Deterministic by default")
@@ -60,7 +76,8 @@ def _render_help_about(st: Any) -> None:
 
     render_section_header(st, "Where features fit")
     st.markdown(
-        "- **Statistics** vs **EDA**: Statistics Lab is tables and numbers; EDA Explorer is charts.\n"
+        "- **Statistics** vs **EDA**: Statistics Lab is tables, tests, distributions, and "
+        "planning calculations; EDA Explorer is charts.\n"
         "- **Quality Score**: completeness minus capped rule penalties — see its dedicated page.\n"
         "- **Drift**: a distribution change over time, not a defect or a cause.\n"
         "- **Pipeline**: a dry-run preview with a CLI-equivalent command; the legacy "

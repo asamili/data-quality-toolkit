@@ -401,7 +401,9 @@ def build_drift_history_report(
     ``read_drift_columns_sqlite`` and rendered as an extra section. When
     ``include_plots`` is true, persisted distribution bins are fetched via
     ``read_drift_distributions_sqlite`` and rendered as a "Distribution plots"
-    section (an empty database renders a clear empty-state).
+    section (an empty database renders a clear empty-state). When
+    ``current_dataset_id`` or ``limit`` filters the runs, column and
+    distribution rows are scoped to exactly those runs.
     """
     from data_quality_toolkit.api import (
         read_drift_runs_sqlite,
@@ -412,16 +414,18 @@ def build_drift_history_report(
         db_path, current_dataset_id=current_dataset_id, limit=limit
     )
     runs = read_drift_runs_sqlite(db_path, current_dataset_id=current_dataset_id, limit=limit)
+    scoped = current_dataset_id is not None or limit is not None
+    run_ids = [r["run_id"] for r in runs] if scoped else None
     columns: list[dict[str, Any]] | None = None
     if include_columns:
         from data_quality_toolkit.api import read_drift_columns_sqlite
 
-        columns = read_drift_columns_sqlite(db_path)
+        columns = read_drift_columns_sqlite(db_path, run_ids=run_ids)
     distributions: list[dict[str, Any]] | None = None
     if include_plots:
         from data_quality_toolkit.api import read_drift_distributions_sqlite
 
-        distributions = read_drift_distributions_sqlite(db_path)
+        distributions = read_drift_distributions_sqlite(db_path, run_ids=run_ids)
     return render_drift_history_report(
         summary=summary,
         runs=runs,

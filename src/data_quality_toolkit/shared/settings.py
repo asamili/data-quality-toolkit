@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, ClassVar, Literal, cast  # ClassVar + cast
+from typing import Any, ClassVar, Literal, cast, get_args, get_origin  # ClassVar + cast
+
+# Settings construction raises pydantic's ValidationError for a rejected value; the
+# alias names that one failure for callers that report it (e.g. the dqt CLI).
+from pydantic import ValidationError as SettingsValidationError
 
 from data_quality_toolkit.shared.compat import (
     V2,
@@ -44,15 +48,10 @@ class Settings(BaseSettings):
     export_base_dir: Path = Field("./dist", validation_alias="EXPORT_BASE_DIR")
     pbi_base_folder_parameter: Path = Field("./dist", validation_alias="PBI_BASE_FOLDER_PARAMETER")
 
-    # LLM / SSOT
-    api_key: str | None = Field(None, validation_alias="API_KEY")
-    lorax_base_url: str = Field("http://localhost:8080", validation_alias="LORAX_BASE_URL")
-    lorax_timeout_secs: int = Field(30, validation_alias="LORAX_TIMEOUT_SECS")
-
     # Security / feature flags
     dqt_allow_network: bool = Field(False, validation_alias="DQT_ALLOW_NETWORK")
 
-    # Lineage / manifest (Phase 10 feature — declared for type-checker visibility)
+    # Lineage / manifest (declared for type-checker visibility)
     serde_impl: Literal["pydantic", "msgspec"] = Field("pydantic", validation_alias="SERDE_IMPL")
     json_writer: Literal["json", "orjson"] = Field("json", validation_alias="JSON_WRITER")
     lineage_schema_version: str = Field("1.0.0", validation_alias="LINEAGE_SCHEMA_VERSION")
@@ -91,13 +90,24 @@ class Settings(BaseSettings):
             return str(Path(v).expanduser().resolve())
 
     def ensure_runtime_dirs(self) -> None:
-        """Create necessary runtime directories."""
+        """Create the configured runtime directories.
+
+        This is the explicit mutation boundary for output directories: it is the
+        only settings operation that touches the filesystem. Constructing or
+        reading settings never creates directories; callers that are about to
+        write invoke this (or create their own output parents, as the CSV
+        exporter and SQLite schema helper already do). Idempotent.
+        """
         for p in (self.export_base_dir, self.pbi_base_folder_parameter):
             Path(p).mkdir(parents=True, exist_ok=True)
 
 
 def load_settings() -> Settings:
-    """Load and prepare settings."""
+    """Load settings from the environment.
+
+    Read-only and filesystem-pure: it creates no directories. Call
+    :meth:`Settings.ensure_runtime_dirs` explicitly when a write needs them.
+    """
     env_file = _resolve_env_file()
     _cls = cast(Any, Settings)  # _env_file not in pydantic-generated __init__ stubs
     s: Settings
@@ -105,8 +115,57 @@ def load_settings() -> Settings:
         s = _cls(_env_file=env_file)
     else:  # pragma: no cover
         s = _cls(_env_file=env_file)
-    s.ensure_runtime_dirs()
     return s
 
 
-settings: Settings = load_settings()
+def _accepted_values(annotation: Any) -> str:
+    """Describe what a settings field accepts, from its annotation alone."""
+    if get_origin(annotation) is Literal:
+        return "must be one of: " + ", ".join(str(v) for v in get_args(annotation))
+    if annotation is bool:
+        return "must be a boolean (true or false)"
+    if annotation is int:
+        return "must be an integer"
+    return "has an invalid value"
+
+
+def describe_invalid_settings(exc: SettingsValidationError) -> str:
+    """Summarize a settings validation failure for an operator, without its input.
+
+    Each rejected setting is named by its environment variable and paired with
+    what it accepts, derived from the ``Settings`` model. The supplied value and
+    pydantic's own rendering of the error are deliberately left out, so a value
+    placed in the wrong variable (a secret, for instance) is never echoed.
+    """
+    fields = Settings.model_fields
+    field_by_alias = {str(info.validation_alias): name for name, info in fields.items()}
+    problems: list[str] = []
+    for error in exc.errors():
+        loc = error.get("loc") or ()
+        alias = str(loc[0]) if loc else ""
+        field = field_by_alias.get(alias)
+        if field is None:
+            problem = "a DQT setting has an invalid value"
+        else:
+            problem = f"{alias} {_accepted_values(fields[field].annotation)}"
+        if problem not in problems:
+            problems.append(problem)
+    return "; ".join(problems)
+
+
+# The shared instance is built on first access rather than at import, so importing
+# this module never validates the environment. An invalid value then surfaces where
+# settings are first needed -- for the dqt CLI, inside main()'s operator-facing error
+# handling -- instead of as a traceback while an import graph is still loading.
+settings: Settings  # provided by __getattr__ below
+_shared_settings: Settings | None = None
+
+
+def __getattr__(name: str) -> Settings:
+    """Build the shared ``settings`` instance once, on first access (PEP 562)."""
+    global _shared_settings
+    if name != "settings":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    if _shared_settings is None:
+        _shared_settings = load_settings()
+    return _shared_settings

@@ -8,10 +8,12 @@ CLI behavior is unchanged — these functions call the same internal implementat
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-# Public re-exports (G8C1): make the stable view-model, exception family, and the
+# Public re-exports: make the stable view-model, exception family, and the
 # storage error importable from the canonical ``data_quality_toolkit.api`` seam.
 # Cycle-safe: view_model imports ``api`` only lazily inside its builder functions.
 from data_quality_toolkit.adapters.storage.connection import StorageError
@@ -38,8 +40,13 @@ from data_quality_toolkit.shared.exceptions import (
     ValidationError,
     WebhookSecurityError,
 )
+from data_quality_toolkit.shared.managed_export_source import VerifiedManagedExportSource
 from data_quality_toolkit.shared.result_types import (
+    ABComparisonResult,
     AssessCsvResult,
+    BuiltinQualityCatalogResult,
+    BuiltinQualityDaxResult,
+    BuiltinQualityKpi,
     ColumnPlan,
     CsvAssessment,
     CsvAssessmentIssue,
@@ -66,6 +73,12 @@ from data_quality_toolkit.shared.result_types import (
     ProfileCsvResult,
     PsiOffender,
     PsiThresholdResult,
+    SemanticContractValidationResult,
+    StatisticalTestResult,
+    StatisticalTestSelectionResult,
+    StatisticsNumericSummary,
+    StatisticsProfileResult,
+    StatisticsProfileSummary,
     SummarizeDriftTrendsResult,
 )
 
@@ -77,8 +90,13 @@ __all__ = [
     "profile_csv",
     "assess_csv",
     "export_csv",
+    "export_csv_managed",
     "plan_csv",
     "compare_runs",
+    "stats_profile_csv",
+    "select_statistical_test",
+    "run_statistical_test",
+    "compare_ab",
     "create_manifest",
     "create_elt_pipeline",
     # Drift detection + history readers
@@ -103,6 +121,9 @@ __all__ = [
     "kpi_validate",
     "kpi_emit",
     "kpi_graph",
+    "get_builtin_quality_catalog",
+    "emit_builtin_quality_dax",
+    "validate_builtin_quality_semantic_contract",
     "generate_dim_time",
     "build_powerbi_package",
     # Monitoring view-model (value objects + builders)
@@ -136,6 +157,10 @@ __all__ = [
     "DimTimeResult",
     "KpiEmitResult",
     "KpiGraphResult",
+    "BuiltinQualityKpi",
+    "BuiltinQualityCatalogResult",
+    "BuiltinQualityDaxResult",
+    "SemanticContractValidationResult",
     "SummarizeDriftTrendsResult",
     "DriftRunRow",
     "DriftColumnRow",
@@ -145,6 +170,12 @@ __all__ = [
     "MonitoringDuckdbExportResult",
     "DriftPlotsExportResult",
     "DriftNotificationSendResult",
+    "StatisticsNumericSummary",
+    "StatisticsProfileSummary",
+    "StatisticsProfileResult",
+    "StatisticalTestSelectionResult",
+    "StatisticalTestResult",
+    "ABComparisonResult",
     # Power BI package contract (G8C3B)
     "PowerBIPackageResult",
     # Nested envelope contracts (G8C2G)
@@ -177,6 +208,51 @@ def _build_csv_kwargs(
     return kw
 
 
+def _json_number(value: Any) -> float | None:
+    if value is None:
+        return None
+    if hasattr(value, "item"):
+        value = value.item()
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
+
+
+def _json_required_float(value: Any) -> float:
+    number = _json_number(value)
+    return 0.0 if number is None else number
+
+
+def _json_required_int(value: Any) -> int:
+    number = _json_number(value)
+    return 0 if number is None else int(number)
+
+
+def _numeric_summary_records(summary: Any) -> list[StatisticsNumericSummary]:
+    records: list[StatisticsNumericSummary] = []
+    for column, row in summary.iterrows():
+        records.append(
+            {
+                "column": str(column),
+                "count": _json_required_int(row.get("count")),
+                "missing": _json_required_int(row.get("missing")),
+                "missing_pct": _json_required_float(row.get("missing_pct")),
+                "mean": _json_number(row.get("mean")),
+                "median": _json_number(row.get("median")),
+                "std": _json_number(row.get("std")),
+                "min": _json_number(row.get("min")),
+                "max": _json_number(row.get("max")),
+                "skew": _json_number(row.get("skew")),
+                "kurtosis": _json_number(row.get("kurtosis")),
+            }
+        )
+    return records
+
+
 def profile_csv(
     path: str | Path,
     *,
@@ -199,6 +275,197 @@ def profile_csv(
     from data_quality_toolkit.application.workflow.pipeline import run_profile
 
     return cast(ProfileCsvResult, run_profile(str(path), sample_size=sample_size, **kw))
+
+
+def stats_profile_csv(
+    path: str | Path,
+    *,
+    columns: str | Sequence[str] | None = None,
+    sep: str | None = None,
+    encoding: str | None = None,
+    na_values: list[str] | None = None,
+) -> StatisticsProfileResult:
+    """Return a compact descriptive statistics profile for a local CSV."""
+    import pandas as pd
+
+    from data_quality_toolkit.domain.statistics.descriptive import numeric_summary, quick_profile
+
+    csv_path = Path(path)
+    if isinstance(columns, str):
+        usecols = [columns]
+    elif columns is None:
+        usecols = None
+    else:
+        usecols = [str(column) for column in columns]
+        if not usecols:
+            return {
+                "status": "invalid_input",
+                "path": str(csv_path),
+                "reason": "columns must contain at least one column when provided",
+            }
+
+    kw = _build_csv_kwargs(sep, encoding, na_values)
+    try:
+        df = pd.read_csv(csv_path, usecols=usecols, **kw)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return {
+            "status": "invalid_input",
+            "path": str(csv_path),
+            "reason": str(exc),
+        }
+
+    return {
+        "status": "ok",
+        "path": str(csv_path),
+        "columns": [str(column) for column in df.columns],
+        "profile": cast(StatisticsProfileSummary, quick_profile(df)),
+        "numeric_summary": _numeric_summary_records(numeric_summary(df)),
+    }
+
+
+def select_statistical_test(
+    variable_type: str,
+    group_structure: str,
+    *,
+    sigma_known: bool | None = None,
+    equal_variance_assumed: bool | None = None,
+    paired: bool | None = None,
+    alternative: str = "two-sided",
+    alpha: float = 0.05,
+) -> StatisticalTestSelectionResult:
+    """Select a first-wave statistical test for a typed hypothesis setup."""
+    from data_quality_toolkit.domain.statistics.selection import select_test
+
+    return cast(
+        StatisticalTestSelectionResult,
+        select_test(
+            variable_type,
+            group_structure,
+            sigma_known=sigma_known,
+            equal_variance_assumed=equal_variance_assumed,
+            paired=paired,
+            alternative=alternative,
+            alpha=alpha,
+        ),
+    )
+
+
+def run_statistical_test(
+    test_key: str,
+    *,
+    sample: Any = None,
+    sample_a: Any = None,
+    sample_b: Any = None,
+    groups: Sequence[Any] | None = None,
+    successes: int | None = None,
+    n: int | None = None,
+    successes_a: int | None = None,
+    n_a: int | None = None,
+    successes_b: int | None = None,
+    n_b: int | None = None,
+    observed: Any = None,
+    expected: Any = None,
+    table: Any = None,
+    null_mean: float = 0.0,
+    null_difference: float = 0.0,
+    null_proportion: float | None = None,
+    null_variance: float | None = None,
+    sigma: float | None = None,
+    sigma_a: float | None = None,
+    sigma_b: float | None = None,
+    alternative: str = "two-sided",
+    alpha: float = 0.05,
+) -> StatisticalTestResult:
+    """Run an explicit first-wave statistical test and return a status dict."""
+    from data_quality_toolkit.domain.statistics.inference import calculate_p_value
+
+    return cast(
+        StatisticalTestResult,
+        calculate_p_value(
+            test_key,
+            sample=sample,
+            sample_a=sample_a,
+            sample_b=sample_b,
+            groups=groups,
+            successes=successes,
+            n=n,
+            successes_a=successes_a,
+            n_a=n_a,
+            successes_b=successes_b,
+            n_b=n_b,
+            observed=observed,
+            expected=expected,
+            table=table,
+            null_mean=null_mean,
+            null_difference=null_difference,
+            null_proportion=null_proportion,
+            null_variance=null_variance,
+            sigma=sigma,
+            sigma_a=sigma_a,
+            sigma_b=sigma_b,
+            alternative=alternative,
+            alpha=alpha,
+        ),
+    )
+
+
+def compare_ab(
+    sample_a: Any = None,
+    sample_b: Any = None,
+    *,
+    variable_type: str = "numeric",
+    group_structure: str = "two_independent",
+    groups: Sequence[Any] | None = None,
+    successes_a: int | None = None,
+    n_a: int | None = None,
+    successes_b: int | None = None,
+    n_b: int | None = None,
+    observed: Any = None,
+    expected: Any = None,
+    table: Any = None,
+    alpha: float = 0.05,
+    alternative: str = "two-sided",
+    sigma_known: bool | None = False,
+    equal_variance_assumed: bool | None = False,
+    sigma: float | None = None,
+    sigma_a: float | None = None,
+    sigma_b: float | None = None,
+    null_mean: float = 0.0,
+    null_difference: float = 0.0,
+    null_proportion: float | None = None,
+    null_variance: float | None = None,
+) -> ABComparisonResult:
+    """Select and run a first-wave A/B comparison."""
+    from data_quality_toolkit.domain.statistics.ab import compare_ab as _compare_ab
+
+    return cast(
+        ABComparisonResult,
+        _compare_ab(
+            sample_a,
+            sample_b,
+            variable_type=variable_type,
+            group_structure=group_structure,
+            groups=groups,
+            successes_a=successes_a,
+            n_a=n_a,
+            successes_b=successes_b,
+            n_b=n_b,
+            observed=observed,
+            expected=expected,
+            table=table,
+            alpha=alpha,
+            alternative=alternative,
+            sigma_known=sigma_known,
+            equal_variance_assumed=equal_variance_assumed,
+            sigma=sigma,
+            sigma_a=sigma_a,
+            sigma_b=sigma_b,
+            null_mean=null_mean,
+            null_difference=null_difference,
+            null_proportion=null_proportion,
+            null_variance=null_variance,
+        ),
+    )
 
 
 def assess_csv(
@@ -249,8 +516,16 @@ def export_csv(
     na_values: list[str] | None = None,
     sample_size: int | None = None,
     emit_manifest: bool = False,
+    artifact_meta: Mapping[str, object] | None = None,
 ) -> ExportCsvResult:
-    """Full pipeline: profile → assess → star schema → write artifacts. Returns run metadata."""
+    """Full pipeline: profile → assess → star schema → write artifacts. Returns run metadata.
+
+    ``artifact_meta`` is optional additive metadata recorded on each artifact in
+    the emitted lineage manifest (it therefore only has an effect together with
+    ``emit_manifest=True``). It is passed as an explicit keyword, never merged
+    into the CSV-reading kwargs, and defaults to ``None`` so every existing call
+    behaves exactly as before.
+    """
     from data_quality_toolkit.application.workflow.pipeline import run_export_star
 
     kw = _build_csv_kwargs(sep, encoding, na_values)
@@ -264,6 +539,7 @@ def export_csv(
                 null_threshold=null_threshold,
                 sample_size=sample_size,
                 emit_manifest=emit_manifest,
+                artifact_meta=artifact_meta,
                 **kw,
             ),
         )
@@ -274,9 +550,31 @@ def export_csv(
             output_dir=out_dir,
             sample_size=sample_size,
             emit_manifest=emit_manifest,
+            artifact_meta=artifact_meta,
             **kw,
         ),
     )
+
+
+def export_csv_managed(
+    source: VerifiedManagedExportSource,
+    *,
+    output_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Export a verified managed version; ``export_csv`` above stays unmanaged.
+
+    ``source`` is the single provenance authority. There is deliberately no
+    separate version, family, content, path, DataFrame, artifact-meta, or trust
+    parameter, and no optional managed argument was added to ``export_csv``.
+
+    The provenance object is produced by the UI-side managed export gateway and
+    defined in the shared kernel, so this public API module never imports the UI
+    layer to obtain a trust or provenance type.
+    """
+    from data_quality_toolkit.application.workflow.pipeline import run_managed_export_star
+
+    out_dir = str(output_dir) if output_dir is not None else str(Path.cwd())
+    return run_managed_export_star(source, output_dir=out_dir)
 
 
 def create_manifest(run_id: str, sessions_root: str | Path) -> dict[str, Any]:
@@ -511,6 +809,123 @@ def kpi_graph(
     return cast(KpiGraphResult, export_kpi_graph(config_path, out, graph_format=graph_format))
 
 
+def _builtin_quality_kpi_result(kpi: Any) -> BuiltinQualityKpi:
+    return {
+        "id": str(kpi.id),
+        "title": str(kpi.title),
+        "grain": str(kpi.grain),
+        "unit": str(kpi.unit),
+        "source_table": kpi.source_table,
+        "source_columns": list(kpi.source_columns or []),
+        "aggregation_rule": kpi.aggregation_rule,
+        "support_status": kpi.support_status,
+        "description": kpi.description,
+    }
+
+
+def get_builtin_quality_catalog() -> BuiltinQualityCatalogResult:
+    """Return DQT's built-in quality semantic catalog as a JSON-ready summary."""
+    from data_quality_toolkit.domain.semantics import build_builtin_quality_catalog
+
+    catalog = build_builtin_quality_catalog()
+    measures = [_builtin_quality_kpi_result(kpi) for kpi in catalog.kpis]
+    return {
+        "version": catalog.version,
+        "measure_count": len(measures),
+        "measures": measures,
+    }
+
+
+def emit_builtin_quality_dax(output_path: str | Path | None = None) -> BuiltinQualityDaxResult:
+    """Emit DAX for DQT's built-in quality semantic catalog.
+
+    With output_path=None, returns DAX text without writing. With output_path set,
+    writes the DAX file using the existing DAX writer and returns the written path.
+    """
+    from data_quality_toolkit.domain.semantics import build_builtin_quality_catalog, emit_dax
+
+    catalog = build_builtin_quality_catalog()
+    dax = emit_dax(catalog)
+    written_path: str | None = None
+    if output_path is not None:
+        from data_quality_toolkit.domain.semantics import write_dax
+
+        written_path = write_dax(catalog, output_path)
+    return {
+        "dax": dax,
+        "measure_count": len(catalog.kpis),
+        "output_path": written_path,
+    }
+
+
+def _builtin_quality_checked_files(checked_tables: list[str], input_mode: str) -> list[str]:
+    if input_mode == "package":
+        package_files = ["model.pbit", "parameters.json", "relationships.json"]
+        star_files = [f"star/{table}.csv" for table in checked_tables]
+        return [*package_files, *star_files, "time/dim_time.csv"]
+    return [f"{table}.csv" for table in checked_tables]
+
+
+def validate_builtin_quality_semantic_contract(
+    path: str | Path,
+    *,
+    input_mode: Literal["auto", "package", "star"] = "auto",
+) -> SemanticContractValidationResult:
+    """Validate the built-in quality catalog against a package or star directory.
+
+    This intentionally exposes only the built-in DQT quality contract, not the
+    generic private semantic-contract helper.
+    """
+    from data_quality_toolkit.adapters.exporters.bi.powerbi_zero_config import packager
+    from data_quality_toolkit.domain.semantics import build_builtin_quality_catalog
+
+    if input_mode not in {"auto", "package", "star"}:
+        raise ValueError("input_mode must be one of: auto, package, star")
+
+    root = Path(path)
+    resolved_mode = "package" if input_mode == "auto" and (root / "star").is_dir() else input_mode
+    if resolved_mode == "auto":
+        resolved_mode = "star"
+
+    catalog = build_builtin_quality_catalog()
+    checked_measures = [kpi.id for kpi in catalog.kpis]
+
+    if resolved_mode == "package" and not (root / "star").is_dir():
+        return {
+            "valid": False,
+            "errors": [
+                "input_mode='package' expects a Power BI package directory containing star/"
+            ],
+            "warnings": [],
+            "checked_files": [],
+            "checked_measures": checked_measures,
+            "input_mode": resolved_mode,
+            "path": str(root),
+        }
+    if resolved_mode == "star" and (root / "star").is_dir():
+        return {
+            "valid": False,
+            "errors": ["input_mode='star' expects the star directory, not a package directory"],
+            "warnings": [],
+            "checked_files": [],
+            "checked_measures": checked_measures,
+            "input_mode": resolved_mode,
+            "path": str(root),
+        }
+
+    summary = packager._validate_semantic_contract(catalog, root)
+    checked_tables = [str(table) for table in summary.get("checked_tables", [])]
+    return {
+        "valid": bool(summary.get("valid", False)),
+        "errors": list(summary.get("errors", [])),
+        "warnings": list(summary.get("warnings", [])),
+        "checked_files": _builtin_quality_checked_files(checked_tables, resolved_mode),
+        "checked_measures": checked_measures,
+        "input_mode": resolved_mode,
+        "path": str(root),
+    }
+
+
 def generate_dim_time(
     start_date: str = "2018-01-01",
     end_date: str = "2030-12-31",
@@ -570,7 +985,13 @@ def build_powerbi_package(
 
 
 def create_elt_pipeline(run_id: str, sessions_root: str | Path) -> ELTPipeline:
-    """Create a new ELT pipeline for orchestration."""
+    """Create a declarative ELT step scaffold — it records a plan, it does not run one.
+
+    ``extract``/``transform``/``load``/``assess`` only record the step; no data is
+    read, transformed, or written for them. ``manifest`` is the one step that does
+    real work. ``run()`` returns ``status="success"`` once the scaffold completes,
+    which is not a claim that any ELT work was performed.
+    """
     from data_quality_toolkit.application.workflow.elt_pipeline import (
         create_elt_pipeline as _create,
     )
@@ -637,14 +1058,17 @@ def read_drift_columns_sqlite(
     run_id: str | None = None,
     column_name: str | None = None,
     drift_detected: bool | int | None = None,
+    run_ids: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Return imported per-column drift results from a SQLite monitoring database.
 
     Reads rows from the drift_columns table populated by
     import_drift_history_sqlite from each drift run's evidence-report columns.
     Ordered by run_id then column_name. Optional filters: run_id, column_name,
-    drift_detected. Missing DB or no matching rows returns []. Raises
-    StorageError on DB read failure.
+    drift_detected, and run_ids (scope to exactly those runs, e.g. the runs a
+    filtered read_drift_runs_sqlite call returned; an empty run_ids matches
+    nothing). Missing DB or no matching rows returns []. Raises StorageError on
+    DB read failure.
     See DriftColumnRow for the stable key contract.
     """
     from data_quality_toolkit.adapters.storage.queries import read_drift_columns as _read
@@ -654,6 +1078,7 @@ def read_drift_columns_sqlite(
         run_id=run_id,
         column_name=column_name,
         drift_detected=drift_detected,
+        run_ids=run_ids,
     )
 
 
@@ -662,14 +1087,16 @@ def read_drift_distributions_sqlite(
     *,
     run_id: str | None = None,
     column_name: str | None = None,
+    run_ids: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Return imported per-column distribution bins from a SQLite monitoring database.
 
     Reads rows from the drift_column_distributions table populated by
     import_drift_history_sqlite from each drift run's evidence-report
     ``result.columns[].distribution`` bins. Ordered by run_id, column_name, then
-    bin_index. Optional filters: run_id, column_name. Missing DB or no matching
-    rows returns []. Raises StorageError on DB read failure.
+    bin_index. Optional filters: run_id, column_name, and run_ids (scope to
+    exactly those runs; an empty run_ids matches nothing). Missing DB or no
+    matching rows returns []. Raises StorageError on DB read failure.
     See DriftDistributionRow for the stable key contract.
     """
     from data_quality_toolkit.adapters.storage.queries import read_drift_distributions as _read
@@ -678,6 +1105,7 @@ def read_drift_distributions_sqlite(
         Path(db_path),
         run_id=run_id,
         column_name=column_name,
+        run_ids=run_ids,
     )
 
 

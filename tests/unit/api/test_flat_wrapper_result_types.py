@@ -1,4 +1,4 @@
-"""DQT-UX-G8C2E: flat result contracts for BI-export and notification wrappers.
+"""Flat result contracts for BI-export and notification wrappers.
 
 Proves the four flat TypedDicts (DriftHistoryXlsxExportResult,
 MonitoringDuckdbExportResult, DriftPlotsExportResult, DriftNotificationSendResult)

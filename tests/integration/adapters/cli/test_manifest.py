@@ -93,6 +93,26 @@ class TestManifestCreate:
         result = _run_cli("manifest", "create", "--run-id", "run-x")
         assert result.returncode != 0
 
+    def test_sessions_root_is_existing_file_returns_code_2(self, tmp_path: Path) -> None:
+        """--sessions-root pointed at an existing file is contained, not a traceback."""
+        blocker = tmp_path / "sessions-root-file"
+        blocker.write_text("pre-existing operator file\n", encoding="utf-8")
+
+        result = _run_cli(
+            "manifest",
+            "create",
+            "--run-id",
+            "run-x",
+            "--sessions-root",
+            str(blocker),
+        )
+
+        assert result.returncode == 2, result.stderr
+        assert "Traceback" not in result.stderr
+        assert result.stdout.strip() == ""
+        assert blocker.is_file()
+        assert blocker.read_text(encoding="utf-8") == "pre-existing operator file\n"
+
     def test_empty_session_produces_empty_datasets_and_artifacts(self, tmp_path: Path) -> None:
         run_id = "run-empty"
         _make_session(tmp_path, run_id)

@@ -2,6 +2,7 @@
 
 from data_quality_toolkit.lineage.manifest.builder import build_and_write
 from data_quality_toolkit.lineage.manifest.collector import collect
+from data_quality_toolkit.lineage.manifest.reader import load_manifest
 from data_quality_toolkit.lineage.manifest.schemas import (
     Artifact,
     Dataset,
@@ -14,6 +15,7 @@ from data_quality_toolkit.lineage.manifest.schemas import (
 __all__ = [
     "build_and_write",
     "collect",
+    "load_manifest",
     "Artifact",
     "Dataset",
     "Gates",

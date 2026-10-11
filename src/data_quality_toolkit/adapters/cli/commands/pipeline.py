@@ -1,5 +1,10 @@
 # src/data_quality_toolkit/adapters/cli/commands/pipeline.py
-"""``dqt pipeline run`` — run an ELT pipeline via the create_elt_pipeline() API."""
+"""``dqt pipeline run`` — declare an ELT step plan via the create_elt_pipeline() API.
+
+The scaffold behind this command records steps; it does not perform ELT work. Only
+``--manifest`` produces real output. See
+:mod:`data_quality_toolkit.application.workflow.elt_pipeline`.
+"""
 
 from __future__ import annotations
 
@@ -26,7 +31,12 @@ def _apply_pipeline_config(args: argparse.Namespace) -> None:
 
 
 def cmd_pipeline_run(args: argparse.Namespace) -> int:
-    """Run an ELT pipeline via the create_elt_pipeline() API."""
+    """Declare an ELT step plan via the create_elt_pipeline() API and emit it as JSON.
+
+    The extract/transform/load/assess steps are recorded only; ``--manifest`` is the
+    single step that writes anything. The emitted ``status`` is ``"success"`` when the
+    scaffold completed, not a claim that ELT work ran.
+    """
     import dataclasses
 
     from data_quality_toolkit.api import create_elt_pipeline
@@ -67,7 +77,18 @@ def register(sub: argparse._SubParsersAction) -> None:
     sp_pipeline = sub.add_parser("pipeline", help="Pipeline commands")
     ssp_pipeline = sp_pipeline.add_subparsers(dest="subcommand", required=True)
     ssp_pipeline_run = ssp_pipeline.add_parser(
-        "run", help="Run an ELT pipeline (extract → transform → load → assess → manifest)"
+        "run",
+        help=(
+            "Declare an ELT step plan and optionally build its manifest. Scaffold only: "
+            "extract/transform/load/assess are recorded, not executed"
+        ),
+        description=(
+            "Records an ELT step plan and prints it as JSON. DQT is not an ELT engine: the "
+            "extract, transform, load and assess steps are declared and echoed back, and no "
+            "data is read, transformed, or written for them. Only --manifest does real work "
+            "(it builds a lineage manifest for --run-id under --sessions-root). The reported "
+            'status is "success" when the scaffold itself completed without error.'
+        ),
     )
     ssp_pipeline_run.add_argument(
         "--config",
@@ -92,18 +113,33 @@ def register(sub: argparse._SubParsersAction) -> None:
         help="Root directory for session data",
     )
     ssp_pipeline_run.add_argument(
-        "--extract", default=None, metavar="PATH", help="Source path for the extract step"
+        "--extract",
+        default=None,
+        metavar="PATH",
+        help="Record an extract step for this source path (the path is not read)",
     )
     ssp_pipeline_run.add_argument(
-        "--transform", default=None, metavar="NAME", help="Name for the transform step"
+        "--transform",
+        default=None,
+        metavar="NAME",
+        help="Record a transform step under this name (no data is transformed)",
     )
     ssp_pipeline_run.add_argument(
-        "--load", default=None, metavar="PATH", help="Output path for the load step"
+        "--load",
+        default=None,
+        metavar="PATH",
+        help="Record a load step for this output path (nothing is written to it)",
     )
     ssp_pipeline_run.add_argument(
-        "--assess", action="store_true", default=False, help="Add an assess step"
+        "--assess",
+        action="store_true",
+        default=False,
+        help="Record an assess step (no assessment is run; use `dqt assess` for that)",
     )
     ssp_pipeline_run.add_argument(
-        "--manifest", action="store_true", default=False, help="Add a manifest step"
+        "--manifest",
+        action="store_true",
+        default=False,
+        help="Build a lineage manifest for --run-id under --sessions-root (the one step that acts)",
     )
     ssp_pipeline_run.set_defaults(func=cmd_pipeline_run)

@@ -125,7 +125,7 @@ class RunRow:
     columns_tested: int | None
     columns_drifted: int | None
     columns_skipped: int | None
-    # Additive (G27H-A): per-run significance level when authoritative storage
+    # Additive: per-run significance level when authoritative storage
     # rows provide it. None when missing/invalid (never fabricated). Path fields
     # (baseline/current/report) remain excluded by design.
     alpha: float | None = None

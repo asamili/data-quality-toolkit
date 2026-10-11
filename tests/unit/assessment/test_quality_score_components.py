@@ -1,4 +1,4 @@
-"""TDD tests for penalty-weighted quality_score (DQT-LOGIC-003)."""
+"""TDD tests for penalty-weighted quality_score."""
 
 from __future__ import annotations
 

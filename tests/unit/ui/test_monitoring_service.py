@@ -214,7 +214,7 @@ def test_converters_return_plain_structures():
     assert isinstance(dists, list) and dists[0]["bin_index"] == 0
 
 
-# --- G27H-A privacy / formatting helpers -------------------------------------
+# --- privacy / formatting helpers --------------------------------------------
 
 
 def test_redact_path_to_basename_strips_directories():
@@ -256,7 +256,7 @@ def test_format_probability_present_value():
     assert svc.format_probability(0.5) == "0.5000"
 
 
-# --- G27H-A bounded drift StoryLens card builder -----------------------------
+# --- bounded drift StoryLens card builder ------------------------------------
 
 
 def test_drift_cards_at_most_two_and_no_db_path():
@@ -348,8 +348,131 @@ def test_service_does_not_import_storage_adapters_directly():
 
 
 def test_service_imports_monitoring_builders_via_api():
-    """G20B: monitoring view-model symbols sourced from public api, not application layer directly."""
+    """Monitoring view-model symbols sourced from public api, not application layer directly."""
     modules = _imported_modules(svc)
     assert not any(
         "application.monitoring.view_model" in m for m in modules
-    ), "monitoring service must import view-model symbols via api after G20B"
+    ), "monitoring service must import view-model symbols via api"
+
+
+# --- Drift Explorer error surface consumes the shared redaction policy ---
+#
+# Every path/secret literal below is a synthetic sentinel. Before this fix this
+# surface replaced only the *selected* DB path by hand, so any other absolute
+# path the exception carried (a journal/WAL sidecar, a temp directory, a chained
+# OSError filename) reached the UI verbatim. These tests pin the fix.
+
+SYNTHETIC_SENTINEL_SECRET = "DQT_TEST_SECRET_ABC123XYZ"  # noqa: S105 - synthetic fixture
+
+
+def test_error_redacts_an_unrelated_windows_path(monkeypatch, tmp_path):
+    db = tmp_path / "monitoring.db"
+    db.write_text("")
+    sidecar = "C:\\Users\\SensitiveUser\\private\\other.db-journal"
+
+    def boom(*a, **k):
+        raise RuntimeError(f"unable to open database file: {sidecar}")
+
+    monkeypatch.setattr(svc, "build_monitoring_overview", boom)
+    data, err = svc.load_monitoring_overview(str(db))
+    assert data is None
+    assert err == "unable to open database file: other.db-journal"
+    assert "SensitiveUser" not in err
+    assert "private" not in err
+    assert "C:" not in err
+
+
+def test_error_redacts_an_unrelated_posix_path(monkeypatch, tmp_path):
+    db = tmp_path / "monitoring.db"
+    db.write_text("")
+
+    def boom(*a, **k):
+        raise OSError(f"locked: /home/sensitive-user/{SYNTHETIC_SENTINEL_SECRET}/mon.db-wal")
+
+    monkeypatch.setattr(svc, "build_run_detail", boom)
+    data, err = svc.load_run_detail(str(db), "r2")
+    assert data is None
+    assert err == "locked: mon.db-wal"
+    assert SYNTHETIC_SENTINEL_SECRET not in err
+    assert "sensitive-user" not in err
+
+
+def test_error_redacts_paths_on_the_distribution_surface(monkeypatch, tmp_path):
+    db = tmp_path / "monitoring.db"
+    db.write_text("")
+
+    def boom(*a, **k):
+        raise ValueError("bad column in C:\\Users\\SensitiveUser\\private\\schema.sql")
+
+    monkeypatch.setattr(svc, "build_distribution_series", boom)
+    data, err = svc.load_distribution_series(str(db), "r2", "amount")
+    assert data is None
+    assert err == "bad column in schema.sql"
+    assert "SensitiveUser" not in err
+
+
+def test_relative_db_path_barrier_is_retained(monkeypatch, tmp_path):
+    """Defense in depth: the shared policy only matches *absolute* paths.
+
+    A relative DB path is still replaced by the caller-side barrier, so removing
+    that barrier in favour of the shared helper alone would be a regression.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sub").mkdir()
+    rel = "sub/monitoring.db"
+    (tmp_path / rel).write_text("")
+
+    def boom(*a, **k):
+        raise RuntimeError(f"could not inspect {rel}")
+
+    monkeypatch.setattr(svc, "build_monitoring_overview", boom)
+    data, err = svc.load_monitoring_overview(rel)
+    assert data is None
+    assert err == "could not inspect monitoring.db"
+    assert "sub/" not in err
+
+
+def test_error_message_is_deterministic_and_idempotent(monkeypatch, tmp_path):
+    db = tmp_path / "monitoring.db"
+    db.write_text("")
+
+    def boom(*a, **k):
+        raise RuntimeError("unable to open C:\\Users\\SensitiveUser\\private\\other.db")
+
+    monkeypatch.setattr(svc, "build_monitoring_overview", boom)
+    first = svc.load_monitoring_overview(str(db))[1]
+    second = svc.load_monitoring_overview(str(db))[1]
+    assert first == second
+    # Re-scrubbing an already-safe message changes nothing.
+    assert svc.redact_message_paths(first) == first
+
+
+def test_error_surface_preserves_the_structured_code_and_type(monkeypatch, tmp_path):
+    """Redaction scrubs the message text only; the error contract is untouched."""
+    db = tmp_path / "monitoring.db"
+    db.write_text("")
+    exc = FileNotFoundError(2, "No such file", "C:\\Users\\SensitiveUser\\private\\other.db")
+    info = svc.to_error_info(exc)
+    assert info["code"] == "FILE_NOT_FOUND"
+    assert info["exc_type"] == "FileNotFoundError"
+
+    def boom(*a, **k):
+        raise exc
+
+    monkeypatch.setattr(svc, "build_monitoring_overview", boom)
+    data, err = svc.load_monitoring_overview(str(db))
+    assert data is None
+    # (result, err) tuple shape unchanged; err stays a plain safe string.
+    assert isinstance(err, str)
+    assert "other.db" in err
+    assert "SensitiveUser" not in err
+
+
+def test_service_does_not_define_its_own_basename_redactor():
+    """The value-form rule must be imported, never restated here."""
+    from data_quality_toolkit.shared.text_redaction import redact_path_to_basename as shared
+
+    assert svc.redact_path_to_basename is shared
+    tree = ast.parse(inspect.getsource(svc))
+    local_defs = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    assert "redact_path_to_basename" not in local_defs

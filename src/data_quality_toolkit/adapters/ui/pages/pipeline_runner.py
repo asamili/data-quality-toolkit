@@ -18,16 +18,24 @@ from typing import Any
 
 import pandas as pd
 
+from data_quality_toolkit.adapters.ui import journey
 from data_quality_toolkit.adapters.ui.components.dataset_context import (
     render_dataset_context_panel,
 )
 from data_quality_toolkit.adapters.ui.components.downloads import json_download_button
+from data_quality_toolkit.adapters.ui.components.errors import redact_message_paths
+from data_quality_toolkit.adapters.ui.components.page_guidance import render_page_guidance
 from data_quality_toolkit.adapters.ui.components.page_shell import (
     render_metric_cards,
     render_page_header,
     render_section_header,
     render_status_chip,
 )
+from data_quality_toolkit.adapters.ui.components.source_context import (
+    render_session_run_id_input,
+    render_sessions_root_input,
+)
+from data_quality_toolkit.adapters.ui.components.source_hub import render_source_hub_source_summary
 from data_quality_toolkit.adapters.ui.components.states import (
     render_empty_state,
     render_info_state,
@@ -49,6 +57,13 @@ _INTRO = (
     "This is a dry run. Pipeline Runner previews the steps a workflow would take, "
     "the evidence each step would produce, and which page owns the detail — without "
     "writing any files, records, or manifests."
+)
+
+# One-line operator flow map shown under the intro chip so the numbered stage
+# headers below read as a single guided sequence.
+_FLOW_MAP = (
+    "Flow: 1 Check dataset readiness → 2 Configure run → 3 Select steps → "
+    "4 Review dry-run plan → 5 Run legacy scaffold (optional, gated)"
 )
 
 # Step id → step-selection session key (checkbox state).
@@ -100,7 +115,7 @@ def _plan_table(plan: Mapping[str, Any]) -> pd.DataFrame:
 
 def _render_readiness(st: Any, state: Mapping[str, Any]) -> Any:
     """Render dataset readiness and return the active context (or ``None``)."""
-    render_section_header(st, "Dataset readiness")
+    render_section_header(st, "1 · Dataset readiness")
     context = get_dataset_context(state)
     if context is not None:
         render_dataset_context_panel(st, context)
@@ -119,7 +134,8 @@ def _render_dry_run(st: Any, plan: Mapping[str, Any]) -> None:
     """Render the dry-run plan preview, evidence, CLI equivalence, and download."""
     render_section_header(
         st,
-        "Dry-run preview",
+        "4 · Dry-run preview",
+        "Updates automatically as you change the selection above — previewing is always safe. "
         "Nothing here writes to disk or the database — it only describes the run.",
     )
     summary = summarize_pipeline_evidence(plan)
@@ -179,19 +195,21 @@ def _render_evidence(st: Any, plan: Mapping[str, Any]) -> None:
         st.markdown("\n".join(lines))
 
 
-def _render_execution_scaffold(st: Any, state: MutableMapping[str, Any], run_id: str) -> None:
+def _render_execution_scaffold(
+    st: Any, state: MutableMapping[str, Any], run_id: str, sessions_root: str
+) -> None:
     """Render the legacy write-capable scaffold, gated behind explicit confirmation."""
     render_section_header(
         st,
-        "Existing execution scaffold (advanced)",
-        "Optional. This path can read lineage and produce output — keep it off unless you mean it.",
+        "5 · Existing execution scaffold (advanced)",
+        "Optional. This path can read lineage and produce output — keep it off unless you "
+        "mean it. Nothing runs until you tick the confirmation box and click the run button.",
     )
     render_status_chip(
         st,
         "Write-capable: running the ELT scaffold can create or read run artifacts.",
         tone="warn",
     )
-    sessions_root = st.text_input("Sessions Root", key=keys.PIPE_SESSIONS_ROOT)
     config_path = st.text_input("Pipeline YAML Config Path (optional)", key=keys.PIPE_CONFIG_PATH)
     confirmed = st.checkbox(
         "I understand this can read lineage and produce output.",
@@ -211,19 +229,22 @@ def _render_execution_scaffold(st: Any, state: MutableMapping[str, Any], run_id:
 def _execute_scaffold(st: Any, run_id: str, sessions_root: str, config_path: str) -> None:
     """Run the preserved ELT scaffold after explicit confirmation."""
     if not run_id or not sessions_root:
-        st.error("Run ID and Sessions Root are required.")
+        st.error("Session Run ID and Sessions Root are required.")
         return
     if config_path:
         _, err = _load_pipeline_config_file(config_path)
         if err:
-            st.error(f"Error loading config: {err}")
+            st.error(f"Error loading config: {redact_message_paths(err)}")
             return
 
     result, err = _run_elt_pipeline(run_id, sessions_root)
     if err:
-        st.error(f"Pipeline error: {err}")
+        st.error(f"Pipeline error: {redact_message_paths(err)}")
         return
-    st.success("Pipeline executed successfully.")
+    st.success(
+        "Scaffold finished. Steps were recorded, not executed — only a manifest step "
+        "writes anything."
+    )
     st.json(result)
 
 
@@ -234,22 +255,50 @@ def _render_pipeline_runner(st: Any, session_state: MutableMapping[str, Any] | N
         st,
         "Pipeline Runner",
         "Preview a dataset workflow as a safe dry run before anything is written.",
-        step_label="Step 7 of 11 — Pipeline Runner",
+        step_label=journey.step_label("pipeline_runner"),
+    )
+    render_page_guidance(
+        st,
+        purpose="Preview a DQT workflow as a safe dry run, or run the gated legacy scaffold.",
+        inputs="A loaded dataset context, plus Sessions Root and Session Run ID for the scaffold.",
+        workflow="1 Check readiness, 2 configure the run, 3 select steps, 4 review the dry-run "
+        "plan; the write-capable scaffold in stage 5 stays behind an explicit confirmation.",
+        safety="The dry run writes nothing; scaffold output is local session evidence only.",
+        next_step="Artifact Center or Manifest Viewer",
     )
     render_status_chip(st, _INTRO, tone="info")
+    st.caption(_FLOW_MAP)
 
     context = _render_readiness(st, state)
 
-    render_section_header(st, "Run configuration")
-    run_id = st.text_input("Run ID", key=keys.PIPE_RUN_ID)
+    render_section_header(
+        st,
+        "2 · Run configuration",
+        "Session Run ID and Sessions Root come from the Source Hub and remain editable here. "
+        "The Session Run ID names the session folder this run writes under Sessions Root; "
+        "it is not an Export run ID.",
+    )
+    run_id = render_session_run_id_input(st)
+    sessions_root = render_sessions_root_input(st)
+    render_source_hub_source_summary(
+        st,
+        (("Sessions Root", sessions_root), ("Session Run ID", run_id)),
+        present_text="Using pipeline session source from Start",
+        missing_text="Set Sessions Root and Session Run ID in Start / Load Dataset",
+    )
 
-    render_section_header(st, "Step selection")
+    render_section_header(
+        st,
+        "3 · Step selection",
+        "Checkboxes control which steps appear in the dry-run plan below. Changing the "
+        "selection only updates the preview — nothing runs and nothing is written.",
+    )
     selected = _selected_steps(st, state)
 
     plan = build_pipeline_plan(context, selected, run_id)
     _render_dry_run(st, plan)
 
-    _render_execution_scaffold(st, state, run_id)
+    _render_execution_scaffold(st, state, run_id, sessions_root)
 
 
 def render() -> None:

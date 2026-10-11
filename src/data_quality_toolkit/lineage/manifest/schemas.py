@@ -1,4 +1,4 @@
-"""Manifest schemas for Phase 10 artifact tracking."""
+"""Manifest schemas for lineage artifact tracking."""
 
 from __future__ import annotations
 

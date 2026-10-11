@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 import pandas as pd
@@ -118,6 +118,64 @@ SUPPORTED_OPERATIONS = (
     OP_SCALING,
     OP_DERIVED,
 )
+
+
+# ---------------------------------------------------------------------------
+# Output-destination policy
+# ---------------------------------------------------------------------------
+
+# The one reason code recipe admission and transform execution share when a
+# generated destination would replace or duplicate a protected column. A fixed
+# literal: it names no path, value, or workspace.
+OUTPUT_COLLISION = "OUTPUT_COLLISION"
+
+
+def output_collisions(
+    existing: Iterable[Any],
+    candidates: Sequence[Any],
+    *,
+    replaces: Iterable[Any] = (),
+    permitted: Iterable[Any] = (),
+) -> list[str]:
+    """Return the destinations a transformation must not write, in candidate order.
+
+    This is the authoritative output-destination rule, and it is deliberately
+    dataframe-library-independent. Callers pass the names that already exist
+    (a frame's columns, or the destinations a recipe has already reserved), the
+    names the operation intends to create, the names it intentionally replaces
+    or consumes as part of its own contract (an in-place source, or the source a
+    one-hot expansion drops), and the names an already-established explicit
+    overwrite mode authorizes.
+
+    A candidate is refused when it would land on a protected existing name, or
+    when the same operation would emit it twice. An empty result means the whole
+    candidate set is safe to write; a non-empty one means none of it is, because
+    a multi-output operation must not write a partial set.
+    """
+    protected = {str(name) for name in existing}
+    protected.difference_update(str(name) for name in replaces)
+    protected.difference_update(str(name) for name in permitted)
+    seen: set[str] = set()
+    refused: list[str] = []
+    for candidate in candidates:
+        name = str(candidate)
+        if (name in protected or name in seen) and name not in refused:
+            refused.append(name)
+        seen.add(name)
+    return refused
+
+
+def output_collision_warning(collisions: Sequence[str]) -> str:
+    """Return the operator-facing refusal text for a refused destination set.
+
+    Names the refused destinations only — never a value, path, or workspace —
+    which is the diagnostic detail preprocessing warnings already carry.
+    """
+    names = ", ".join(f"'{name}'" for name in collisions)
+    return (
+        f"{OUTPUT_COLLISION}: output column(s) {names} would replace or duplicate an "
+        "existing column; nothing was written"
+    )
 
 
 def _step_fingerprint(operation: str, columns: Sequence[str], parameters: Mapping[str, Any]) -> str:

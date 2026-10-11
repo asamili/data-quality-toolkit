@@ -7,11 +7,20 @@ rejection of non-CSV inputs, and the safe-by-default settings posture
 
 from __future__ import annotations
 
+import argparse
+import re
+from pathlib import Path
+
 import pytest
 
+from data_quality_toolkit.adapters.cli.main import cmd_settings_show
 from data_quality_toolkit.adapters.loaders.file.csv_loader import load_csv
 from data_quality_toolkit.shared.settings import load_settings
 from data_quality_toolkit.utils.validators import validate_csv_path
+
+_ENV_EXAMPLE = Path(__file__).resolve().parents[3] / ".env.example"
+_CREDENTIAL_NAME = re.compile(r"KEY|SECRET|TOKEN|PASSW|CREDENTIAL|AUTH", re.IGNORECASE)
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def test_validate_csv_path_accepts_real_csv(tmp_path):
@@ -54,10 +63,33 @@ def test_settings_network_off_by_default(tmp_path, monkeypatch):
     assert settings.dqt_allow_network is False
 
 
-def test_settings_api_key_not_baked_into_defaults(tmp_path, monkeypatch):
+def test_settings_expose_no_credential_fields(tmp_path, monkeypatch, capsys):
+    """No setting holds a credential, so `dqt settings show` cannot echo one."""
+    sentinel = "DQT_TEST_SENTINEL_VALUE"
     monkeypatch.delenv("DQT_LOAD_ENV", raising=False)
-    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.setenv("API_KEY", sentinel)
     monkeypatch.setenv("EXPORT_BASE_DIR", str(tmp_path / "dist"))
     monkeypatch.setenv("PBI_BASE_FOLDER_PARAMETER", str(tmp_path / "dist"))
+
     settings = load_settings()
-    assert settings.api_key is None
+    assert [name for name in dict(settings) if _CREDENTIAL_NAME.search(name)] == []
+
+    assert cmd_settings_show(argparse.Namespace()) == 0
+    shown = capsys.readouterr().out
+    assert sentinel not in shown
+    assert "api_key" not in shown
+
+
+def test_env_example_template_carries_no_credentials():
+    if not _ENV_EXAMPLE.is_file():
+        pytest.skip("the private .env.example template is not present in this tree")
+    checked = 0
+    for line in _ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
+        # Commented examples count too: uncommenting one must not add a secret.
+        name, sep, value = line.lstrip("#").strip().partition("=")
+        if not sep or not _ENV_NAME.fullmatch(name):
+            continue
+        checked += 1
+        assert not _CREDENTIAL_NAME.search(name), line
+        assert "://" not in value, line
+    assert checked > 0

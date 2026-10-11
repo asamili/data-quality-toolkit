@@ -39,8 +39,29 @@ def _extract_artifacts(obj: Any) -> dict[str, Any]:
     return {}
 
 
+def _assert_isolated(path: Path, tmp_path: Path) -> Path:
+    """Fail loudly if the star landed outside this test's temporary directory.
+
+    The Phase-1 export resolves its output root from ``settings.export_base_dir``
+    (default ``./dist``, relative to the process working directory) whenever no
+    explicit ``output_dir`` is supplied, so an unisolated call writes -- and this
+    test then deliberately corrupts -- the *repository's* ``dist/star``. Guard the
+    boundary here so a regression fails the test instead of polluting the repo.
+    """
+    resolved = path.resolve()
+    assert resolved.is_relative_to(
+        tmp_path.resolve()
+    ), f"build-PBI star must be generated under the pytest tmp_path, got: {resolved}"
+    return path
+
+
 def _make_star(tmp_path: Path) -> Path:
-    """Create a small CSV and build Phase-1 star via pipeline if available; otherwise fallback."""
+    """Create a small CSV and build Phase-1 star via pipeline if available; otherwise fallback.
+
+    Every pipeline entry point receives an explicit ``output_dir`` beneath
+    ``tmp_path``, so the real Phase-1 exporter (star CSVs, quality report and
+    history, SQLite quality database) writes only into test-owned storage.
+    """
     test_csv = tmp_path / "test.csv"
     test_csv.write_text("id,name,score\n1,Alice,95\n", encoding="utf-8")
 
@@ -49,27 +70,28 @@ def _make_star(tmp_path: Path) -> Path:
     except Exception:
         pl = None
 
+    outdir = tmp_path / "dist"
+
     if pl is not None:
         run1 = getattr(pl, "run_pipeline_csv_to_star", None)
         if callable(run1):
-            star_result = run1(str(test_csv))
+            star_result = run1(str(test_csv), output_dir=str(outdir))
             artifacts = _extract_artifacts(star_result)
             dd = artifacts.get("dim_dataset")
             if isinstance(dd, str):
-                return Path(dd).parent
+                return _assert_isolated(Path(dd).parent, tmp_path)
 
         run2 = getattr(pl, "run_export_star", None)
         if callable(run2):
-            outdir = tmp_path / "dist"
             result = run2(str(test_csv), output_dir=str(outdir))
             artifacts = _extract_artifacts(result)
             dd = artifacts.get("dim_dataset")
             if isinstance(dd, str):
-                return Path(dd).parent
-            return outdir / "star"
+                return _assert_isolated(Path(dd).parent, tmp_path)
+            return _assert_isolated(outdir / "star", tmp_path)
 
     # Fallback: synthesize a minimal star
-    return _write_minimal_star(tmp_path / "star")
+    return _assert_isolated(_write_minimal_star(tmp_path / "star"), tmp_path)
 
 
 @pytest.mark.integration
@@ -89,7 +111,7 @@ def test_build_pbi_fails_on_relationship_header_mismatch(tmp_path: Path):
             output_dir=tmp_path / "powerbi_package_bad",
             time_start="2024-01-01",
             time_end="2024-12-31",
-            base_folder="./dist",
+            base_folder=str(tmp_path / "powerbi_package_bad"),
         )
 
     msg = str(ei.value)

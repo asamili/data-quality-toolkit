@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import json
+import re
 import time
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
 import pandas as pd
@@ -32,11 +34,20 @@ from data_quality_toolkit.domain.profiling.profiling_orchestrator import (
     run_chunked_profiling,
     run_profiling,
 )
-from data_quality_toolkit.lineage.manifest.builder import build_and_write
+from data_quality_toolkit.lineage.manifest.builder import build_and_write, resolve_manifest_path
 from data_quality_toolkit.lineage.manifest.schemas import Artifact, ArtifactKind, Dataset
 from data_quality_toolkit.shared.constants import ARTIFACT_SCHEMA_VERSION, DEFAULT_NULL_THRESHOLD
+from data_quality_toolkit.shared.managed_export_source import (
+    VerifiedManagedExportSource,
+    verify_managed_export_source,
+)
 from data_quality_toolkit.shared.models import ProfileResult
 from data_quality_toolkit.shared.settings import load_settings
+from data_quality_toolkit.shared.text_redaction import (
+    PATH_REDACTED_DISPLAY,
+    redact_message_paths,
+    redact_path_to_basename,
+)
 from data_quality_toolkit.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -47,6 +58,7 @@ __all__ = [
     "run_assessment",
     "run_assessment_chunked",
     "run_export_star",
+    "run_managed_export_star",
     "run_pipeline_csv_to_star",
 ]
 
@@ -325,6 +337,7 @@ def _persist_star_to_sqlite(
     null_threshold: float,
     tables: Any,
     *,
+    db_path: Path | None = None,
     _get_db: Any = None,
     _ensure_db: Any = None,
     _connect: Any = None,
@@ -336,9 +349,9 @@ def _persist_star_to_sqlite(
     fn_ensure = _ensure_db if _ensure_db is not None else ensure_db
     fn_connect = _connect if _connect is not None else connect
     fn_persist = _persist if _persist is not None else persist_export_run
-    db_path = fn_get_db(settings)
-    fn_ensure(db_path)
-    _con = fn_connect(db_path)
+    resolved_db_path = Path(db_path) if db_path is not None else fn_get_db(settings)
+    fn_ensure(resolved_db_path)
+    _con = fn_connect(resolved_db_path)
     try:
         _con.execute("DELETE FROM runs WHERE run_id = ?", (prof["run_id"],))
         _con.commit()
@@ -364,6 +377,13 @@ def _persist_star_to_sqlite(
             quality_metrics=tables_dict["fact_quality_metrics"].to_dict(orient="records"),
             issues=all_issues,
         )
+        # ensure_db's history import may already have created this dataset's row with
+        # an empty source, which the writer's INSERT OR IGNORE leaves in place.
+        _con.execute(
+            "UPDATE datasets SET source_path = ? WHERE dataset_id = ?",
+            (meta["source_path"], prof["dataset_id"]),
+        )
+        _con.commit()
     finally:
         _con.close()
 
@@ -371,7 +391,61 @@ def _persist_star_to_sqlite(
 _STAR_CSV_NAMES: frozenset[str] = frozenset(
     {"dim_dataset", "dim_column", "fact_profile_runs", "fact_quality_metrics", "fact_issues"}
 )
-_REPORT_NAMES: frozenset[str] = frozenset({"quality_report", "quality_history"})
+_REPORT_NAMES: frozenset[str] = frozenset({"quality_report", "quality_history", "quality_db"})
+
+# Portable export outputs (manifest, star CSVs, quality report, export DB) may be
+# moved or shared, so they never record a local host path: source provenance is a
+# bare file name and artifact locators are relative to the export root.
+_DRIVE_PREFIX = re.compile(r"^[A-Za-z]:")
+
+
+def _portable_source_name(source_path: str) -> str:
+    """Return the host-independent file name recorded as source provenance.
+
+    Windows, UNC, and POSIX separators are stripped regardless of the host, a
+    drive-relative prefix (``C:x.csv``) is dropped, and a value with no safe
+    leaf fails closed to :data:`PATH_REDACTED_DISPLAY`.
+    """
+    name = _DRIVE_PREFIX.sub("", redact_path_to_basename(source_path))
+    if name in {"", ".", ".."}:
+        return PATH_REDACTED_DISPLAY
+    return name
+
+
+def _portable_artifact_locator(artifact_path: str | Path, export_root: Path) -> str:
+    """Return an artifact locator relative to the export root, or the redaction marker.
+
+    Derived lexically -- no filesystem lookup, no symlink following -- so it stays
+    valid after the export folder is moved. Anything not provably confined beneath
+    the export root is recorded as :data:`PATH_REDACTED_DISPLAY`, never as the
+    rejected absolute path.
+    """
+    try:
+        relative = Path(artifact_path).relative_to(export_root).as_posix()
+    except ValueError:
+        return PATH_REDACTED_DISPLAY
+    parts = PurePosixPath(relative).parts
+    if (
+        not parts
+        or relative == "."
+        or ".." in parts
+        or "\\" in relative
+        or PurePosixPath(relative).is_absolute()
+        or PureWindowsPath(relative).drive
+    ):
+        return PATH_REDACTED_DISPLAY
+    return relative
+
+
+def _resolve_export_quality_db_path(settings: Any, base_out: Path, output_dir: str | None) -> Path:
+    """Return the SQLite path used by a star export.
+
+    An explicit export output directory owns its quality-history database. Calls
+    without an output directory keep the historical env/settings resolver.
+    """
+    if output_dir is not None:
+        return base_out / "dqt.db"
+    return _get_db_path(settings)
 
 
 def _emit_export_manifest(
@@ -381,11 +455,18 @@ def _emit_export_manifest(
     prof_rows: int,
     score: float,
     paths: dict[str, str],
+    artifact_meta: Mapping[str, object] | None = None,
 ) -> str:
     """Build and write a lineage manifest for an export-star run.
 
-    Returns the absolute path string of the written artifacts.json.
+    Returns the path string of the manifest actually written — the configured
+    ``MANIFEST_FILE`` inside ``base_out``, resolved by the writer itself.
     Raises on any error; caller must wrap in try/except.
+
+    ``artifact_meta`` is copied into every artifact this one export produced, via
+    the existing optional ``Artifact.meta`` field — no schema change. Each
+    artifact gets its own dict so they never alias each other or the caller's
+    mapping, and omitting it yields the previous empty-meta shape exactly.
     """
     # Dataset: the source CSV
     src = Path(csv_path)
@@ -396,7 +477,7 @@ def _emit_export_manifest(
     datasets = [
         Dataset(
             kind="bronze",
-            path=src.as_posix(),
+            path=_portable_source_name(csv_path),
             rows=prof_rows,
             bytes=src_bytes,
             content_hash="",
@@ -407,10 +488,7 @@ def _emit_export_manifest(
     artifacts: list[Artifact] = []
     for name, abs_path_str in paths.items():
         abs_p = Path(abs_path_str)
-        try:
-            rel = abs_p.relative_to(base_out).as_posix()
-        except ValueError:
-            rel = abs_p.as_posix()
+        rel = _portable_artifact_locator(abs_p, base_out)
         try:
             art_bytes = abs_p.stat().st_size
         except OSError:
@@ -422,7 +500,9 @@ def _emit_export_manifest(
             kind = "report"
         else:
             kind = "star"
-        artifacts.append(Artifact(kind=kind, path=rel, bytes=art_bytes))
+        artifacts.append(
+            Artifact(kind=kind, path=rel, bytes=art_bytes, meta=dict(artifact_meta or {}))
+        )
 
     build_and_write(
         run_id=run_id,
@@ -433,7 +513,7 @@ def _emit_export_manifest(
         rows_out=prof_rows,
         health=score,
     )
-    return str(base_out / "artifacts.json")
+    return str(resolve_manifest_path(base_out))
 
 
 def run_export_star(
@@ -442,11 +522,18 @@ def run_export_star(
     null_threshold: float = DEFAULT_NULL_THRESHOLD,
     sample_size: int | None = None,
     emit_manifest: bool = False,
+    artifact_meta: Mapping[str, object] | None = None,
     **read_csv_kwargs: Any,
 ) -> dict[str, Any]:
     """
     Load CSV -> profile -> assess -> build star -> validate -> export CSVs (+ relationships.json).
     Returns a JSON-serializable dict with paths and light metadata.
+
+    ``artifact_meta`` is optional additive metadata for the emitted manifest's
+    artifacts. It is an explicit parameter declared *before* ``read_csv_kwargs``
+    so it can never be swept into the CSV-reading kwargs and handed to
+    ``load_csv``/``pandas.read_csv``; it reaches manifest emission and nothing
+    else, and never influences loading, profiling, or the exported data.
     """
     start = time.time()
     df, meta = load_csv(csv_path, sample_size=sample_size, **read_csv_kwargs)
@@ -456,7 +543,8 @@ def run_export_star(
     assessment = assess(cast(dict[str, Any], prof), null_threshold=null_threshold, df=df)
 
     # Build + validate star schema (use precise TypedDict)
-    tables: StarTables = build_star(prof, df, source_path=meta["source_path"])
+    source_name = _portable_source_name(csv_path)
+    tables: StarTables = build_star(prof, df, source_path=source_name)
     validate_relationships(tables)
 
     # Choose output dir: CLI flag > settings.export_base_dir
@@ -530,7 +618,9 @@ def run_export_star(
     # Finalise and write quality_report.json now that all artifact paths are known
     duration_secs = round(time.time() - start, 3)
     quality_report["duration_secs"] = duration_secs
-    quality_report["artifacts"] = {k: v for k, v in paths.items() if k != "relationships"}
+    quality_report["artifacts"] = {
+        k: _portable_artifact_locator(v, base_out) for k, v in paths.items() if k != "relationships"
+    }
     quality_report_path.write_text(
         json.dumps(quality_report, indent=2, default=str), encoding="utf-8"
     )
@@ -555,19 +645,31 @@ def run_export_star(
     paths["quality_history"] = str(history_path)
 
     # Persist run to SQLite via injectable helper (additive — failure must not fail export)
+    quality_db_path = _resolve_export_quality_db_path(settings, base_out, output_dir)
+    quality_db_status = "pending"
+    quality_db_error: str | None = None
     try:
         _persist_star_to_sqlite(
             settings,
             prof,
             cast(dict[str, Any], assessment),
-            meta,
+            {**meta, "source_path": source_name},
             all_issues,
             duration_secs,
             null_threshold,
             tables,
+            db_path=quality_db_path,
         )
     except Exception as exc:
-        logger.warning("SQLite persistence failed: %s", exc)
+        quality_db_status = "failed"
+        quality_db_error = redact_message_paths(str(exc)) or type(exc).__name__
+        logger.warning(
+            "SQLite persistence failed for quality history database: %s",
+            type(exc).__name__,
+        )
+    else:
+        quality_db_status = "persisted"
+        paths["quality_db"] = str(quality_db_path)
 
     # Emit lineage manifest (additive — failure must not fail export)
     if emit_manifest:
@@ -579,6 +681,7 @@ def run_export_star(
                 prof_rows=int(prof["rows"]),
                 score=float(assessment["score"]),
                 paths=paths,
+                artifact_meta=artifact_meta,
             )
             paths["manifest"] = manifest_path
         except Exception as exc:
@@ -609,6 +712,89 @@ def run_export_star(
             "rows": {k: int(len(v)) for k, v in tables_dict.items()},
         },
         "export_paths": paths,
+        "quality_db_path": str(quality_db_path),
+        "quality_db_status": quality_db_status,
+        "quality_db_error": quality_db_error,
     }
     logger.info("Star export complete")
     return out
+
+
+# --- Managed export sibling -------------------------------------------------
+#
+# ``run_export_star`` above is the unchanged legacy unmanaged entry point. The
+# sibling below is the *only* managed workflow entry point. It accepts exactly
+# one ``VerifiedManagedExportSource`` as its provenance authority: the managed
+# version, family, content, and locator identities travel together as one
+# immutable value and are never re-derived, re-validated, or decomposed here.
+#
+# This module deliberately imports only the shared kernel contract — it never
+# imports the UI layer, so managed trust types stay contained in the UI. That
+# includes the managed-source verification policy: the export boundary enforces
+# it here, in the use case itself, so a Streamlit call site, a public-API call
+# site, and any future non-UI caller are all covered by construction.
+
+
+def _managed_artifact_meta(source: VerifiedManagedExportSource) -> dict[str, object]:
+    """Build privacy-safe managed lineage metadata for the emitted manifest.
+
+    Carries lifecycle identity and the workspace-relative locator only; the
+    machine-side absolute source path never enters manifest metadata.
+    """
+    meta: dict[str, object] = {
+        "managed": True,
+        "managed_version_id": source.version_id,
+        "managed_family_id": source.family_id,
+        "managed_content_id": source.content_id,
+        "managed_root_content_id": source.root_content_id,
+        "managed_version_label": source.version_label,
+        "managed_source_name": source.display_name,
+        "managed_source_relative_path": source.relative_posix,
+        "managed_source_size_bytes": source.size_bytes,
+    }
+    if source.parent_version_id is not None:
+        meta["managed_parent_version_id"] = source.parent_version_id
+    return meta
+
+
+def run_managed_export_star(
+    source: VerifiedManagedExportSource,
+    *,
+    output_dir: str,
+) -> dict[str, Any]:
+    """Export a verified managed version to a star schema with managed lineage.
+
+    ``source`` is the single provenance authority; there is deliberately no
+    separate version, family, content, path, DataFrame, artifact-meta, or trust
+    parameter. Manifest emission is always on for managed exports so the
+    verified provenance is durably recorded, and the returned dict carries a
+    ``managed_source`` block describing that provenance privacy-safely.
+
+    The source is re-verified against its trusted identity here, immediately
+    before its bytes are consumed — trust minted earlier by activation, by the
+    export gateway, or by a page render may be stale by now. On mismatch this
+    raises :class:`~data_quality_toolkit.shared.managed_export_source.ManagedSourceVerificationError`
+    before any export byte or manifest exists, so a manifest can never assert
+    one ``content_id`` over different bytes. The failure is terminal: managed
+    export never silently falls back to the unmanaged path.
+    """
+    verify_managed_export_source(source)
+    result = run_export_star(
+        source.source_path,
+        output_dir=output_dir,
+        emit_manifest=True,
+        artifact_meta=_managed_artifact_meta(source),
+    )
+    result["managed_source"] = {
+        "version_id": source.version_id,
+        "family_id": source.family_id,
+        "content_id": source.content_id,
+        "root_content_id": source.root_content_id,
+        "parent_version_id": source.parent_version_id,
+        "version_label": source.version_label,
+        "display_name": source.display_name,
+        "relative_posix": source.relative_posix,
+        "size_bytes": source.size_bytes,
+        "large_file_mode": source.large_file_mode,
+    }
+    return result

@@ -51,8 +51,7 @@ Exit codes:
 
 ## Drift History Analytics (v2.5.0)
 Promote append-only drift history (written by `dqt drift --history drift_history.jsonl`) into a SQLite
-monitoring database, then query, report, and visualize drift over time. These commands ship in v2.5.0
-(prepared in the private repository; not yet tagged or public-synced).
+monitoring database, then query, report, and visualize drift over time. These commands ship in v2.5.0.
 
 ```bash
 # Import a JSONL drift history into a SQLite monitoring DB
@@ -330,6 +329,62 @@ DQT_ALLOW_NETWORK=true dqt drift-history notify --db monitoring.db \
 - The payload carries no secrets, no environment values, no webhook URL, and no full
   local DB path. Single attempt, no retries; payload capped at 64 KB.
 - A missing or empty database yields a valid zero-state payload (no breach → exit `0`).
+
+## Built-in Quality Semantics
+
+The `dqt kpi-builtin` family exposes DQT's **built-in current-star quality semantic
+catalog** — the quality measures DQT can express over its own star-schema / Power BI
+package outputs. This is separate from the generic `kpi-emit` / `kpi-graph` /
+`kpi-validate` commands, which remain for **user-supplied** KPI catalogs.
+
+```bash
+# Print the built-in quality semantic catalog as JSON
+dqt kpi-builtin catalog
+
+# Emit DAX for the built-in catalog (DAX text returned inside the JSON result)
+dqt kpi-builtin emit-dax
+
+# Emit DAX and write it to a file
+dqt kpi-builtin emit-dax --out dist/builtin/quality_measures.dax
+
+# Validate a Power BI package directory against the built-in quality contract
+dqt kpi-builtin validate-contract --package dist/powerbi_package
+
+# Validate a star directory directly
+dqt kpi-builtin validate-contract --star dist/star
+
+# Validate a path, auto-detecting package vs star
+dqt kpi-builtin validate-contract --path dist/powerbi_package
+```
+
+**Subcommands:**
+
+| Subcommand | Purpose |
+| --- | --- |
+| `catalog` | Print the built-in quality semantic catalog (JSON) to stdout |
+| `emit-dax [--out PATH]` | Emit DAX for the built-in catalog; write to `PATH` when given |
+| `validate-contract (--package PATH \| --star PATH \| --path PATH)` | Validate a star / Power BI package against the built-in quality contract |
+
+**Output behavior:**
+
+- The machine-readable JSON result is printed to **stdout**; a short human summary goes to
+  **stderr**. The global `--no-json` flag suppresses the stdout JSON.
+- `emit-dax` with `--out PATH` writes the DAX file and reports the path on stderr
+  (`Wrote built-in quality DAX: PATH`); without `--out`, the DAX text is returned inside the
+  stdout JSON (`output_path` is `null`).
+- `validate-contract` modes: `--package` validates in **package** mode (a directory
+  containing `star/`), `--star` validates a **star** directory in **star** mode, and
+  `--path` validates in **auto** mode (package vs star is detected). The three flags are
+  mutually exclusive and exactly one is required. On a failing contract, the offending
+  errors are printed to stderr and the JSON `valid` field is `false`.
+
+**Exit codes:**
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success (catalog printed, DAX emitted, or contract valid) |
+| `2` | Semantic-contract validation failure, or argparse argument error (missing/duplicate path flag) |
+| `1` | Runtime, write, or unexpected error |
 
 ## Project Configuration (`dqt.yaml`)
 DQT runs entirely from CLI flags by default. Optionally, place a `dqt.yaml` file in your project directory to set default values.

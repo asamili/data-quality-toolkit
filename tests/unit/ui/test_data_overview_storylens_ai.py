@@ -1,4 +1,4 @@
-"""Mocked tests for Data Overview StoryLens AI wiring (G17A).
+"""Mocked tests for Data Overview StoryLens AI wiring.
 
 Proves: default-OFF fallback path, mocked AI output, safe primitive passing,
 no raw issue payload leakage, failure resilience, no UI AI controls, no
@@ -136,6 +136,11 @@ class FakeSt:
 
     def download_button(self, *a: Any, **kw: Any) -> None:
         self._r("download_button", *a, **kw)
+
+    def button(self, label: str, **kw: Any) -> bool:
+        # Save-to-Workspace button; never "clicked" in these render-only tests.
+        self._r("button", label, **kw)
+        return False
 
     def bar_chart(self, *a: Any, **kw: Any) -> None:
         self._r("bar_chart", *a, **kw)

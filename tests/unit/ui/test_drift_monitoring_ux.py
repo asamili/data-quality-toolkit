@@ -291,6 +291,91 @@ def test_missing_distribution_probabilities_stay_unavailable(
     assert "zero-filled solely so Streamlit can draw" in st.rendered_text()
 
 
+# ── operator-flow structure (flow map + numbered stages + guidance) ──────────
+
+
+def test_render_shows_flow_map_caption() -> None:
+    st = FakeSt()
+    page._render_drift_explorer(st)
+    text = st.rendered_text()
+    assert "Flow: 1 Choose monitoring source" in text
+    assert "6 Inspect a run" in text
+
+
+def test_render_shows_numbered_stages_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    overview = _overview([_run(), _run("run-1", drift=False)])
+    st = FakeSt()
+    st.text_values["Local monitoring database"] = "monitoring.db"
+    monkeypatch.setattr(page, "load_monitoring_overview", lambda *a, **k: (overview, None))
+    monkeypatch.setattr(page, "_render_columns_section", lambda *a, **k: None)
+
+    page._render_drift_explorer(st)
+
+    text = st.rendered_text()
+    stages = [
+        "1 · Monitoring source and filters",
+        "2 · Monitoring status summary",
+        "3 · Drift-rate threshold guidance",
+        "4 · Deterministic monitoring explanation",
+        "5 · Monitoring history",
+        "6 · Run-level inspection",
+    ]
+    positions = [text.index(stage) for stage in stages]
+    assert positions == sorted(positions)
+
+
+def test_source_stage_caption_states_read_only_until_save_click() -> None:
+    st = FakeSt()
+    page._render_drift_explorer(st)
+    text = st.rendered_text()
+    assert "This page is read-only" in text
+    assert "Nothing is computed or written until you click a Save button" in text
+
+
+def test_distribution_download_and_save_wiring_preserved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    st = FakeSt()
+    bins = [
+        DistributionBin(
+            column_name="synthetic_measure",
+            kind="numeric",
+            bin_index=0,
+            bin_label="synthetic-bin",
+            reference_prob=0.5,
+            current_prob=0.25,
+        )
+    ]
+    monkeypatch.setattr(page, "load_distribution_series", lambda *a, **k: (bins, None))
+
+    page._render_distribution_section(st, "monitoring.db", "run-2", ["synthetic_measure"])
+
+    download_files = [call[2].get("file_name") for call in st.calls_named("download_button")]
+    assert "drift_distribution_comparison.csv" in download_files
+    save_buttons = [call for call in st.calls_named("button")]
+    assert any(
+        call[2].get("key") == "drift_explorer_save_distribution_comparison_btn"
+        for call in save_buttons
+    )
+    assert "Downloads stay in your browser" in st.rendered_text()
+
+
+def test_flow_polish_renders_no_private_path_literals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    overview = _overview([_run(), _run("run-1", drift=False)])
+    st = FakeSt()
+    st.text_values["Local monitoring database"] = "monitoring.db"
+    monkeypatch.setattr(page, "load_monitoring_overview", lambda *a, **k: (overview, None))
+    monkeypatch.setattr(page, "_render_columns_section", lambda *a, **k: None)
+
+    page._render_drift_explorer(st)
+
+    text = st.rendered_text()
+    assert "C:/private/user" not in text
+    assert "C:\\Users" not in text
+
+
 def test_storylens_is_bounded_and_excludes_db_path() -> None:
     overview = _overview([_run(), _run("run-1", drift=False)])
     cards = svc.build_drift_storylens_cards(

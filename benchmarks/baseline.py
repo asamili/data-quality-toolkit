@@ -186,7 +186,7 @@ def sample_behavior_probe(tmp_dir: Path) -> dict[str, Any]:
     default_sampled = bool(meta_default["sample_applied"])
     del df_default
 
-    # explicit env SAMPLE_SIZE -> loader samples at read path
+    # explicit env SAMPLE_SIZE -> loader reads in full, then samples the frame
     os.environ["SAMPLE_SIZE"] = "2000"
     loaded_env, m_env = _measure(lambda: load_csv(str(csv_path)))
     df_env, meta_env = loaded_env
@@ -212,11 +212,13 @@ def sample_behavior_probe(tmp_dir: Path) -> dict[str, Any]:
         "settings_max_rows_in_memory": settings.max_rows_in_memory,
         "max_rows_in_memory_enforced": True,
         "notes": (
-            "Loader samples at read time (nrows) when SAMPLE_SIZE env is explicitly set, "
-            "yielding first-N rows and avoiding full-file materialization. Default load is "
-            "full-file. Profiling samples 'column extras' (min/max) to settings.sample_size "
-            "by default, but nulls/unique are computed on the full frame. "
-            "max_rows_in_memory is enforced: loader raises ValueError if loaded rows exceed the limit."
+            "When SAMPLE_SIZE env is explicitly set the loader still reads the full file, "
+            "then randomly samples the frame down to N rows with a per-dataset stable seed "
+            "(repeatable, not first-N, and it does not avoid full-file materialization). "
+            "Default load is full-file with no sampling. Profiling samples 'column extras' "
+            "(min/max) to settings.sample_size by default, but nulls/unique are computed on "
+            "the full frame. max_rows_in_memory is enforced: loader raises ValueError if "
+            "loaded rows exceed the limit."
         ),
     }
 

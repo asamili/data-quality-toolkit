@@ -23,31 +23,38 @@ repos:
 
   # Python formatting (Phase 1+)
   - repo: https://github.com/psf/black
-    rev: 26.1.0
+    rev: 26.5.1
     hooks:
       - id: black
         language_version: python3.12
         args: ['--line-length=100']
 
   - repo: https://github.com/PyCQA/isort
-    rev: 6.0.1
+    rev: 7.0.0
     hooks:
       - id: isort
         args: ['--profile=black', '--line-length=100']
 
   # Python linting (Phase 1+)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.10
+    rev: v0.15.1
     hooks:
       - id: ruff
         args: ['--fix', '--exit-non-zero-on-fix']
 
   # Type checking (Phase 1+)
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.17.1
+    rev: v1.19.1
     hooks:
       - id: mypy
-        args: ['--ignore-missing-imports']
+        # The isolated hook env cannot import the project, so staged files alone
+        # see data_quality_toolkit as a missing module (Any). Always check the src
+        # package so imports resolve to source. src files that crawl already
+        # covers are excluded to avoid duplicate modules; files the pyproject
+        # 'build'/'dist' exclude skips during the crawl are still passed explicitly.
+        args: ['--ignore-missing-imports', 'src']
+        exclude: ^src/(?!.*(?:build|dist))
+        always_run: true
         additional_dependencies:
           - types-PyYAML
           - types-python-dateutil
@@ -63,17 +70,20 @@ repos:
           - pytest
           - pytest-cov
           - "pydantic>=2.6,<2.10"
-          - "pydantic-settings>=2.2.1"
+          - "pydantic-settings>=2.14.2"
           - pyyaml
         types: [python]
         pass_filenames: false
 
   # Add safety/security scans
+  # Bandit runs only on the manual stage (dedicated scanner/security gate),
+  # not on routine commits -- matches pip-audit below.
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.6
     hooks:
       - id: bandit
         args: ["-ll", "-iii", "-r", "src/"]
+        stages: [manual]
 
   # pip-audit for dependency CVEs (manual stage: opt-in, avoids blocking
   # offline commits on a network advisory-DB lookup).

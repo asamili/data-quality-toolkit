@@ -141,7 +141,7 @@ def cmd_drift_history_notify(args: argparse.Namespace) -> int:
             allow_insecure_host=getattr(args, "allow_insecure_host", False),
         )
     except Exception as exc:  # NotificationError/WebhookSecurityError/etc. -> controlled exit 1
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"Error: {_m._redact_cli_paths(exc)}", file=sys.stderr)
         return 1
 
     payload = result["payload"]
@@ -176,15 +176,18 @@ def cmd_drift_history_report(args: argparse.Namespace) -> int:
         current_dataset_id=current_dataset_id,
     )
     fmt = "html" if getattr(args, "format", None) == "html" else "md"
+    # A filtered report scopes column/distribution detail to exactly its runs.
+    scoped = current_dataset_id is not None or limit is not None
+    run_ids = [r["run_id"] for r in runs] if scoped else None
 
     columns: list[dict[str, Any]] | None = None
     if getattr(args, "include_columns", False):
-        columns = _m.read_drift_columns_sqlite(args.db)
+        columns = _m.read_drift_columns_sqlite(args.db, run_ids=run_ids)
 
     distributions: list[dict[str, Any]] | None = None
     include_plots = getattr(args, "include_plots", False)
     if include_plots:
-        distributions = _m.read_drift_distributions_sqlite(args.db)
+        distributions = _m.read_drift_distributions_sqlite(args.db, run_ids=run_ids)
 
     from data_quality_toolkit.adapters.reports.drift_history import (
         render_drift_history_report,
@@ -225,12 +228,15 @@ def cmd_drift_dashboard(args: argparse.Namespace) -> int:
         limit=limit,
         current_dataset_id=current_dataset_id,
     )
-    columns = _m.read_drift_columns_sqlite(args.db)
+    # A filtered dashboard scopes column/distribution detail to exactly its runs.
+    scoped = current_dataset_id is not None or limit is not None
+    run_ids = [r["run_id"] for r in runs] if scoped else None
+    columns = _m.read_drift_columns_sqlite(args.db, run_ids=run_ids)
 
     distributions: list[dict[str, Any]] | None = None
     include_plots = getattr(args, "include_plots", False)
     if include_plots:
-        distributions = _m.read_drift_distributions_sqlite(args.db)
+        distributions = _m.read_drift_distributions_sqlite(args.db, run_ids=run_ids)
 
     from data_quality_toolkit.adapters.reports.drift_dashboard import (
         render_drift_dashboard,
@@ -271,7 +277,7 @@ def cmd_drift_history_export_xlsx(args: argparse.Namespace) -> int:
             force=getattr(args, "force", False),
         )
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"Error: {_m._redact_cli_paths(exc)}", file=sys.stderr)
         return 1
 
     tick = _m._safe_text("✓", "[OK]")
@@ -298,7 +304,7 @@ def cmd_drift_history_plot(args: argparse.Namespace) -> int:
             force=getattr(args, "force", False),
         )
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"Error: {_m._redact_cli_paths(exc)}", file=sys.stderr)
         return 1
 
     tick = _m._safe_text("✓", "[OK]")
@@ -322,7 +328,7 @@ def cmd_drift_history_export_duckdb(args: argparse.Namespace) -> int:
             overwrite=getattr(args, "overwrite", False),
         )
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"Error: {_m._redact_cli_paths(exc)}", file=sys.stderr)
         return 1
 
     tick = _m._safe_text("✓", "[OK]")

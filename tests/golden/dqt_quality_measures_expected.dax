@@ -1,0 +1,43 @@
+-- Average column completeness from fact_quality_metrics; 1 means no nulls.
+MEASURE 'Quality'[Completeness Rate] = AVERAGE('fact_quality_metrics'[completeness])
+    FORMAT_STRING = "0.00%"
+
+-- Average column null rate from fact_quality_metrics.
+MEASURE 'Quality'[Null Rate] = AVERAGE('fact_quality_metrics'[null_pct])
+    FORMAT_STRING = "0.00%"
+
+-- Average profiled distinct value count across columns.
+MEASURE 'Quality'[Avg Distinct Count] = AVERAGE('fact_quality_metrics'[distinct_count])
+    FORMAT_STRING = "#,##0"
+
+-- Distinct profiled run count from fact_profile_runs.
+MEASURE 'Quality'[Run Count] = DISTINCTCOUNT('fact_profile_runs'[run_id])
+    FORMAT_STRING = "#,##0"
+
+-- Dataset dimension row count from dim_dataset.
+MEASURE 'Quality'[Dataset Count] = COUNTROWS('dim_dataset')
+    FORMAT_STRING = "#,##0"
+
+-- Column dimension row count from dim_column.
+MEASURE 'Quality'[Column Count] = COUNTROWS('dim_column')
+    FORMAT_STRING = "#,##0"
+
+-- Total source rows profiled across profile runs.
+MEASURE 'Quality'[Total Rows Profiled] = SUM('fact_profile_runs'[rows])
+    FORMAT_STRING = "#,##0"
+
+-- Contract-validated current-star fact_issues row count.
+MEASURE 'Quality'[Issue Count] = COUNTROWS('fact_issues')
+    FORMAT_STRING = "#,##0"
+
+-- Contract-validated current-star fact_issues critical severity count.
+MEASURE 'Quality'[Critical Issue Count] = CALCULATE(COUNTROWS('fact_issues'), 'fact_issues'[severity] = "critical")
+    FORMAT_STRING = "#,##0"
+
+-- Contract-validated current-star fact_issues warning severity count.
+MEASURE 'Quality'[Warning Issue Count] = CALCULATE(COUNTROWS('fact_issues'), 'fact_issues'[severity] = "warning")
+    FORMAT_STRING = "#,##0"
+
+-- BI proxy derived from completeness and null rate; not the true assessment quality_score.
+MEASURE 'Quality'[Quality Score (proxy)] = (( [Completeness Rate] * 0.5 ) + ( ( 1 - [Null Rate] ) * 0.5 )) * 100
+    FORMAT_STRING = "0.0"

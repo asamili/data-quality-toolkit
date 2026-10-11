@@ -1,4 +1,4 @@
-"""DQT-UX-G8C2C-BT: exact-shape contracts for drift-history SQLite row APIs.
+"""Exact-shape contracts for drift-history SQLite row APIs.
 
 Proves the exported row TypedDicts (DriftRunRow, DriftColumnRow,
 DriftDistributionRow) are importable from both the package root and the

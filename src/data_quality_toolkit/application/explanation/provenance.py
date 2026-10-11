@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 # ----------------------------------------------------------------------------
-# Drift-monitoring provenance constants (G27H-A). Source-local, dependency-free
+# Drift-monitoring provenance constants. Source-local, dependency-free
 # identifiers reused by the deterministic drift narrators. These name metric
 # keys only — never paths, values, bin labels, or timestamps.
 # ----------------------------------------------------------------------------

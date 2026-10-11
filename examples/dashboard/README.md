@@ -1,9 +1,10 @@
 # DQT Dashboard — User Guide
 
 The DQT dashboard is a Streamlit app that surfaces the full data quality
-toolkit through a browser UI. It covers profiling, assessment, EDA, run
-history, pipeline execution, BI exports, KPI validation, and system
-diagnostics — all backed by the same core layer used by the CLI and Python API.
+toolkit through a browser UI. It covers dataset loading, profiling,
+assessment, EDA, Statistics Lab, Quality History, pipeline execution, BI
+exports, KPI validation, and system diagnostics — all backed by the same core
+layer used by the CLI and Python API.
 
 ---
 
@@ -43,17 +44,19 @@ Install it with: pip install data-quality-toolkit[ui]
 
 ## Navigation Overview
 
-The dashboard is organised into five sections in the left sidebar:
+The dashboard is organised as a 16-page / 16-step local journey in the left
+sidebar:
 
 | Section | Pages |
 | ------- | ----- |
-| Data Quality | Data Overview · EDA Explorer · Run History |
-| Pipeline | Pipeline Runner |
-| BI & Export | Export · KPI Catalog · Dim Time |
-| Lineage | Manifest Viewer |
-| System | Settings & Diagnostics |
+| Start | Start / Load Dataset |
+| Analyze | Data Overview · EDA Explorer · Statistics Lab · Quality Score |
+| Prepare | Preprocess Studio |
+| Operate | Pipeline Runner · Drift Monitoring · Quality History |
+| Deliver | Artifact Center · Export · KPI Catalog · Dim Time · Manifest Viewer |
+| System | Settings / Governance · Help / About |
 
-**Data Overview** is the default landing page.
+**Start / Load Dataset** is the first page.
 
 ---
 
@@ -98,11 +101,26 @@ encode / drop guidance), downloadable as CSV.
 
 ---
 
-### Run History
+### Statistics Lab
+
+**Inputs:** selected dataset from Start / Load Dataset.
+
+Statistics Lab is the numbers-focused workspace:
+
+- Descriptive statistics and statistical test tables
+- Theoretical Distributions exploration
+- Power & Sample Size planning
+- Lightweight CSV downloads for tabular results
+- Opt-in workspace saves where a Workspace Root is configured
+
+---
+
+### Quality History
 
 **Inputs:** Database path (`dqt.db`), Dataset ID.
 
-Produces `dqt.db` only via `dqt export` — `dqt assess` alone does not write it.
+Export creates/uses `<output_dir>/dqt.db`; Quality History reads that handoff.
+`dqt assess` alone does not write the database.
 The `dataset_id` is available in `star/quality_report.json` after an export run.
 
 **Displays:**
@@ -146,7 +164,7 @@ populate the comparison.
    }
    ```
 
-3. Launch the dashboard (`dqt dashboard`) and navigate to **Run History**.
+3. Launch the dashboard (`dqt dashboard`) and navigate to **Quality History**.
 4. Enter the database path (e.g. `dist/dqt.db`) and the `dataset_id`.
 
 ---
@@ -180,7 +198,7 @@ disk. A confirmation checkbox is required before any server-side write.
 
 | Artifact | Description |
 | -------- | ----------- |
-| `dqt.db` | SQLite run-history database |
+| `dqt.db` | SQLite run-history database at `<output_dir>/dqt.db`; handoff to Quality History |
 | `star/dim_dataset.csv` | Dataset dimension |
 | `star/dim_column.csv` | Column dimension |
 | `star/fact_profile_runs.csv` | Per-run profile facts |
@@ -308,8 +326,9 @@ Choose whichever surface fits your workflow — results are equivalent.
 | ------- | --- | ---------- | ------- |
 | Profile + assess a CSV | `dqt profile` / `dqt assess` | `assess_csv()` | Data Overview |
 | EDA charts + preprocessing plan | `dqt chart` / `dqt plan` | — | EDA Explorer |
-| Run history trend | — | — | Run History |
-| Run-to-run comparison | — | — | Run History |
+| Statistics Lab | — | — | Statistics Lab |
+| Quality history trend | — | — | Quality History |
+| Run-to-run comparison | — | — | Quality History |
 | Full export + star schema | `dqt export` | `export_csv()` | Export |
 | KPI catalog validation + emit | `dqt kpi-emit` / `dqt kpi-graph` | — | KPI Catalog |
 | Time dimension generation | — | `generate_dim_time()` | Dim Time |

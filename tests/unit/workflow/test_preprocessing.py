@@ -7,11 +7,14 @@ import json
 import pandas as pd
 
 from data_quality_toolkit.application.workflow.preprocessing import (
+    OUTPUT_COLLISION,
     RECIPE_SCHEMA_VERSION,
     STATUS_PENDING,
     frame_facts,
     iqr_outlier_summary,
     make_recipe_step,
+    output_collision_warning,
+    output_collisions,
     plan_preprocessing,
     recipe_to_json_payload,
     summarize_before_after,
@@ -225,3 +228,55 @@ def test_recipe_to_json_payload_is_deterministic_without_summary() -> None:
     second = recipe_to_json_payload(steps)
     assert json.dumps(first) == json.dumps(second)
     assert first["summary"] is None
+
+
+# ---------------------------------------------------------------------------
+# output-destination policy
+# ---------------------------------------------------------------------------
+
+
+def test_output_policy_admits_a_clean_destination_set() -> None:
+    assert output_collisions(["age", "city"], ["age__outlier", "city__freq"]) == []
+
+
+def test_output_policy_refuses_an_existing_destination() -> None:
+    assert output_collisions(["age", "age__outlier"], ["age__outlier"]) == ["age__outlier"]
+
+
+def test_output_policy_refuses_a_name_the_same_operation_emits_twice() -> None:
+    # No existing column is involved: two generated outputs would land on one name.
+    assert output_collisions(["p"], ["p_q_r", "p_q_r"]) == ["p_q_r"]
+
+
+def test_output_policy_reports_each_refused_name_once_in_candidate_order() -> None:
+    refused = output_collisions(["b"], ["a", "b", "c", "b", "a", "a"])
+    assert refused == ["b", "a"]
+
+
+def test_output_policy_allows_an_intentional_source_replacement() -> None:
+    # A one-hot expansion consumes "c"; writing over that name is its contract.
+    assert output_collisions(["c", "z"], ["c"], replaces=["c"]) == []
+    # It gains no permission over an unrelated column by doing so.
+    assert output_collisions(["c", "z"], ["z"], replaces=["c"]) == ["z"]
+
+
+def test_output_policy_allows_an_explicitly_permitted_destination() -> None:
+    assert output_collisions(["kept"], ["kept"], permitted=["kept"]) == []
+
+
+def test_output_policy_is_dataframe_library_independent() -> None:
+    # Any iterable of names works; nothing about a DataFrame is required.
+    assert output_collisions({"x"}, ("x",)) == ["x"]
+
+
+def test_output_policy_compares_names_as_text() -> None:
+    frame = pd.DataFrame({1: [0], "1": [0]})
+    assert output_collisions(frame.columns, [1]) == ["1"]
+
+
+def test_output_collision_warning_names_the_code_and_destinations() -> None:
+    message = output_collision_warning(["a__outlier", "b__freq"])
+    assert message.startswith(OUTPUT_COLLISION)
+    assert "'a__outlier'" in message
+    assert "'b__freq'" in message
+    assert "nothing was written" in message

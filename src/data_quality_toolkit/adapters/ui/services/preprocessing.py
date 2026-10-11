@@ -15,6 +15,7 @@ from typing import Any
 
 import pandas as pd
 
+from data_quality_toolkit.adapters.ui.services.preprocessing_calculations import CALC_DISPATCH
 from data_quality_toolkit.application.workflow.preprocessing import (
     OP_DERIVED,
     OP_DROP_DUPLICATES,
@@ -28,6 +29,8 @@ from data_quality_toolkit.application.workflow.preprocessing import (
     STATUS_SKIPPED,
     frame_facts,
     iqr_outlier_summary,
+    output_collision_warning,
+    output_collisions,
 )
 
 # Bounds (constants.py is read-only for this gate, so these live locally).
@@ -40,6 +43,14 @@ _BOOL_TRUE = {"true", "t", "yes", "y", "1"}
 _BOOL_FALSE = {"false", "f", "no", "n", "0"}
 
 _DERIVED_DATETIME = ("year", "month", "day", "day_of_week")
+_DERIVED_TEXT_LENGTH = "text_length"
+_DERIVED_KINDS = frozenset(_DERIVED_DATETIME) | {_DERIVED_TEXT_LENGTH}
+
+# Generated-destination naming rules. Declared once so recipe admission and
+# execution can never disagree about the name a family will write.
+_OUTLIER_FLAG_SUFFIX = "__outlier"
+_ONE_HOT = "one_hot"
+_ENCODING_SUFFIXES = {"frequency": "__freq", "label": "__label"}
 
 StatusDict = dict[str, Any]
 ApplyResult = tuple[pd.DataFrame, StatusDict]
@@ -70,6 +81,33 @@ def is_large_frame(df: pd.DataFrame) -> bool:
 def preview_frame(df: pd.DataFrame, rows: int = PREVIEW_ROWS) -> pd.DataFrame:
     """Return a bounded head slice for safe in-UI preview rendering."""
     return df.head(rows)
+
+
+def deterministic_output_names(
+    operation: str,
+    columns: Sequence[str],
+    parameters: Mapping[str, Any],
+) -> list[str]:
+    """Return the create-only destinations a step will write, when they are knowable.
+
+    Empty for in-place, row-only, unknown, and value-dependent operations: a
+    one-hot expansion names its outputs after the categories actually present,
+    so only execution can enumerate them. Recipe admission uses this to reserve
+    what a recipe can prove statically without a frame; execution against the
+    real frame stays authoritative.
+    """
+    params = dict(parameters or {})
+    names = [str(column) for column in columns]
+    if operation == OP_OUTLIER and str(params.get("strategy", "flag")) == "flag":
+        return [f"{column}{_OUTLIER_FLAG_SUFFIX}" for column in names]
+    if operation == OP_ENCODING:
+        suffix = _ENCODING_SUFFIXES.get(str(params.get("strategy", _ONE_HOT)))
+        return [f"{column}{suffix}" for column in names] if suffix else []
+    if operation == OP_DERIVED:
+        source = str(params.get("source_column") or (names[0] if names else ""))
+        kind = str(params.get("derived_kind", ""))
+        return [f"{source}__{kind}"] if source and kind in _DERIVED_KINDS else []
+    return []
 
 
 # ── transforms ───────────────────────────────────────────────────────────────
@@ -195,23 +233,37 @@ def apply_drop_duplicates(df: pd.DataFrame, subset: Sequence[str] | None = None)
     )
 
 
-def _apply_iqr_columns(
-    out: pd.DataFrame,
-    numeric_cols: Sequence[str],
-    strategy: str,
-    warnings: list[str],
-) -> pd.DataFrame:
-    """Apply the chosen IQR strategy across numeric columns (in-place on *out*)."""
-    remove_mask = pd.Series(False, index=out.index)
+def _iqr_summaries(
+    out: pd.DataFrame, numeric_cols: Sequence[str], warnings: list[str]
+) -> dict[str, Mapping[str, Any]]:
+    """Return usable IQR bounds per column, warning about the ones without any.
+
+    Computed up front so the flag destinations are known before anything is
+    written. No strategy changes another column's bounds, so resolving them
+    first is equivalent to resolving them inside the write loop.
+    """
+    summaries: dict[str, Mapping[str, Any]] = {}
     for col in numeric_cols:
         summary = iqr_outlier_summary(out, col)
         if summary is None:
             warnings.append(f"{col}: insufficient data for IQR")
             continue
+        summaries[col] = summary
+    return summaries
+
+
+def _apply_iqr_columns(
+    out: pd.DataFrame,
+    summaries: Mapping[str, Mapping[str, Any]],
+    strategy: str,
+) -> pd.DataFrame:
+    """Apply the chosen IQR strategy across columns with usable bounds."""
+    remove_mask = pd.Series(False, index=out.index)
+    for col, summary in summaries.items():
         lower, upper = summary["lower_fence"], summary["upper_fence"]
         out_of_bounds = ((out[col] < lower) | (out[col] > upper)).fillna(False)
         if strategy == "flag":
-            out[f"{col}__outlier"] = out_of_bounds
+            out[f"{col}{_OUTLIER_FLAG_SUFFIX}"] = out_of_bounds
         elif strategy == "clip":
             out[col] = out[col].clip(lower=lower, upper=upper)
         else:  # remove
@@ -224,7 +276,14 @@ def apply_iqr_outlier_strategy(
     columns: Sequence[str],
     strategy: str,
 ) -> ApplyResult:
-    """Flag, clip, or remove IQR outliers on selected numeric columns."""
+    """Flag, clip, or remove IQR outliers on selected numeric columns.
+
+    ``flag`` creates ``{column}__outlier``; every such destination is checked
+    against the frame before any of them is written, so a collision refuses the
+    whole step and leaves the existing column untouched. ``clip`` rewrites its
+    own selected column and ``remove`` drops rows, so neither creates a
+    destination that could collide.
+    """
     out = df.copy()
     present, missing = _present_columns(out, columns)
     if not present:
@@ -240,17 +299,25 @@ def apply_iqr_outlier_strategy(
         warnings.append(f"skipped non-numeric columns {non_numeric}")
     if not numeric_cols:
         return out, _status(STATUS_SKIPPED, warning=_join(warnings) or "no numeric columns")
-    out = _apply_iqr_columns(out, numeric_cols, strategy, warnings)
+    summaries = _iqr_summaries(out, numeric_cols, warnings)
+    refused = (
+        output_collisions(out.columns, [f"{col}{_OUTLIER_FLAG_SUFFIX}" for col in summaries])
+        if strategy == "flag"
+        else []
+    )
+    if refused:
+        return out, _status(STATUS_ERROR, warning=output_collision_warning(refused))
+    out = _apply_iqr_columns(out, summaries, strategy)
     return out, _status(STATUS_APPLIED, warning=_join(warnings))
 
 
-def _encode_one_hot(
+def _one_hot_columns(
     out: pd.DataFrame,
     present: Sequence[str],
     max_cardinality: int,
     warnings: list[str],
-) -> pd.DataFrame:
-    """One-hot encode columns within the cardinality bound; skip+warn over it."""
+) -> list[str]:
+    """Return the columns within the cardinality bound; skip+warn over it."""
     encode_cols: list[str] = []
     for col in present:
         card = int(out[col].nunique(dropna=True))
@@ -258,24 +325,70 @@ def _encode_one_hot(
             warnings.append(f"{col}: skipped one-hot (cardinality {card} > {max_cardinality})")
             continue
         encode_cols.append(col)
+    return encode_cols
+
+
+def _one_hot_destinations(out: pd.DataFrame, encode_cols: Sequence[str]) -> list[str]:
+    """Return the dummy names expanding *encode_cols* would emit, values included.
+
+    Derived from the real expansion of just those columns, so the candidate set
+    can never drift from what ``pd.get_dummies`` actually produces - and a name
+    two different sources would both emit appears twice, as it must.
+    """
+    if not encode_cols:
+        return []
+    cols = list(encode_cols)
+    dummies = pd.get_dummies(out[cols], columns=cols, prefix=cols)
+    return [str(name) for name in dummies.columns]
+
+
+def _apply_one_hot(
+    out: pd.DataFrame,
+    present: Sequence[str],
+    max_cardinality: int,
+    warnings: list[str],
+) -> tuple[pd.DataFrame | None, list[str]]:
+    """Expand one-hot dummies, or return the destinations that refuse the write."""
+    encode_cols = _one_hot_columns(out, present, max_cardinality, warnings)
+    # The expansion consumes its own source columns, so those names are the one
+    # thing it is entitled to replace.
+    refused = output_collisions(
+        out.columns, _one_hot_destinations(out, encode_cols), replaces=encode_cols
+    )
+    if refused:
+        return None, refused
     if encode_cols:
         out = pd.get_dummies(out, columns=encode_cols, prefix=encode_cols)
-    return out
+    return out, []
 
 
 def _encode_frequency(out: pd.DataFrame, present: Sequence[str]) -> pd.DataFrame:
+    suffix = _ENCODING_SUFFIXES["frequency"]
     for col in present:
         counts = out[col].value_counts(dropna=True)
-        out[f"{col}__freq"] = out[col].map(counts).fillna(0).astype(int)
+        out[f"{col}{suffix}"] = out[col].map(counts).fillna(0).astype(int)
     return out
 
 
 def _encode_label(out: pd.DataFrame, present: Sequence[str]) -> pd.DataFrame:
+    suffix = _ENCODING_SUFFIXES["label"]
     for col in present:
         categories = sorted({str(v) for v in out[col].dropna().unique()})
         mapping = {cat: idx for idx, cat in enumerate(categories)}
-        out[f"{col}__label"] = out[col].astype("string").map(mapping).astype("Int64")
+        out[f"{col}{suffix}"] = out[col].astype("string").map(mapping).astype("Int64")
     return out
+
+
+def _apply_suffix_encoding(
+    out: pd.DataFrame, present: Sequence[str], strategy: str
+) -> tuple[pd.DataFrame | None, list[str]]:
+    """Write every ``{column}__freq`` / ``{column}__label``, or refuse them all."""
+    suffix = _ENCODING_SUFFIXES[strategy]
+    refused = output_collisions(out.columns, [f"{col}{suffix}" for col in present])
+    if refused:
+        return None, refused
+    encode = _encode_frequency if strategy == "frequency" else _encode_label
+    return encode(out, present), []
 
 
 def apply_encoding(
@@ -284,23 +397,28 @@ def apply_encoding(
     strategy: str,
     max_cardinality: int = MAX_ONEHOT_CARDINALITY,
 ) -> ApplyResult:
-    """Encode categorical columns via one-hot / frequency / label (deterministic)."""
+    """Encode categorical columns via one-hot / frequency / label (deterministic).
+
+    Every destination the chosen strategy would emit is checked against the
+    frame first, so a collision with an unrelated existing column - or between
+    two generated names - refuses the whole step and writes nothing.
+    """
     out = df.copy()
     present, missing = _present_columns(out, columns)
     if not present:
         return out, _status(STATUS_SKIPPED, warning=f"No target columns present: {missing}")
+    if strategy != _ONE_HOT and strategy not in _ENCODING_SUFFIXES:
+        return out, _status(STATUS_SKIPPED, warning=f"Unknown strategy '{strategy}'")
     warnings: list[str] = []
     if missing:
         warnings.append(f"skipped missing columns {missing}")
-    if strategy == "one_hot":
-        out = _encode_one_hot(out, present, max_cardinality, warnings)
-    elif strategy == "frequency":
-        out = _encode_frequency(out, present)
-    elif strategy == "label":
-        out = _encode_label(out, present)
+    if strategy == _ONE_HOT:
+        encoded, refused = _apply_one_hot(out, present, max_cardinality, warnings)
     else:
-        return out, _status(STATUS_SKIPPED, warning=f"Unknown strategy '{strategy}'")
-    return out, _status(STATUS_APPLIED, warning=_join(warnings))
+        encoded, refused = _apply_suffix_encoding(out, present, strategy)
+    if encoded is None:
+        return out, _status(STATUS_ERROR, warning=output_collision_warning(refused))
+    return encoded, _status(STATUS_APPLIED, warning=_join(warnings))
 
 
 def apply_scaling(df: pd.DataFrame, columns: Sequence[str], strategy: str) -> ApplyResult:
@@ -342,27 +460,90 @@ def apply_safe_derived_column(
     source_column: str,
     derived_kind: str,
 ) -> ApplyResult:
-    """Add a safe derived column (datetime parts or text length). No free-form formulas."""
+    """Add a safe derived column (datetime parts or text length). No free-form formulas.
+
+    The destination ``{source}__{kind}`` is resolved and checked before any
+    parsing or assignment, so an existing column of that name is never replaced.
+    """
     out = df.copy()
     if source_column not in out.columns:
         return out, _status(STATUS_SKIPPED, warning=f"Source column '{source_column}' not present")
-    series = out[source_column]
-    if derived_kind in _DERIVED_DATETIME:
-        parsed = pd.to_datetime(series, errors="coerce")
-        if int(parsed.notna().sum()) == 0:
-            return out, _status(STATUS_SKIPPED, warning=f"{source_column}: no parseable datetimes")
-        part = {
-            "year": parsed.dt.year,
-            "month": parsed.dt.month,
-            "day": parsed.dt.day,
-            "day_of_week": parsed.dt.dayofweek,
-        }[derived_kind]
-        out[f"{source_column}__{derived_kind}"] = part.astype("Int64")
-    elif derived_kind == "text_length":
-        out[f"{source_column}__text_length"] = series.astype("string").str.len().astype("Int64")
-    else:
+    if derived_kind not in _DERIVED_KINDS:
         return out, _status(STATUS_SKIPPED, warning=f"Unknown derived_kind '{derived_kind}'")
+    target = f"{source_column}__{derived_kind}"
+    refused = output_collisions(out.columns, [target])
+    if refused:
+        return out, _status(STATUS_ERROR, warning=output_collision_warning(refused))
+    series = out[source_column]
+    if derived_kind == _DERIVED_TEXT_LENGTH:
+        out[target] = series.astype("string").str.len().astype("Int64")
+        return out, _status(STATUS_APPLIED)
+    parsed = pd.to_datetime(series, errors="coerce")
+    if int(parsed.notna().sum()) == 0:
+        return out, _status(STATUS_SKIPPED, warning=f"{source_column}: no parseable datetimes")
+    part = {
+        "year": parsed.dt.year,
+        "month": parsed.dt.month,
+        "day": parsed.dt.day,
+        "day_of_week": parsed.dt.dayofweek,
+    }[derived_kind]
+    out[target] = part.astype("Int64")
     return out, _status(STATUS_APPLIED)
+
+
+# ── replay evidence contract ─────────────────────────────────────────────────
+
+# The two statuses ``apply_recipe`` records for a step that ran to completion.
+# ``skipped`` belongs here: the engine records why the step did not apply, the
+# durable recipe carries that verdict, and the confirmation vocabulary admits it.
+# ``error`` never belongs here — the operation did not happen.
+_COMPLETED_STATUSES = frozenset({STATUS_APPLIED, STATUS_SKIPPED})
+
+# Fixed refusal codes. None interpolates a path, column, parameter, or any other
+# authored value, so a refusal is safe to surface and to persist verbatim.
+REPLAY_OK = ""
+REPLAY_FAILED = "REPLAY_FAILED"
+REPLAY_INCOMPLETE = "REPLAY_INCOMPLETE"
+REPLAY_EVIDENCE_INVALID = "REPLAY_EVIDENCE_INVALID"
+
+
+def _step_identity(step: Mapping[str, Any]) -> tuple[str, str, tuple[str, ...]]:
+    """Return the stable fields tying one execution record to its authored step."""
+    return (
+        str(step.get("step_id") or ""),
+        str(step.get("operation", "")),
+        tuple(str(column) for column in (step.get("columns") or [])),
+    )
+
+
+def replay_refusal_code(authored_steps: Any, executed_steps: Any) -> str:
+    """Return ``REPLAY_OK`` only when evidence proves a complete, successful replay.
+
+    ``executed_steps`` must be what :func:`apply_recipe` returned for
+    ``authored_steps``: one record per authored step, in recipe order, each
+    naming the same step and each reporting a status the engine only records for
+    an operation that ran to completion. A missing, extra, reordered,
+    substituted, errored, or unrecognised record is refused. A partial replay is
+    never a successful one, so this is the single predicate both confirmation
+    paths ask before anything durable is written.
+    """
+    if not isinstance(authored_steps, list | tuple) or not authored_steps:
+        return REPLAY_EVIDENCE_INVALID
+    if not isinstance(executed_steps, list | tuple) or not executed_steps:
+        return REPLAY_EVIDENCE_INVALID
+    if len(executed_steps) != len(authored_steps):
+        return REPLAY_INCOMPLETE
+    for authored, executed in zip(authored_steps, executed_steps, strict=True):
+        if not isinstance(authored, Mapping) or not isinstance(executed, Mapping):
+            return REPLAY_EVIDENCE_INVALID
+        if _step_identity(executed) != _step_identity(authored):
+            return REPLAY_INCOMPLETE
+        status = executed.get("status")
+        if status == STATUS_ERROR:
+            return REPLAY_FAILED
+        if status not in _COMPLETED_STATUSES:
+            return REPLAY_EVIDENCE_INVALID
+    return REPLAY_OK
 
 
 # ── replay engine ────────────────────────────────────────────────────────────
@@ -403,6 +584,11 @@ def _dispatch_step(
     if operation == OP_DERIVED:
         source = params.get("source_column") or (columns[0] if columns else "")
         return apply_safe_derived_column(df, str(source), str(params.get("derived_kind", "")))
+    calc = CALC_DISPATCH.get(operation)
+    if calc is not None:
+        # Calculated-column transforms read their inputs from ``parameters`` and
+        # share the same ``(new_df, status)`` contract as the transforms above.
+        return calc(df, params)
     return df.copy(), _status(STATUS_SKIPPED, warning=f"Unknown operation '{operation}'")
 
 

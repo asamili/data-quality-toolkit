@@ -77,7 +77,7 @@ stable form with an explicit path and confirmation.
 The accepted near-term direction is:
 
 - retain Streamlit for layout, navigation, state, forms, metrics, and tables;
-- plan to use Plotly for richer analytical UI charts in a separately admitted gate;
+- plan to use Plotly for richer analytical UI charts in a separate, later change;
 - retain the existing Matplotlib path for static CLI/API plot artifacts;
 - avoid a React, Dash, Panel, or Shiny migration before v2.9.0.
 
@@ -200,49 +200,49 @@ requirements.
 
 Each phase below requires separate admission. This document does not open or approve any phase.
 
-### G27E-UI-FOUNDATION
+### UI foundation
 
 Add the Start page, shared dataset state, page shell, common states, navigation cleanup, and
 truthful handling of experimental or placeholder pages. No EDA, chart-dependency, or AI-runtime
 work belongs in this phase.
 
-### G27F-EDA-P0
+### EDA P0 presentation layer
 
 Implement pure P0 statistical presentation models and the planned analytical chart layer. Any
 Plotly declaration or installation requires explicit dependency admission and source/license
 validation. This phase must add calculation, figure-contract, edge-case, and render tests.
 
-### G27G-STORYLENS-DETERMINISTIC
+### Deterministic StoryLens
 
 Correct StoryLens provenance wording and implement the first AI-independent facts builders and
 deterministic cross-feature narrators. Model staging, inference, new AI facts, and CLI/API AI
 exposure remain forbidden.
 
-### G27H-DRIFT-MONITORING-UX
+### Drift monitoring UX
 
 Improve drift/history presentation, statistical-test guidance, distribution comparison, and
 deterministic monitoring explanations while retaining the existing read-only API/view-model seam
 and database schema.
 
-### G27I-ARTIFACT-CENTER
+### Artifact Center
 
 Redesign Export and Lineage around consistent artifact metadata, downloads, explicit writes, and
 deterministic artifact explanations. Existing path guards and confirmation behavior remain
 mandatory.
 
-### G27J-UI-DOCS-ALIGNMENT
+### UI documentation alignment
 
 Synchronize the README, capability matrix, governance, architecture, and final UI copy with the
 implemented behavior. This phase must not claim unimplemented features or release readiness.
 
-### G27K-UI-VALIDATION
+### UI validation
 
 Perform a read-only final UI, architecture, safety, and test audit. A successful result may
-recommend—but cannot perform—a separately admitted private-push gate.
+recommend—but cannot perform—a later publication step.
 
 ## Publication and Release Boundary
 
-The redesign plan does not change DQT's publication state. Private push remains postponed, and
-public snapshot, tag, and release actions remain blocked pending their own admitted gates. No
+The redesign plan does not change DQT's publication state. Publication, tagging, and release
+are separate steps outside this plan. No
 frontend, charting, or StoryLens item in this document may be presented as completed until its
 implementation and validation gates have passed.

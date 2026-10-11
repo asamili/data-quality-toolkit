@@ -1,4 +1,4 @@
-"""Focused tests for the G27E shared UI foundation."""
+"""Focused tests for the shared UI foundation."""
 
 from __future__ import annotations
 
@@ -23,9 +23,13 @@ from data_quality_toolkit.adapters.ui.state.context import (
 )
 from data_quality_toolkit.adapters.ui.state.keys import (
     BIV_COL1,
+    BIV_COL2,
     DATASET_CONTEXT,
+    DATASET_DERIVED_STATE_KEYS,
     DATASET_LARGE_FILE_MODE,
     DATASET_PATH_INPUT,
+    PREP_RECIPE_STEPS,
+    SRC_DATASET_ID,
 )
 
 
@@ -205,3 +209,78 @@ def test_eda_blocks_large_file_context_without_loading() -> None:
 
     load.assert_not_called()
     assert st.called("warning")
+
+
+# --- Additive DatasetContext + derived-state contract ---
+
+
+def test_existing_dataset_context_constructor_remains_valid() -> None:
+    # The original 5-argument constructor still works unchanged.
+    context = DatasetContext(
+        source_path="C:/safe/orders.csv",
+        display_name="orders.csv",
+        size_bytes=2048,
+        modified_ns=10,
+    )
+    assert context.large_file_mode is False
+    assert context.fingerprint == ("C:/safe/orders.csv", 2048, 10, False)
+
+
+def test_legacy_dataset_context_defaults_to_unmanaged() -> None:
+    context = _context()
+    assert context.managed is False
+    assert context.version_id is None
+    assert context.family_id is None
+    assert context.content_id is None
+    assert context.root_content_id is None
+    assert context.parent_version_id is None
+    assert context.version_label is None
+
+
+def test_managed_context_fields_round_trip_through_session() -> None:
+    managed = DatasetContext(
+        source_path="C:/safe/orders.csv",
+        display_name="orders.csv",
+        size_bytes=2048,
+        modified_ns=10,
+        managed=True,
+        version_id="b1c2d3e4-0000-4000-8000-000000000001",
+        family_id="a0000000-0000-4000-8000-000000000002",
+        content_id="sha256:" + "a" * 64,
+        root_content_id="sha256:" + "b" * 64,
+        parent_version_id="c0000000-0000-4000-8000-000000000003",
+        version_label="cleaned v2",
+    )
+    state: dict[str, Any] = {}
+
+    assert set_dataset_context(state, managed) is True
+    restored = get_dataset_context(state)
+
+    assert restored is not None
+    assert restored.managed is True
+    assert restored.version_id == managed.version_id
+    assert restored.family_id == managed.family_id
+    assert restored.content_id == managed.content_id
+    assert restored.root_content_id == managed.root_content_id
+    assert restored.parent_version_id == managed.parent_version_id
+    assert restored.version_label == "cleaned v2"
+
+
+def test_set_dataset_context_switch_now_clears_all_derived_state() -> None:
+    # Activation behavior change: a dataset switch now clears every
+    # DATASET_DERIVED_STATE_KEYS entry, including the Preprocess recipe steps
+    # (which the original contract deliberately preserved). See dataset_activation.
+    state: dict[str, Any] = {}
+    assert set_dataset_context(state, _context("C:/safe/a.csv")) is True
+    state[BIV_COL1] = "b"
+    state[PREP_RECIPE_STEPS] = [{"op": "dropna"}]
+
+    assert set_dataset_context(state, _context("C:/safe/b.csv")) is True
+
+    assert BIV_COL1 not in state
+    assert PREP_RECIPE_STEPS not in state
+
+
+def test_dataset_derived_state_declaration_includes_shared_keys() -> None:
+    for key in (BIV_COL1, BIV_COL2, PREP_RECIPE_STEPS, SRC_DATASET_ID):
+        assert key in DATASET_DERIVED_STATE_KEYS
