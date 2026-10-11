@@ -1,0 +1,38 @@
+{
+  "schema": "dqt-release-manifest/1",
+  "version": "2.10.0",
+  "tag": "v2.10.0",
+  "requires_python": ">=3.12,<3.13",
+  "snapshot": {
+    "algorithm": "sha256-canonical-stream/1",
+    "content_sha256": "cebe2e0af31c7b3a96f21778399fee9591a883f110535917c341b4a65d1fb289",
+    "file_count": 651,
+    "git_tree_sha1": "4679b1912b5f20e7036b19d040a540ae0a6b3e9f"
+  },
+  "artifacts": [
+    {
+      "role": "wheel",
+      "filename": "data_quality_toolkit-2.10.0-py3-none-any.whl",
+      "size": 683716,
+      "sha256": "f835d2a4af6057152ef8328079b3f47c4b25192de5a6dba144edbe12b5080cab"
+    },
+    {
+      "role": "sdist",
+      "filename": "data_quality_toolkit-2.10.0.tar.gz",
+      "size": 578051,
+      "sha256": "47511e6c543b9973580dad0a5d3e78b7b975c42494d718851040e807a84ffe28"
+    },
+    {
+      "role": "checksums",
+      "filename": "checksums.txt",
+      "size": 212,
+      "sha256": "7944af7abf40918af0361f3ddcc2d0f89670f39e7f5bd28998e093b750937d3b"
+    }
+  ],
+  "release_body": {
+    "source": "CHANGELOG.md",
+    "section": "2.10.0",
+    "sha256": "585972935ce28928b37f1149d6ae820a568dcc7b1603ff93bca3e9753b942bdc"
+  },
+  "publication_status": "candidate"
+}

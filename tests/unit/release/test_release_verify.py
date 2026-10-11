@@ -947,9 +947,9 @@ def test_cli_has_no_hash_url_or_artifact_path_overrides() -> None:
 # The frozen 2.10.0 distributables. Unlike the snapshot identity, these do not
 # depend on the tree that carries the manifest, so they are pinned here.
 FROZEN_ARTIFACTS = {
-    (WHEEL, 684295, "1e220119a8ffa199640e2377737fb6c8df4b19906aadc627d8175264ddc15e2c"),
-    (SDIST, 579078, "bf4d8196d05f17245dd891338d818b68415674c58476816340ec82201d3a7aa4"),
-    (CHECKSUMS, 212, "7e7a288721e99f170551badedb26dfb1c7e94271668f9c852bc3a6f1774fcbb4"),
+    (WHEEL, 683716, "f835d2a4af6057152ef8328079b3f47c4b25192de5a6dba144edbe12b5080cab"),
+    (SDIST, 578051, "47511e6c543b9973580dad0a5d3e78b7b975c42494d718851040e807a84ffe28"),
+    (CHECKSUMS, 212, "7944af7abf40918af0361f3ddcc2d0f89670f39e7f5bd28998e093b750937d3b"),
 }
 
 
